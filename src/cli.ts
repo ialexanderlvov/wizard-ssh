@@ -5,6 +5,7 @@ import { APP_BIN, APP_VERSION } from './core/constants.js';
 import { DATA_DIR, ensureDataDir } from './core/paths.js';
 import { PromptAbortError, WizardError } from './core/errors.js';
 import { runMigration } from './store/migrate.js';
+import { migrateServersToConfig } from './store/migrate-servers.js';
 import { registerCommands } from './commands/index.js';
 import { mainMenu } from './commands/menu.js';
 import * as ui from './ui/index.js';
@@ -12,6 +13,7 @@ import * as ui from './ui/index.js';
 async function main(): Promise<void> {
   ensureDataDir();
   const migrated = runMigration();
+  const serverMigration = migrateServersToConfig();
 
   const program = new Command();
   program.enablePositionalOptions(); // lets `run <name> -- <cmd>` pass flags through
@@ -28,13 +30,22 @@ async function main(): Promise<void> {
 
   // No subcommand at all → interactive menu. (We don't register a default
   // `program.action`, so unknown commands still produce a proper error.)
+  const serverNote = serverMigration?.count
+    ? `Серверы перенесены в ~/.ssh/config: ${serverMigration.count}. servers.json → servers.json.migrated.` +
+      (serverMigration.backup ? ` Бэкап конфига: ${serverMigration.backup}` : '')
+    : '';
+
   if (process.argv.slice(2).length === 0) {
     ui.printBanner();
     if (migrated) ui.printInfo(`Импортировано из прежней версии: туннелей — ${migrated}.`);
+    if (serverNote) ui.printInfo(serverNote);
     await mainMenu();
     return;
   }
 
+  // Command mode: report the one-time server migration on stderr so it never
+  // pollutes stdout (e.g. `wssh server ls --json`).
+  if (serverNote) console.error(serverNote);
   await program.parseAsync(process.argv);
 }
 

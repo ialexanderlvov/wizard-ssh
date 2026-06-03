@@ -1,16 +1,196 @@
-import type { Server } from '../core/types.js';
-import { FILES } from '../core/paths.js';
-import { EntityCollection } from './collection.js';
-import { asRaw, normalizeBase, normalizeConnection, str } from './normalize.js';
+/** Servers backed by ~/.ssh/config (the single source of truth). A "server" IS
+ *  a single-alias Host block; its name is the alias. App-only data
+ *  (description, tags, password-auth + vault secret id, createdAt) rides in a
+ *  `#wssh {...}` comment above the block; volatile stats live in usage.json.
+ *
+ *  This exposes the SAME surface the old JSON-backed collection did
+ *  (all, sorted, find*, create, update, remove, touch, replaceAll) so callers
+ *  are unchanged — but every read assembles from config + usage, and every
+ *  write goes through the ssh-config writer (with its automatic backup). */
 
-function normalizeServer(raw: unknown): Server {
-  const r = asRaw(raw);
+import type {
+  AuthMethod,
+  ConnectionTarget,
+  Server,
+  SortKey,
+  SshConfigHost,
+  WsshMeta,
+} from '../core/types.js';
+import type { SshConfigParam } from '../ssh-config/index.js';
+import * as sshConfig from '../ssh-config/index.js';
+import { nowIso, ts } from '../utils/time.js';
+import { usage } from './usage.store.js';
+
+const SORTERS: Record<SortKey, (a: Server, b: Server) => number> = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  created: (a, b) => ts(b.createdAt) - ts(a.createdAt) || a.name.localeCompare(b.name),
+  updated: (a, b) => ts(b.updatedAt) - ts(a.updatedAt) || a.name.localeCompare(b.name),
+  uses: (a, b) => (b.useCount || 0) - (a.useCount || 0) || a.name.localeCompare(b.name),
+  recent: (a, b) => ts(b.lastUsedAt) - ts(a.lastUsedAt) || a.name.localeCompare(b.name),
+};
+
+/** Standard connection directives the facade owns; anything else is preserved. */
+const STD_PARAMS = new Set(['hostname', 'user', 'port', 'identityfile']);
+
+/** Assemble a Server from a parsed config host + its usage stats. */
+function toServer(h: SshConfigHost): Server {
+  const meta = h.wssh ?? {};
+  const u = usage.get(h.alias);
+  // password is explicit in #wssh; a key is implied by an IdentityFile directive;
+  // everything else is the agent / config default.
+  const auth: AuthMethod = meta.auth === 'password' ? 'password' : h.identityFile ? 'key' : 'agent';
   return {
-    ...normalizeBase(r),
-    ...normalizeConnection(r),
     kind: 'server',
-    linkedSshHost: r.linkedSshHost ? str(r.linkedSshHost) : null,
+    id: h.alias,
+    name: h.alias,
+    description: meta.desc ?? '',
+    tags: meta.tags ?? [],
+    createdAt: meta.createdAt ?? '',
+    updatedAt: meta.createdAt ?? '',
+    lastUsedAt: u.lastUsedAt,
+    useCount: u.useCount,
+    hostMode: 'sshconfig',
+    sshHost: h.alias,
+    host: h.hostName,
+    user: h.user,
+    sshPort: h.port ? Number(h.port) || 22 : 22,
+    auth,
+    keyPath: h.identityFile || null,
+    secretId: meta.secretId ?? null,
+    manageable: h.manageable,
   };
 }
 
-export const servers = new EntityCollection<Server>(FILES.servers, normalizeServer);
+/** Build the ssh-config params from a connection target, preserving any extra
+ *  directives (ProxyJump, Compression, …) already present on the block. */
+function paramsFor(conn: ConnectionTarget, existing: SshConfigParam[] = []): SshConfigParam[] {
+  const out: SshConfigParam[] = [];
+  if (conn.host) out.push({ key: 'HostName', value: conn.host });
+  if (conn.user) out.push({ key: 'User', value: conn.user });
+  if (conn.sshPort && Number(conn.sshPort) !== 22)
+    out.push({ key: 'Port', value: String(conn.sshPort) });
+  // Always preserve a known IdentityFile (covers auth:'key' and config hosts read
+  // back as agent/password + keyPath); a password connect ignores it anyway, so
+  // keeping it never drops the user's key directive.
+  if (conn.keyPath) out.push({ key: 'IdentityFile', value: conn.keyPath });
+  for (const p of existing) if (!STD_PARAMS.has(p.key.toLowerCase())) out.push(p);
+  return out;
+}
+
+function metaFor(data: Partial<Server>, createdAt: string): WsshMeta {
+  return {
+    ...(data.description ? { desc: data.description } : {}),
+    ...(data.tags && data.tags.length ? { tags: data.tags } : {}),
+    ...(data.auth === 'password' ? { auth: 'password' as const } : {}),
+    ...(data.secretId ? { secretId: data.secretId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+  };
+}
+
+function connOf(data: Partial<Server>): ConnectionTarget {
+  return {
+    hostMode: 'sshconfig',
+    sshHost: '',
+    host: typeof data.host === 'string' ? data.host : '',
+    user: typeof data.user === 'string' ? data.user : '',
+    sshPort: Number(data.sshPort) || 22,
+    auth: data.auth ?? 'agent',
+    keyPath: data.keyPath ?? null,
+    secretId: data.secretId ?? null,
+  };
+}
+
+class ConfigServers {
+  all(): Server[] {
+    return sshConfig.listHosts().map(toServer);
+  }
+
+  sorted(key: SortKey = 'recent', reverse = false): Server[] {
+    const list = this.all().sort(SORTERS[key] ?? SORTERS.recent);
+    return reverse ? list.reverse() : list;
+  }
+
+  findById(id: string): Server | null {
+    const h = sshConfig.getHost(id);
+    return h ? toServer(h) : null;
+  }
+
+  findByName(name: string): Server | null {
+    if (!name) return null;
+    const n = name.trim().toLowerCase();
+    const h = sshConfig.listHosts().find((x) => x.alias.toLowerCase() === n);
+    return h ? toServer(h) : null;
+  }
+
+  nameExists(name: string, exceptId?: string): boolean {
+    const n = name.trim().toLowerCase();
+    return sshConfig.listHosts().some((x) => x.alias.toLowerCase() === n && x.alias !== exceptId);
+  }
+
+  /** Create a new Host block (or overwrite one of the same alias). */
+  create(data: Partial<Server> & { name: string }): Server {
+    const alias = data.name.trim();
+    const existing = sshConfig.getHost(alias);
+    const createdAt = data.createdAt || existing?.wssh?.createdAt || nowIso();
+    sshConfig.upsertHost({
+      alias,
+      params: paramsFor(connOf(data), existing?.params ?? []),
+      wssh: metaFor(data, createdAt),
+    });
+    return this.findById(alias) as Server;
+  }
+
+  /** Patch a server. Connection fields rewrite the block; metadata rewrites the
+   *  `#wssh` comment; a name change renames the alias (and moves its stats). */
+  update(id: string, patch: Partial<Server>): Server | null {
+    const current = this.findById(id);
+    if (!current) return null;
+    // Multi-alias / Match / Include hosts can't be spliced safely — never rewrite
+    // them (the writer would otherwise append a duplicate single-alias block).
+    if (!current.manageable) return current;
+    const host = sshConfig.getHost(id);
+    const merged: Server = { ...current, ...patch };
+    const newAlias = (patch.name ?? id).trim();
+
+    // Write the (possibly renamed) block FIRST, then drop the old one — so a
+    // failed write can never leave the server missing from the config.
+    sshConfig.upsertHost({
+      alias: newAlias,
+      params: paramsFor(connOf(merged), host?.params ?? []),
+      wssh: metaFor(merged, merged.createdAt || current.createdAt || nowIso()),
+    });
+    if (newAlias !== id) {
+      sshConfig.removeHost(id);
+      usage.rename(id, newAlias);
+    }
+    return this.findById(newAlias);
+  }
+
+  remove(id: string): boolean {
+    const { removed } = sshConfig.removeHost(id);
+    if (removed) usage.remove(id);
+    return removed;
+  }
+
+  /** Record a connection (bump lastUsedAt / useCount). Always "succeeds". */
+  touch(id: string): boolean {
+    usage.touch(id);
+    return true;
+  }
+
+  /** Import: upsert each server into the config (keyed by alias) + its stats. */
+  replaceAll(items: Server[]): void {
+    for (const s of items) {
+      const alias = (s.name || s.sshHost || '').trim();
+      if (!alias) continue;
+      sshConfig.upsertHost({
+        alias,
+        params: paramsFor(connOf(s), sshConfig.getHost(alias)?.params ?? []),
+        wssh: metaFor(s, s.createdAt || nowIso()),
+      });
+      usage.set(alias, { lastUsedAt: s.lastUsedAt ?? null, useCount: s.useCount || 0 });
+    }
+  }
+}
+
+export const servers = new ConfigServers();
