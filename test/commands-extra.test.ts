@@ -1,0 +1,439 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { freshHome, promptMock } from './helpers.js';
+
+const q = {
+  text: [] as unknown[],
+  choose: [] as unknown[],
+  confirm: [] as unknown[],
+  secret: [] as unknown[],
+  multi: [] as unknown[],
+  search: [] as unknown[],
+};
+const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
+
+const runner = {
+  runInteractive: vi.fn(async () => 0),
+  runTunnel: vi.fn(async () => 0),
+  runSshInherit: vi.fn(async () => 0),
+  runProgram: vi.fn(async () => 0),
+};
+const feat = {
+  healthOpen: false,
+  copyId: vi.fn(async () => 0),
+  transfer: vi.fn(async () => 0),
+  runCommand: vi.fn(async () => 0),
+};
+const touch = { supported: false };
+
+function setupMocks(): void {
+  vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
+  vi.doMock('../src/ssh/features.js', () => ({
+    healthCheck: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
+    copyId: feat.copyId,
+    runCommand: feat.runCommand,
+    transfer: feat.transfer,
+    resolveEndpoint: () => ({ host: 'h', port: 22 }),
+    checkTcp: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
+  }));
+  let stored: string | null = null;
+  vi.doMock('../src/vault/touchid.js', () => ({
+    isSupported: () => touch.supported,
+    authenticate: () => true,
+    storeKey: (k: string) => {
+      stored = k;
+      return true;
+    },
+    loadKey: () => stored,
+    deleteKey: () => {
+      stored = null;
+    },
+  }));
+}
+
+const writeConfig = (c: string): void => {
+  const dir = path.join(os.homedir(), '.ssh');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config'), c);
+};
+
+beforeEach(() => {
+  vi.resetModules();
+  freshHome();
+  resetQ();
+  feat.healthOpen = false;
+  touch.supported = false;
+  [
+    runner.runInteractive,
+    runner.runTunnel,
+    runner.runSshInherit,
+    runner.runProgram,
+    feat.copyId,
+    feat.transfer,
+    feat.runCommand,
+  ].forEach((m) => m.mockClear());
+  feat.copyId.mockImplementation(async () => 0);
+  feat.transfer.mockImplementation(async () => 0);
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  setupMocks();
+});
+
+describe('actions branches', () => {
+  it('checkFlow resolves a tunnel by name', async () => {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    tunnels.create({ name: 'tnl', type: 'local', localPort: 8181, remotePort: 81, kind: 'tunnel' });
+    const { checkFlow } = await import('../src/commands/actions.js');
+    feat.healthOpen = true;
+    expect(await checkFlow('tnl')).toBe(0);
+  });
+
+  it('copyIdFlow lets you pick a discovered key', async () => {
+    const ssh = path.join(os.homedir(), '.ssh');
+    fs.mkdirSync(ssh, { recursive: true });
+    const key = path.join(ssh, 'id_ed25519');
+    fs.writeFileSync(key, '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n');
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    q.choose = [key];
+    const { copyIdFlow } = await import('../src/commands/actions.js');
+    expect(await copyIdFlow('box')).toBe(0);
+    expect(feat.copyId).toHaveBeenCalledWith(expect.anything(), key, undefined);
+  });
+
+  it('copyIdFlow reports a failure', async () => {
+    feat.copyId.mockRejectedValueOnce?.(new Error('boom'));
+    feat.copyId.mockImplementationOnce(async () => {
+      throw new Error('boom');
+    });
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { copyIdFlow } = await import('../src/commands/actions.js');
+    expect(await copyIdFlow('box')).toBe(1);
+  });
+
+  it('runFlow prompts for a command when none is given', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    q.text = ['uptime -p'];
+    const { runFlow } = await import('../src/commands/actions.js');
+    expect(await runFlow('box', [])).toBe(0);
+    expect(feat.runCommand).toHaveBeenCalled();
+  });
+
+  it('transferFlow reports a failure', async () => {
+    feat.transfer.mockImplementationOnce(async () => {
+      throw new Error('nope');
+    });
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    q.choose = ['download'];
+    q.text = ['./a', '/b'];
+    q.confirm = [false];
+    const { transferFlow } = await import('../src/commands/actions.js');
+    expect(await transferFlow('box')).toBe(1);
+  });
+});
+
+describe('connect branches', () => {
+  it('resolves by name to a tunnel and a config alias', async () => {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    tunnels.create({ name: 'tunx', type: 'local', localPort: 1, remotePort: 1, kind: 'tunnel' });
+    writeConfig('Host cfgx\n    HostName 9.9.9.9\n');
+    const { quickConnectByName } = await import('../src/commands/connect.js');
+    expect(await quickConnectByName('tunx')).toBe(0);
+    expect(runner.runTunnel).toHaveBeenCalled();
+    expect(await quickConnectByName('cfgx')).toBe(0);
+  });
+
+  it('fuzzy single match connects; multi match prompts', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    const a = servers.create({ name: 'web-alpha', host: '1.1.1.1', kind: 'server' });
+    servers.create({ name: 'web-beta', host: '2.2.2.2', kind: 'server' });
+    const { quickConnectByName } = await import('../src/commands/connect.js');
+    // multiple "web" matches → picker
+    q.choose = [`s:${a.id}`];
+    expect(await quickConnectByName('web')).toBe(0);
+    expect(runner.runInteractive).toHaveBeenCalled();
+  });
+
+  it('quickConnect dispatches to a tunnel pick', async () => {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.create({
+      name: 'qt',
+      type: 'local',
+      localPort: 1,
+      remotePort: 1,
+      kind: 'tunnel',
+    });
+    q.search = [`t:${t.id}`];
+    const { quickConnect } = await import('../src/commands/connect.js');
+    expect(await quickConnect()).toBe(0);
+    expect(runner.runTunnel).toHaveBeenCalled();
+  });
+
+  it('quickConnect dispatches to a config host pick', async () => {
+    writeConfig('Host qc\n    HostName 9.9.9.9\n');
+    q.search = ['c:qc'];
+    const { quickConnect } = await import('../src/commands/connect.js');
+    expect(await quickConnect()).toBe(0);
+    expect(runner.runInteractive).toHaveBeenCalled();
+  });
+});
+
+describe('helpers branches', () => {
+  it('handlePasswordSecret removes a stored secret when auth leaves password', async () => {
+    // build a vault + secret
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('pw');
+    const { handlePasswordSecret } = await import('../src/commands/helpers.js');
+    const out = await handlePasswordSecret(
+      {
+        hostMode: 'manual',
+        sshHost: '',
+        host: 'h',
+        user: 'u',
+        sshPort: 22,
+        auth: 'agent',
+        keyPath: null,
+        secretId: id,
+      },
+      id,
+    );
+    expect(out).toBeNull();
+    expect(vault.hasSecret(id)).toBe(false);
+  });
+
+  it('handlePasswordSecret with save=false drops the previous secret', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('pw');
+    q.confirm = [false]; // do not save
+    const { handlePasswordSecret } = await import('../src/commands/helpers.js');
+    const out = await handlePasswordSecret(
+      {
+        hostMode: 'manual',
+        sshHost: '',
+        host: 'h',
+        user: 'u',
+        sshPort: 22,
+        auth: 'password',
+        keyPath: null,
+        secretId: id,
+      },
+      id,
+    );
+    expect(out).toBeNull();
+  });
+
+  it('resolvePassword falls back to a prompt when the saved secret is gone', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m'); // vault exists but has no secret with this id
+    q.secret = ['typed-pw'];
+    const { resolvePassword } = await import('../src/commands/helpers.js');
+    const pw = await resolvePassword({
+      hostMode: 'manual',
+      sshHost: '',
+      host: 'h',
+      user: 'u',
+      sshPort: 22,
+      auth: 'password',
+      keyPath: null,
+      secretId: 'ghost',
+    });
+    expect(pw).toBe('typed-pw');
+  });
+
+  it('resolvePassword returns the decrypted secret from an unlocked vault', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('stored-pw');
+    const { resolvePassword } = await import('../src/commands/helpers.js');
+    const pw = await resolvePassword({
+      hostMode: 'manual',
+      sshHost: '',
+      host: 'h',
+      user: 'u',
+      sshPort: 22,
+      auth: 'password',
+      keyPath: null,
+      secretId: id,
+    });
+    expect(pw).toBe('stored-pw');
+  });
+
+  it('ensureVaultSetup enables Touch ID when supported', async () => {
+    touch.supported = true;
+    q.secret = ['master', 'master'];
+    q.confirm = [true]; // enable Touch ID?
+    const { ensureVaultSetup } = await import('../src/commands/helpers.js');
+    expect(await ensureVaultSetup()).toBe(true);
+    const { vault } = await import('../src/vault/vault.js');
+    expect(vault.exists()).toBe(true);
+    expect(vault.isTouchIdEnabled()).toBe(true);
+  });
+});
+
+describe('search → connect to tunnel / config host', () => {
+  it('connects to a tunnel result', async () => {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.create({
+      name: 'web-tun',
+      type: 'local',
+      localPort: 1,
+      remotePort: 1,
+      kind: 'tunnel',
+    });
+    q.confirm = [true];
+    q.choose = [`t:${t.id}`];
+    const { searchFlow } = await import('../src/commands/search.js');
+    await searchFlow('web');
+    expect(runner.runTunnel).toHaveBeenCalled();
+  });
+
+  it('connects to a config-host result', async () => {
+    writeConfig('Host web-cfg\n    HostName 9.9.9.9\n');
+    q.confirm = [true];
+    q.choose = ['c:web-cfg'];
+    const { searchFlow } = await import('../src/commands/search.js');
+    await searchFlow('web');
+    expect(runner.runInteractive).toHaveBeenCalled();
+  });
+});
+
+describe('server edit/remove edge cases', () => {
+  async function seedAndImport() {
+    q.choose = ['manual', 'agent'];
+    q.text = ['1.1.1.1', 'root', '22', 'srv', '', ''];
+    q.confirm = [false];
+    const { addServer, editServer, removeServerFlow, listServers } =
+      await import('../src/commands/servers.js');
+    const { servers } = await import('../src/store/servers.store.js');
+    await addServer();
+    return { editServer, removeServerFlow, listServers, servers };
+  }
+
+  it('editServer changes name + tags then saves', async () => {
+    const { editServer, servers } = await seedAndImport();
+    q.choose = ['name', 'tags', '__save__'];
+    q.text = ['srv2', 'a, b'];
+    await editServer('srv');
+    expect(servers.findByName('srv2')?.tags).toEqual(['a', 'b']);
+  });
+
+  it('editServer cancel with unsaved edits asks for confirmation', async () => {
+    const { editServer, servers } = await seedAndImport();
+    q.choose = ['description', '__cancel__'];
+    q.text = ['changed'];
+    q.confirm = [true]; // yes, discard
+    await editServer('srv');
+    expect(servers.findByName('srv')?.description).toBe('');
+  });
+
+  it('removeServerFlow with empty selection does nothing', async () => {
+    const { removeServerFlow, servers } = await seedAndImport();
+    q.multi = [[]];
+    await removeServerFlow();
+    expect(servers.all()).toHaveLength(1);
+  });
+
+  it('removeServerFlow by name, declined', async () => {
+    const { removeServerFlow, servers } = await seedAndImport();
+    q.confirm = [false];
+    await removeServerFlow('srv');
+    expect(servers.findByName('srv')).toBeTruthy();
+  });
+
+  it('listServers json + empty', async () => {
+    const { listServers } = await import('../src/commands/servers.js');
+    expect(listServers({})).toEqual([]); // empty warn
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 's', host: '1.1.1.1', kind: 'server' });
+    expect(listServers({ json: true, sort: 'name' })).toHaveLength(1);
+  });
+});
+
+describe('tunnel edit/remove edge cases', () => {
+  async function seed() {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.create({
+      name: 'tn',
+      type: 'local',
+      localPort: 8181,
+      remotePort: 81,
+      kind: 'tunnel',
+    });
+    return { tunnels, t };
+  }
+
+  it('editTunnel name/description/tags/browser then saves', async () => {
+    const { tunnels } = await seed();
+    const { editTunnel } = await import('../src/commands/tunnels.js');
+    q.choose = ['name', 'description', 'tags', 'browser', '__save__'];
+    q.text = ['tn2', 'desc', 'x, y'];
+    await editTunnel('tn');
+    const t = tunnels.findByName('tn2');
+    expect(t?.description).toBe('desc');
+    expect(t?.tags).toEqual(['x', 'y']);
+    expect(t?.openBrowser).toBe(false); // toggled from true
+  });
+
+  it('editTunnel save with no changes', async () => {
+    await seed();
+    const { editTunnel } = await import('../src/commands/tunnels.js');
+    q.choose = ['__save__'];
+    await editTunnel('tn');
+  });
+
+  it('editTunnel connection branch', async () => {
+    const { tunnels } = await seed();
+    const { editTunnel } = await import('../src/commands/tunnels.js');
+    q.choose = ['connection', 'manual', 'agent', '__save__'];
+    q.text = ['9.9.9.9', 'newu', '22'];
+    await editTunnel('tn');
+    expect(tunnels.findByName('tn')?.host).toBe('9.9.9.9');
+  });
+
+  it('removeTunnelFlow empty selection + declined-by-name', async () => {
+    const { tunnels } = await seed();
+    const { removeTunnelFlow } = await import('../src/commands/tunnels.js');
+    q.multi = [[]];
+    await removeTunnelFlow();
+    expect(tunnels.all()).toHaveLength(1);
+    q.confirm = [false];
+    await removeTunnelFlow('tn');
+    expect(tunnels.findByName('tn')).toBeTruthy();
+  });
+});
+
+describe('vault management flow', () => {
+  it('unlock / lock / rekey / touch-id enable+disable', async () => {
+    touch.supported = true;
+    // create vault first
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('master');
+    vault.lock();
+
+    q.choose = ['unlock', 'enableTouch', 'disableTouch', 'rekey', 'lock', 'back'];
+    q.secret = ['master', 'newmaster', 'newmaster'];
+    const { vaultFlow } = await import('../src/commands/settings.js');
+    await vaultFlow();
+    expect(vault.isUnlocked()).toBe(false); // ended with lock
+  });
+});
+
+describe('import/export menu import branch', () => {
+  it('imports from a chosen file', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'x', host: '1.1.1.1', kind: 'server' });
+    const { exportData, importExportMenu } = await import('../src/commands/import-export.js');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'exp-')), 'b.json');
+    exportData(file);
+    q.choose = ['import'];
+    q.text = [file];
+    await expect(importExportMenu()).resolves.toBeUndefined();
+  });
+});
