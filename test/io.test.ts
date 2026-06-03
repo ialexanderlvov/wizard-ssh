@@ -38,19 +38,50 @@ describe('export / import', () => {
     expect(names.some((n) => n.startsWith('web-'))).toBe(true);
   });
 
-  it('--replace replaces all lists', async () => {
+  it('--replace upserts servers into ~/.ssh/config and hard-replaces tunnels', async () => {
     const { servers } = await import('../src/store/servers.store.js');
+    const { tunnels } = await import('../src/store/tunnels.store.js');
     servers.create({ name: 'only', host: '1.1.1.1', kind: 'server' });
+    tunnels.create({
+      name: 'kept-tunnel',
+      type: 'local',
+      localPort: 7000,
+      remotePort: 70,
+      kind: 'tunnel',
+    });
     const { exportData } = await import('../src/commands/import-export.js');
     const file = exportData(exportFile());
 
     vi.resetModules();
     freshHome();
     const { servers: s2 } = await import('../src/store/servers.store.js');
+    const { tunnels: t2 } = await import('../src/store/tunnels.store.js');
+    // A pre-existing config host + a tunnel that import --replace will overwrite.
     s2.create({ name: 'pre-existing', host: '2.2.2.2', kind: 'server' });
+    t2.create({
+      name: 'old-tunnel',
+      type: 'local',
+      localPort: 9999,
+      remotePort: 99,
+      kind: 'tunnel',
+    });
     const { importData } = await import('../src/commands/import-export.js');
     await importData(file, { replace: true });
-    expect(s2.all().map((s) => s.name)).toEqual(['only']);
+
+    // Servers: replaceAll UPSERTS — the imported alias is present, and the
+    // pre-existing config host is NOT wiped (config is the source of truth).
+    expect(s2.findByName('only')).not.toBeNull();
+    expect(s2.findByName('only')?.host).toBe('1.1.1.1');
+    expect(s2.findByName('pre-existing')).not.toBeNull();
+    expect(
+      s2
+        .all()
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(['only', 'pre-existing']);
+
+    // Tunnels: still a hard replace — the imported list wins, old ones vanish.
+    expect(t2.all().map((t) => t.name)).toEqual(['kept-tunnel']);
   });
 
   it('restores an encrypted vault when none exists locally', async () => {

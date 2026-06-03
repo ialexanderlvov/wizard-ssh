@@ -327,9 +327,11 @@ describe('search → connect to tunnel / config host', () => {
 
 describe('server edit/remove edge cases', () => {
   async function seedAndImport() {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'srv', '', ''];
-    q.confirm = [false];
+    // New addServer flow: alias first (text), then askServerConnection
+    // (host/user/port text + auth choose), then annotations (desc/tags text).
+    // No hostMode question, no link step, no password confirm for agent auth.
+    q.choose = ['agent']; // auth only
+    q.text = ['srv', '1.1.1.1', 'root', '22', '', '']; // alias, host, user, port, desc, tags
     const { addServer, editServer, removeServerFlow, listServers } =
       await import('../src/commands/servers.js');
     const { servers } = await import('../src/store/servers.store.js');

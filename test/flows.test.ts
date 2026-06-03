@@ -121,54 +121,62 @@ describe('wizard prompt blocks', () => {
 });
 
 describe('server flows', () => {
-  it('addServer (manual, agent, no link) persists', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.2.3.4', 'root', '22', 'mybox', '', 'prod'];
-    q.confirm = [false]; // offerLink → no
+  it('addServer (agent) writes a Host block to ~/.ssh/config', async () => {
+    // addServer now asks the ALIAS first, then askServerConnection
+    // (host/user/port + auth), then askAnnotations (description, tags).
+    // No hostMode question, no link step, no "write to ~/.ssh/config?" confirm.
+    q.text = ['mybox', '1.2.3.4', 'root', '22', '', 'prod']; // alias, host, user, port, desc, tags
+    q.choose = ['agent']; // auth
     mockPrompts();
     const { addServer } = await import('../src/commands/servers.js');
     const { servers } = await import('../src/store/servers.store.js');
     const created = await addServer();
     expect(created?.name).toBe('mybox');
+    expect(created?.hostMode).toBe('sshconfig'); // servers are always config-backed now
     expect(servers.findByName('mybox')?.host).toBe('1.2.3.4');
+    expect(servers.findByName('mybox')?.user).toBe('root');
     expect(servers.findByName('mybox')?.tags).toEqual(['prod']);
+    // the Host block landed in ~/.ssh/config
+    const cfg = fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8');
+    expect(cfg).toContain('Host mybox');
+    expect(cfg).toContain('1.2.3.4');
   });
 
-  it('addServer with link writes to ~/.ssh/config', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['5.5.5.5', 'ada', '22', 'linked', '', '', 'linked-alias'];
-    q.confirm = [true]; // offerLink → yes
+  it('addServer with a non-default port writes the alias to ~/.ssh/config', async () => {
+    // (was "addServer with link" — link no longer exists; a server IS a config Host)
+    q.text = ['linked-alias', '5.5.5.5', 'ada', '2222', '', ''];
+    q.choose = ['agent'];
     mockPrompts();
     const { addServer } = await import('../src/commands/servers.js');
     await addServer();
     const cfg = await import('../src/ssh-config/index.js');
     expect(cfg.getHost('linked-alias')?.hostName).toBe('5.5.5.5');
+    expect(cfg.getHost('linked-alias')?.port).toBe('2222');
   });
 
   it('editServer changes description and saves', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'edit-me', '', ''];
-    q.confirm = [false];
+    q.text = ['edit-me', '1.1.1.1', 'root', '22', '', ''];
+    q.choose = ['agent'];
     mockPrompts();
     const { addServer, editServer } = await import('../src/commands/servers.js');
     const { servers } = await import('../src/store/servers.store.js');
     await addServer();
 
-    // edit: pick "description", type new value, then "save"
+    // edit: pick "description", type new value, then "save and exit"
     q.choose = ['description', '__save__'];
     q.text = ['updated desc'];
     await editServer('edit-me');
     expect(servers.findByName('edit-me')?.description).toBe('updated desc');
   });
 
-  it('removeServerFlow with name + confirm', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'doomed', '', ''];
-    q.confirm = [false];
+  it('removeServerFlow with name + confirm deletes the config Host', async () => {
+    q.text = ['doomed', '1.1.1.1', 'root', '22', '', ''];
+    q.choose = ['agent'];
     mockPrompts();
     const { addServer, removeServerFlow } = await import('../src/commands/servers.js');
     const { servers } = await import('../src/store/servers.store.js');
     await addServer();
+    expect(servers.findByName('doomed')).not.toBeNull();
     q.confirm = [true]; // confirm delete
     await removeServerFlow('doomed');
     expect(servers.findByName('doomed')).toBeNull();

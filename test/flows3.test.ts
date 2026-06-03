@@ -98,35 +98,50 @@ describe('tunnel edit + remove', () => {
   });
 });
 
-describe('server edit (connection + link) + multi-delete', () => {
+describe('server edit (connection) + multi-delete', () => {
   it('editServer rewrites the connection', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'edsrv', '', ''];
-    q.confirm = [false];
+    // addServer: alias first, then askServerConnection (host/user/port + auth),
+    // then annotations (description, tags). No hostMode question any more.
+    q.text = ['edsrv', '1.1.1.1', 'root', '22', '', ''];
+    q.choose = ['agent'];
     const { addServer, editServer } = await import('../src/commands/servers.js');
     const { servers } = await import('../src/store/servers.store.js');
     await addServer();
+    expect(servers.findByName('edsrv')?.host).toBe('1.1.1.1');
 
-    q.choose = ['connection', 'manual', 'agent', '__save__'];
+    // edit → 'connection' runs askServerConnection (host/user/port + auth), then save.
+    q.choose = ['connection', 'agent', '__save__'];
     q.text = ['5.5.5.5', 'newuser', '22'];
     await editServer('edsrv');
     expect(servers.findByName('edsrv')?.host).toBe('5.5.5.5');
     expect(servers.findByName('edsrv')?.user).toBe('newuser');
+
+    // …and the change is reflected in ~/.ssh/config.
+    const cfg = await import('../src/ssh-config/index.js');
+    expect(cfg.getHost('edsrv')?.hostName).toBe('5.5.5.5');
+    expect(cfg.getHost('edsrv')?.user).toBe('newuser');
   });
 
-  it('editServer can write the server into ~/.ssh/config', async () => {
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'linksrv', '', ''];
-    q.confirm = [false];
+  it('addServer writes the server into ~/.ssh/config; editing rewrites it', async () => {
+    // A server IS a Host block in ~/.ssh/config — creating one writes it there.
+    q.text = ['linksrv', '1.1.1.1', 'root', '22', '', ''];
+    q.choose = ['agent'];
     const { addServer, editServer } = await import('../src/commands/servers.js');
+    const { servers } = await import('../src/store/servers.store.js');
     await addServer();
 
-    q.choose = ['link', '__save__'];
-    q.confirm = [true];
+    const cfg = await import('../src/ssh-config/index.js');
+    expect(cfg.getHost('linksrv')?.hostName).toBe('1.1.1.1');
+    expect(servers.findByName('linksrv')?.hostMode).toBe('sshconfig');
+    expect(servers.findByName('linksrv')?.manageable).toBe(true);
+
+    // Renaming the alias via edit renames the Host block in the config.
+    q.choose = ['name', '__save__'];
     q.text = ['linksrv-alias'];
     await editServer('linksrv');
-    const cfg = await import('../src/ssh-config/index.js');
+    expect(cfg.getHost('linksrv')).toBeNull();
     expect(cfg.getHost('linksrv-alias')?.hostName).toBe('1.1.1.1');
+    expect(servers.findByName('linksrv-alias')?.host).toBe('1.1.1.1');
   });
 
   it('removeServerFlow multi-select', async () => {

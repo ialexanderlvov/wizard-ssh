@@ -138,8 +138,14 @@ describe('store singletons (isolated home)', () => {
     const { servers } = await import('../src/store/servers.store.js');
     const s = servers.create({ name: 'web', host: '1.2.3.4', kind: 'server' });
     expect(s.kind).toBe('server');
-    expect(s.hostMode).toBe('manual');
+    // a config-backed server is ALWAYS hostMode 'sshconfig'
+    expect(s.hostMode).toBe('sshconfig');
+    expect(s.host).toBe('1.2.3.4');
+    // re-read from ~/.ssh/config via the facade
     expect(servers.findByName('web')?.host).toBe('1.2.3.4');
+    // and the single source of truth itself contains the Host block
+    const configText = fs.readFileSync(path.join(os.homedir(), '.ssh', 'config'), 'utf8');
+    expect(configText).toContain('Host web');
     vi.resetModules();
     const { servers: reloaded } = await import('../src/store/servers.store.js');
     expect(reloaded.all()).toHaveLength(1);

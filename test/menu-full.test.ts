@@ -114,13 +114,8 @@ describe('mainMenu navigation', () => {
       'tnl',
       'connect',
       PICK_BACK, // leave tunnels submenu
-      // config submenu: list, add, edit, remove, back
-      'config',
-      'list',
-      'add',
-      'edit',
-      'remove',
-      PICK_BACK,
+      // NOTE: the standalone '~/.ssh/config' submenu was removed — servers ARE
+      // config hosts now, so there is no longer a 'config' main-menu entry.
       // actions submenu: check, copyId, run, transfer, back
       'actions',
       'check',
@@ -149,11 +144,12 @@ describe('mainMenu navigation', () => {
     expect(tun.createAndRaiseTunnel).toHaveBeenCalled();
     expect(tun.connectTunnel).toHaveBeenCalled();
 
-    // config submenu
-    expect(cfg.connectConfigHostFlow).toHaveBeenCalled();
-    expect(cfg.addConfigHost).toHaveBeenCalled();
-    expect(cfg.editConfigHost).toHaveBeenCalled();
-    expect(cfg.removeConfigHostFlow).toHaveBeenCalled();
+    // The '~/.ssh/config' submenu was removed from mainMenu, so configCmd.*
+    // is no longer reachable here — it is NOT exercised by the menu walk.
+    expect(cfg.connectConfigHostFlow).not.toHaveBeenCalled();
+    expect(cfg.addConfigHost).not.toHaveBeenCalled();
+    expect(cfg.editConfigHost).not.toHaveBeenCalled();
+    expect(cfg.removeConfigHostFlow).not.toHaveBeenCalled();
 
     // actions submenu
     expect(act.checkFlow).toHaveBeenCalled();

@@ -228,21 +228,32 @@ describe('config: validate + merge + manageable branches', () => {
   });
 });
 
-describe('servers: offerLink params + listServers default sort', () => {
-  it('offerLink writes Port + IdentityFile for a key-auth server', async () => {
+describe('servers: create writes config params + listServers default sort', () => {
+  it('servers.create with a key writes Port + IdentityFile into ~/.ssh/config', async () => {
     const ssh = path.join(os.homedir(), '.ssh');
     fs.mkdirSync(ssh, { recursive: true });
     const key = path.join(ssh, 'k');
     fs.writeFileSync(key, 'private');
-    q.choose = ['manual', 'key', '__manual__'];
-    q.text = ['1.1.1.1', 'root', '2222', key, 'srv', '', '', 'srv-alias'];
-    q.confirm = [true]; // link
-    const { addServer } = await import('../src/commands/servers.js');
-    await addServer();
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({
+      name: 'srv-alias',
+      host: '1.1.1.1',
+      user: 'root',
+      sshPort: 2222,
+      auth: 'key',
+      keyPath: key,
+      kind: 'server',
+    });
     const cfg = await import('../src/ssh-config/index.js');
     const h = cfg.getHost('srv-alias');
+    expect(h?.hostName).toBe('1.1.1.1');
     expect(h?.port).toBe('2222');
-    expect(h?.identityFile).toBeTruthy();
+    expect(h?.identityFile).toBe(key);
+    // a key-based server reads BACK as auth:'key' (inferred from IdentityFile)
+    const srv = servers.findByName('srv-alias');
+    expect(srv?.auth).toBe('key');
+    expect(srv?.keyPath).toBe(key);
+    expect(srv?.hostMode).toBe('sshconfig');
   });
 
   it('editServer cancel with no edits (clean)', async () => {

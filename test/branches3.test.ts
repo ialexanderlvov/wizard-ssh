@@ -124,13 +124,23 @@ describe('server edit: save/cancel branches', () => {
     expect(servers.findByName('srv')?.description).toBe('changed');
   });
 
-  it('offerLink updates an existing alias (created=false)', async () => {
-    writeConfig('Host existing-alias\n    HostName 0.0.0.0\n');
-    q.choose = ['manual', 'agent'];
-    q.text = ['1.1.1.1', 'root', '22', 'srv2', '', '', 'existing-alias'];
-    q.confirm = [true]; // link
-    const { addServer } = await import('../src/commands/servers.js');
-    await addServer();
+  it('update rewrites an existing alias block in place (created=false)', async () => {
+    // The old offerLink/link step is gone. The "update an existing alias in
+    // place" semantics now live in servers.update: patching a host rewrites its
+    // Host block (HostName/User/…) while keeping the same alias and createdAt.
+    writeConfig(
+      '#wssh {"createdAt":"2020-01-01T00:00:00.000Z","desc":"old"}\nHost existing-alias\n    HostName 0.0.0.0\n',
+    );
+    const { servers } = await import('../src/store/servers.store.js');
+    const before = servers.findByName('existing-alias');
+    expect(before?.host).toBe('0.0.0.0');
+
+    const updated = servers.update('existing-alias', { host: '1.1.1.1', user: 'root' });
+    expect(updated?.id).toBe('existing-alias'); // same alias (in place)
+    expect(updated?.host).toBe('1.1.1.1');
+    expect(updated?.user).toBe('root');
+    expect(updated?.createdAt).toBe(before?.createdAt); // createdAt preserved
+
     const cfg = await import('../src/ssh-config/index.js');
     expect(cfg.getHost('existing-alias')?.hostName).toBe('1.1.1.1');
   });
