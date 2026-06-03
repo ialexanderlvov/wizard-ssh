@@ -15,7 +15,7 @@ vi.mock('../src/ssh/runner.js', async (orig) => {
   return { ...actual, runProgram: h.runProgram, runSshInherit: h.runSshInherit };
 });
 
-import { copyId, runCommand, transfer } from '../src/ssh/features.js';
+import { copyId, runCommand, transfer, resolveEndpoint } from '../src/ssh/features.js';
 import type { Server } from '../src/core/types.js';
 
 const server = (o: Partial<Server> = {}): Server => ({
@@ -100,5 +100,49 @@ describe('transfer', () => {
     await expect(
       transfer(server(), { direction: 'upload', localPath: 'a', remotePath: 'b' }),
     ).rejects.toThrow(/scp/);
+  });
+
+  it('adds -i for key auth and password options for password auth', async () => {
+    await transfer(server({ auth: 'key', keyPath: '/k' }), {
+      direction: 'upload',
+      localPath: 'a',
+      remotePath: 'b',
+    });
+    expect(h.runProgram.mock.calls[0]?.[1]).toContain('-i');
+    h.runProgram.mockClear();
+    await transfer(server({ auth: 'password' }), {
+      direction: 'upload',
+      localPath: 'a',
+      remotePath: 'b',
+    });
+    expect((h.runProgram.mock.calls[0]?.[1] as string[]).join(' ')).toContain(
+      'PreferredAuthentications=password',
+    );
+  });
+});
+
+describe('copyId / resolveEndpoint port branches', () => {
+  it('copyId omits -p for default port and ssh-config hosts', async () => {
+    await copyId(server({ sshPort: 22 }), null);
+    expect(h.runProgram.mock.calls[0]?.[1]).not.toContain('-p');
+    h.runProgram.mockClear();
+    await copyId(server({ hostMode: 'sshconfig', sshHost: 'alias' }), null);
+    expect(h.runProgram.mock.calls[0]?.[1]).not.toContain('-p');
+    expect((h.runProgram.mock.calls[0]?.[1] as string[]).at(-1)).toBe('alias');
+  });
+
+  it('resolveEndpoint: manual host with falsy port → 22', () => {
+    expect(
+      resolveEndpoint({
+        hostMode: 'manual',
+        sshHost: '',
+        host: '1.2.3.4',
+        user: 'u',
+        sshPort: 0,
+        auth: 'agent',
+        keyPath: null,
+        secretId: null,
+      }),
+    ).toEqual({ host: '1.2.3.4', port: 22 });
   });
 });
