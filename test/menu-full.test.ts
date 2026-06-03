@@ -19,6 +19,7 @@ const tun = {
   editTunnel: vi.fn(async () => {}),
   removeTunnelFlow: vi.fn(async () => {}),
   createAndRaiseTunnel: vi.fn(async () => 0),
+  raiseTemporaryTunnel: vi.fn(async () => 0),
 };
 const cfg = {
   connectConfigHostFlow: vi.fn(async () => 0),
@@ -106,10 +107,11 @@ describe('mainMenu navigation', () => {
       'box',
       'connect',
       PICK_BACK, // leave servers submenu
-      // tunnels submenu: add, quick (createAndRaiseTunnel), list -> browse -> 'tnl' -> connect, back
+      // tunnels submenu: add, quick, temp, list -> browse -> 'tnl' -> connect, back
       'tunnels',
       'add',
       'quick',
+      'temp',
       'list',
       'tnl',
       'connect',
@@ -142,6 +144,7 @@ describe('mainMenu navigation', () => {
     // tunnels submenu: add + quick-create + browse-connect
     expect(tun.addTunnel).toHaveBeenCalled();
     expect(tun.createAndRaiseTunnel).toHaveBeenCalled();
+    expect(tun.raiseTemporaryTunnel).toHaveBeenCalled();
     expect(tun.connectTunnel).toHaveBeenCalled();
 
     // The '~/.ssh/config' submenu was removed from mainMenu, so configCmd.*

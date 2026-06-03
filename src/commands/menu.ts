@@ -151,12 +151,14 @@ const tunnelsMenu = (): Promise<void> =>
     [ROOT],
     [
       { label: 'Список / поднять', value: 'list' },
-      { label: 'Создать и сразу поднять', value: 'quick' },
+      { label: 'Создать и сразу поднять (из ~/.ssh/config)', value: 'quick' },
+      { label: 'Временный — на любой хост (без сохранения)', value: 'temp' },
       { label: 'Добавить', value: 'add' },
     ],
     async (a) => {
       if (a === 'add') await tunnelCmd.addTunnel();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
+      else if (a === 'temp') await tunnelCmd.raiseTemporaryTunnel();
       else if (a === 'list')
         await browseEntities(
           [ROOT, 'Туннели'],

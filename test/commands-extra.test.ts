@@ -472,6 +472,18 @@ describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
     expect(runner.runTunnel).not.toHaveBeenCalled();
   });
 
+  it('raiseTemporaryTunnel: raises a forward to a manual host without saving it', async () => {
+    // askConnectionTarget(manual): hostMode, host/user/port, auth; askForward(local)
+    q.choose = ['manual', 'agent', 'local'];
+    q.text = ['9.9.9.9', 'root', '22', '8080', '127.0.0.1', '8080'];
+    q.confirm = [false]; // openBrowser
+    const { raiseTemporaryTunnel } = await import('../src/commands/tunnels.js');
+    expect(await raiseTemporaryTunnel()).toBe(0);
+    expect(runner.runTunnel).toHaveBeenCalled();
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    expect(tunnels.all()).toHaveLength(0); // ephemeral — nothing persisted
+  });
+
   it('vaultFlow deletes a saved password but keeps the server', async () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('m');

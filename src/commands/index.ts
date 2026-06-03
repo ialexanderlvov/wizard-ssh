@@ -102,6 +102,14 @@ export function registerCommands(program: Command): void {
       await tunnelCmd.addTunnel();
     });
   tunnel
+    .command('temp')
+    .alias('tmp')
+    .description('временный туннель на любой хост (без сохранения)')
+    .action(async () => {
+      const code = await tunnelCmd.raiseTemporaryTunnel();
+      if (code) process.exitCode = code;
+    });
+  tunnel
     .command('edit [name]')
     .description('редактировать туннель')
     .action((n?: string) => tunnelCmd.editTunnel(n));

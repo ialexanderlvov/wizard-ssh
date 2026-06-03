@@ -10,6 +10,7 @@ import { detailBox, forwardSummary } from '../ui/format.js';
 import { renderEntityTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
 import { parseTags, slugify } from '../utils/strings.js';
+import { nowIso } from '../utils/time.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
 import { handlePasswordSecret, resolveEntity, resolvePassword } from './helpers.js';
 
@@ -65,6 +66,32 @@ export async function createAndRaiseTunnel(): Promise<number> {
   });
   ui.printOk(`Туннель «${tunnel.name}» создан.`);
   return connectTunnel(tunnel);
+}
+
+/** Raise a one-off tunnel to ANY host — including one not in ~/.ssh/config —
+ *  without saving it. Useful for quick, throwaway forwards. */
+export async function raiseTemporaryTunnel(): Promise<number> {
+  ui.ensureInteractive('Временный туннель');
+  ui.printSection('🚇', 'Временный туннель (без сохранения)');
+  const target = await askConnectionTarget({});
+  const fwd = await askForward({});
+  const tunnel: Tunnel = {
+    kind: 'tunnel',
+    id: '',
+    name: target.hostMode === 'sshconfig' ? target.sshHost : target.host || 'temp',
+    description: 'временный (не сохранён)',
+    tags: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    lastUsedAt: null,
+    useCount: 0,
+    ...target,
+    ...fwd,
+  };
+  console.log('\n' + detailBox(tunnel));
+  ui.printInfo('Туннель не сохраняется — поднимаем разово (Ctrl+C — закрыть).');
+  const password = await resolvePassword(tunnel);
+  return runTunnel(tunnel, password);
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
