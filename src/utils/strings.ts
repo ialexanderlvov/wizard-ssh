@@ -25,6 +25,12 @@ export function slugify(s: string): string {
   return out || 'item';
 }
 
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\[[0-9;]*m/g;
+
+/** Remove ANSI colour codes (for filtering / width math). */
+export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '');
+
 /** Split a comma/space separated tag string into clean tags. */
 export function parseTags(input: string): string[] {
   return String(input ?? '')
