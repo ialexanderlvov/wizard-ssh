@@ -1,8 +1,9 @@
 /** Tunnel CRUD + connect flows. Mirrors servers.ts, with forward config. */
 
-import type { SortKey, Tunnel } from '../core/types.js';
+import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
+import * as sshConfig from '../ssh-config/index.js';
 import { runTunnel } from '../ssh/runner.js';
 import * as ui from '../ui/index.js';
 import { detailBox, forwardSummary } from '../ui/format.js';
@@ -22,6 +23,47 @@ export async function connectTunnel(tunnel: Tunnel): Promise<number> {
 export async function connectTunnelFlow(name?: string): Promise<number> {
   const tunnel = await resolveEntity(tunnels, name, '🚇 Выберите туннель');
   if (!tunnel) return 0;
+  return connectTunnel(tunnel);
+}
+
+/** #9 — pick a ~/.ssh/config host, define the forward, save and raise it now. */
+export async function createAndRaiseTunnel(): Promise<number> {
+  ui.ensureInteractive('Быстрый туннель');
+  const hosts = sshConfig.listHosts();
+  if (!hosts.length) {
+    ui.printWarn('В ~/.ssh/config нет хостов.');
+    return 0;
+  }
+  const host = await ui.pickFromList<SshConfigHost>({
+    message: 'Хост из ~/.ssh/config для туннеля',
+    items: hosts,
+    render: ui.configRowRenderer(hosts),
+    search: ui.configSearch,
+    sorts: ui.CONFIG_SORTS,
+    pageSize: 14,
+  });
+  if (host === ui.BACK) return 0;
+
+  const fwd = await askForward({});
+  const meta = await askMeta(
+    {},
+    (n) => tunnels.nameExists(n),
+    slugify(`${host.alias}-${fwd.localPort}`),
+  );
+  const tunnel = tunnels.create({
+    hostMode: 'sshconfig',
+    sshHost: host.alias,
+    host: '',
+    user: '',
+    sshPort: 22,
+    auth: 'agent',
+    keyPath: null,
+    secretId: null,
+    ...fwd,
+    ...meta,
+    kind: 'tunnel',
+  });
+  ui.printOk(`Туннель «${tunnel.name}» создан.`);
   return connectTunnel(tunnel);
 }
 
@@ -54,16 +96,16 @@ export async function editTunnel(name?: string): Promise<void> {
     console.log(detailBox(working) + '\n');
 
     const choices = [
-      { name: `🏷 Имя          ${working.name}`, value: 'name' },
-      { name: `📝 Описание     ${working.description || '—'}`, value: 'description' },
-      { name: `#️⃣ Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
-      { name: '🌐 Подключение / авторизация', value: 'connection' },
-      { name: `🚇 Проброс      ${forwardSummary(working)}`, value: 'forward' },
+      { name: `Имя          ${working.name}`, value: 'name' },
+      { name: `Описание     ${working.description || '—'}`, value: 'description' },
+      { name: `Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
+      { name: 'Подключение / авторизация', value: 'connection' },
+      { name: `Проброс      ${forwardSummary(working)}`, value: 'forward' },
       ...(working.type === 'local'
-        ? [{ name: `🌍 Авто-браузер ${working.openBrowser ? 'вкл' : 'выкл'}`, value: 'browser' }]
+        ? [{ name: `Авто-браузер ${working.openBrowser ? 'вкл' : 'выкл'}`, value: 'browser' }]
         : []),
-      { name: '💾 Сохранить и выйти', value: '__save__' },
-      { name: '↩ Выйти без сохранения', value: '__cancel__' },
+      { name: 'Сохранить и выйти', value: '__save__' },
+      { name: 'Выйти без сохранения', value: '__cancel__' },
     ];
     const field = await ui.choose<string>({
       message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
