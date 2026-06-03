@@ -14,13 +14,19 @@ interface Row {
   value: string;
 }
 
-const pick = async (message: string, rows: Row[]): Promise<string | typeof ui.BACK> => {
+const pick = async (
+  message: string,
+  rows: Row[],
+  crumbs: string[] = ['Главное меню'],
+): Promise<string | typeof ui.BACK> => {
   const res = await ui.pickFromList<Row>({
     message,
     items: rows,
     render: (r) => r.label,
     search: (r) => r.label,
     pageSize: 14,
+    crumbs,
+    indent: crumbs.length * 2,
   });
   return res === ui.BACK ? ui.BACK : res.value;
 };
@@ -98,6 +104,7 @@ export async function settingsFlow(): Promise<void> {
     updated: 'по дате изменения',
   };
   for (;;) {
+    ui.clearScreen();
     const s = settings.get();
     const rows: Row[] = [
       { value: 'defaultUser', label: `SSH-пользователь: ${ui.chalk.cyan(s.defaultUser)}` },
@@ -193,6 +200,7 @@ async function resetVault(): Promise<void> {
 export async function vaultFlow(): Promise<void> {
   ui.ensureInteractive('Управление хранилищем');
   for (;;) {
+    ui.clearScreen();
     vaultStatus();
     const exists = vault.exists();
     const rows: Row[] = [
@@ -213,7 +221,7 @@ export async function vaultFlow(): Promise<void> {
         : []),
       ...(exists ? [{ value: 'reset', label: 'Сбросить хранилище (забыл фразу)' }] : []),
     ];
-    const action = await pick('Действие', rows);
+    const action = await pick('Действие', rows, ['Главное меню', 'Хранилище паролей']);
     if (action === ui.BACK) return;
 
     if (action === 'setup') {

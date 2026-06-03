@@ -28,6 +28,12 @@ export function printBanner(): void {
   );
 }
 
+/** Clear the screen AND scrollback so only the active menu is visible. No-op off
+ *  a TTY (tests, pipes), so it never pollutes captured output. */
+export function clearScreen(): void {
+  if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+}
+
 export function printSection(emoji: string, title: string): void {
   const line = '─'.repeat(Math.max(2, 50 - title.length - 3));
   console.log('\n' + chalk.cyan(`${emoji}  ${chalk.bold(title)} ${chalk.dim(line)}`) + '\n');

@@ -69,4 +69,19 @@ describe('pickFromList', () => {
     events.keypress('escape');
     await answer.catch(() => {});
   });
+
+  it('shows a breadcrumb + indented rows for depth', async () => {
+    const { answer, events, getScreen } = await render(pickFromList, {
+      ...base,
+      crumbs: ['Главное меню', 'Серверы'],
+      indent: 4,
+    });
+    const screen = getScreen();
+    expect(screen).toContain('wssh');
+    expect(screen).toContain('Главное меню');
+    expect(screen).toContain('Серверы');
+    expect(screen).toMatch(/\n {4}.*alpha/); // body rows indented by 4
+    events.keypress('escape');
+    await answer;
+  });
 });

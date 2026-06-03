@@ -1,5 +1,6 @@
 /** Interactive main menu — built on the custom list prompt (filter + Tab-sort +
- *  Esc/«← Назад»). No emoji in selectable rows. */
+ *  Esc/«← Назад»). Each navigation step clears the screen and shows a breadcrumb
+ *  (with depth indent), so only the active menu is visible. */
 
 import { PromptAbortError } from '../core/errors.js';
 import type { Entity, Server, Tunnel } from '../core/types.js';
@@ -21,14 +22,23 @@ interface MenuItem {
   value: string;
 }
 
-/** A navigation menu using the list prompt; returns the chosen value or BACK. */
-async function menuChoose(message: string, items: MenuItem[]): Promise<string | typeof ui.BACK> {
+const ROOT = 'Главное меню';
+
+/** A navigation menu using the list prompt; returns the chosen value or BACK.
+ *  `crumbs` are the ancestor titles shown before the active one. */
+async function menuChoose(
+  message: string,
+  items: MenuItem[],
+  crumbs: string[] = [],
+): Promise<string | typeof ui.BACK> {
   const res = await ui.pickFromList<MenuItem>({
     message,
     items,
     render: (i) => i.label,
     search: (i) => i.label,
     pageSize: 14,
+    crumbs,
+    indent: crumbs.length * 2,
   });
   return res === ui.BACK ? ui.BACK : res.value;
 }
@@ -36,18 +46,21 @@ async function menuChoose(message: string, items: MenuItem[]): Promise<string | 
 /** A submenu loop: PromptAbort inside an action returns to this menu, not exit. */
 async function loop(
   title: string,
+  crumbs: string[],
   items: MenuItem[],
   run: (action: string) => Promise<void>,
 ): Promise<void> {
   for (;;) {
+    ui.clearScreen();
     let action: string | typeof ui.BACK;
     try {
-      action = await menuChoose(title, items);
+      action = await menuChoose(title, items, crumbs);
     } catch (e) {
       if (e instanceof PromptAbortError) return;
       throw e;
     }
     if (action === ui.BACK) return;
+    ui.clearScreen(); // wipe the menu before the action's own output
     try {
       await run(action);
     } catch (e) {
@@ -60,34 +73,43 @@ async function loop(
 
 /** Filterable browse of entities → per-item action menu (connect/edit/delete). */
 async function browseEntities(
-  title: string,
+  crumbs: string[],
   list: () => Entity[],
   connect: (e: Entity) => Promise<number>,
   edit: (name: string) => Promise<void>,
   remove: (name: string) => Promise<void>,
 ): Promise<void> {
   for (;;) {
+    ui.clearScreen();
     const items = list();
     if (!items.length) {
       ui.printWarn('Список пуст.');
       return;
     }
     const picked = await ui.pickFromList<Entity>({
-      message: title,
+      message: 'Список',
       items,
       render: ui.entityRowRenderer(items),
       search: ui.entitySearch,
       sorts: ui.ENTITY_SORTS,
       pageSize: 14,
+      crumbs,
+      indent: crumbs.length * 2,
     });
     if (picked === ui.BACK) return;
-    console.log('\n' + detailBox(picked));
-    const act = await menuChoose(picked.name, [
-      { label: 'Подключиться', value: 'connect' },
-      { label: 'Редактировать', value: 'edit' },
-      { label: 'Удалить', value: 'remove' },
-    ]);
+    ui.clearScreen();
+    console.log(detailBox(picked) + '\n');
+    const act = await menuChoose(
+      picked.name,
+      [
+        { label: 'Подключиться', value: 'connect' },
+        { label: 'Редактировать', value: 'edit' },
+        { label: 'Удалить', value: 'remove' },
+      ],
+      [...crumbs, 'Список'],
+    );
     if (act === ui.BACK) continue;
+    ui.clearScreen(); // wipe the detail/action menu before the action's output
     try {
       if (act === 'connect') {
         await connect(picked);
@@ -105,6 +127,7 @@ async function browseEntities(
 const serversMenu = (): Promise<void> =>
   loop(
     'Серверы / ~/.ssh/config',
+    [ROOT],
     [
       { label: 'Список / подключиться', value: 'list' },
       { label: 'Добавить', value: 'add' },
@@ -113,7 +136,7 @@ const serversMenu = (): Promise<void> =>
       if (a === 'add') await serverCmd.addServer();
       else if (a === 'list')
         await browseEntities(
-          'Серверы (= хосты ~/.ssh/config)',
+          [ROOT, 'Серверы / ~/.ssh/config'],
           () => servers.all(),
           (e) => serverCmd.connectServer(e as Server),
           (name) => serverCmd.editServer(name),
@@ -125,6 +148,7 @@ const serversMenu = (): Promise<void> =>
 const tunnelsMenu = (): Promise<void> =>
   loop(
     'Туннели',
+    [ROOT],
     [
       { label: 'Список / поднять', value: 'list' },
       { label: 'Создать и сразу поднять', value: 'quick' },
@@ -135,7 +159,7 @@ const tunnelsMenu = (): Promise<void> =>
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
       else if (a === 'list')
         await browseEntities(
-          'Туннели',
+          [ROOT, 'Туннели'],
           () => tunnels.all(),
           (e) => tunnelCmd.connectTunnel(e as Tunnel),
           (name) => tunnelCmd.editTunnel(name),
@@ -147,6 +171,7 @@ const tunnelsMenu = (): Promise<void> =>
 const actionsMenu = (): Promise<void> =>
   loop(
     'Действия по SSH',
+    [ROOT],
     [
       { label: 'Проверка доступности', value: 'check' },
       { label: 'ssh-copy-id (ключ на сервер)', value: 'copyId' },
@@ -164,11 +189,16 @@ const actionsMenu = (): Promise<void> =>
 export async function mainMenu(): Promise<void> {
   ui.ensureInteractive('Интерактивное меню');
   const bye = (): void => console.log(ui.chalk.dim('\nПока! 👋\n'));
+  // The first screen keeps the startup banner/notices above it; every later
+  // visit to the main menu clears so only it is shown.
+  let first = true;
   for (;;) {
+    if (!first) ui.clearScreen();
+    first = false;
     const counts = `${servers.all().length} серв · ${tunnels.all().length} тун`;
     let action: string | typeof ui.BACK;
     try {
-      action = await menuChoose(`Главное меню  (${counts})`, [
+      action = await menuChoose(`${ROOT}  ·  ${counts}`, [
         { label: 'Быстрое подключение', value: 'quick' },
         { label: 'Серверы / ~/.ssh/config ▸', value: 'servers' },
         { label: 'Туннели ▸', value: 'tunnels' },
@@ -191,6 +221,7 @@ export async function mainMenu(): Promise<void> {
       return;
     }
 
+    ui.clearScreen(); // every action/submenu opens on a clean screen
     try {
       if (action === 'quick') {
         await quickConnect();

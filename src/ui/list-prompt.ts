@@ -14,13 +14,12 @@ import {
   useState,
   useKeypress,
   usePagination,
-  usePrefix,
   isEnterKey,
   isUpKey,
   isDownKey,
   isBackspaceKey,
 } from '@inquirer/core';
-import { chalk } from './theme.js';
+import { chalk, brand } from './theme.js';
 import { stripAnsi } from '../utils/strings.js';
 import { PromptAbortError } from '../core/errors.js';
 
@@ -47,6 +46,10 @@ export interface ListConfig<T> {
   backLabel?: string;
   /** empty-list note */
   emptyText?: string;
+  /** breadcrumb ancestors shown dimmed before the active (bold) title */
+  crumbs?: string[];
+  /** left indent in spaces (typically menu depth × 2) */
+  indent?: number;
 }
 
 interface RawKey {
@@ -67,12 +70,10 @@ const isPrintable = (key: RawKey): boolean =>
 // The prompt is created once at module scope so @inquirer can bind it to the
 // (real or test) streams passed via the context argument.
 const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
-  const prefix = usePrefix({});
   const [term, setTerm] = useState('');
   const [cursor, setCursor] = useState(0);
   const [sortIdx, setSortIdx] = useState(0);
   const [status, setStatus] = useState<'idle' | 'done'>('idle');
-  const [answer, setAnswer] = useState('');
 
   const sorts = cfg.sorts ?? [];
   const searchOf = cfg.search ?? ((it: unknown) => stripAnsi(cfg.render(it, false)));
@@ -98,17 +99,9 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
     if (status === 'done') return;
     if (isEnterKey(key)) {
       const sel = entries[active];
-      if (sel === BACK) {
-        setAnswer(chalk.dim('назад'));
-        setStatus('done');
-        done(BACK);
-      } else {
-        setAnswer(stripAnsi(cfg.render(sel, false)).trim());
-        setStatus('done');
-        done(sel);
-      }
+      setStatus('done');
+      done(sel === BACK ? BACK : sel);
     } else if (key.name === 'escape') {
-      setAnswer(chalk.dim('назад'));
       setStatus('done');
       done(BACK);
     } else if (isUpKey(key)) {
@@ -143,25 +136,35 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
     },
   });
 
-  if (status === 'done') {
-    return `${prefix} ${cfg.message} ${answer}`;
-  }
+  // When finished we render nothing: the caller clears the screen between menus,
+  // so only the active menu is ever visible (no piled-up answered prompts).
+  if (status === 'done') return '';
 
+  const pad = ' '.repeat(Math.max(0, cfg.indent ?? 0));
+  const indentAll = (s: string): string =>
+    s
+      .split('\n')
+      .map((l) => pad + l)
+      .join('\n');
+
+  // Breadcrumb: dim ancestors, bold active title, with a brand mark up front.
+  const crumbs = cfg.crumbs ?? [];
+  const sep = chalk.dim(' › ');
+  const trail = [...crumbs.map((c) => chalk.dim(c)), chalk.bold.cyan(cfg.message)].join(sep);
   const count = chalk.dim(`(${view.length})`);
-  const cursorMark = chalk.dim('▏');
-  const filter = term ? `  ${chalk.yellow(term)}${cursorMark}` : '';
-  const header = `${prefix} ${chalk.bold(cfg.message)} ${count}${filter}`;
+  const filter = term ? `   ${chalk.yellow('▸ ' + term)}${chalk.dim('▏')}` : '';
+  const header = `${brand('wssh')}${sep}${trail}   ${count}${filter}`;
 
+  const rule = chalk.dim('─'.repeat(56));
   const sortHint =
     sorts.length > 1
-      ? `${chalk.dim(' · Tab — сортировка:')} ${chalk.cyan(sorts[sortIdx % sorts.length]!.label)}`
+      ? `${chalk.dim('  ·  Tab:')} ${chalk.cyan(sorts[sortIdx % sorts.length]!.label)}`
       : '';
-  const help =
-    chalk.dim('печатай — фильтр · ↑↓ — выбор · Enter — выбрать · Esc — назад') + sortHint;
+  const help = chalk.dim('фильтр: печатай · ↑↓ — выбор · Enter — выбрать · Esc — назад') + sortHint;
 
   const body =
     view.length || term ? page : chalk.dim(`  ${cfg.emptyText ?? 'ничего нет'}\n${page}`);
-  return `${header}\n${body}\n${help}`;
+  return indentAll([header, rule, body, rule, help].join('\n'));
 });
 
 type ListContext = Parameters<typeof listPrompt>[1];
