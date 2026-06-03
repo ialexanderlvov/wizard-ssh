@@ -38,11 +38,12 @@ export interface BaseEntity {
   useCount: number;
 }
 
-/** A plain SSH host you connect to (no tunnel). */
+/** A plain SSH host you connect to (no tunnel). Backed by a Host block in
+ *  ~/.ssh/config: the server's name IS its alias. */
 export interface Server extends BaseEntity, ConnectionTarget {
   kind: 'server';
-  /** alias under which this server is mirrored into ~/.ssh/config, if any */
-  linkedSshHost: string | null;
+  /** false for multi-alias / Match / Include hosts: connectable but not editable */
+  manageable: boolean;
 }
 
 /** A saved port-forward. */
@@ -75,6 +76,24 @@ export interface Settings {
   vault: VaultSettings;
 }
 
+/**
+ * App-only metadata stored in a `#wssh {...}` JSON comment directly above a
+ * Host block in ~/.ssh/config. Only fields that cannot be expressed as standard
+ * ssh directives live here; everything else is real config. Fields are omitted
+ * when empty/default to keep the config tidy.
+ */
+export interface WsshMeta {
+  /** free-text description */
+  desc?: string;
+  tags?: string[];
+  /** stored only when 'password' (agent/key are inferred from the config) */
+  auth?: 'password';
+  /** id of an encrypted password in the vault */
+  secretId?: string | null;
+  /** ISO creation timestamp (immutable once set) */
+  createdAt?: string;
+}
+
 /** A host parsed from ~/.ssh/config (for listing / picking / importing). */
 export interface SshConfigHost {
   alias: string;
@@ -87,4 +106,8 @@ export interface SshConfigHost {
   params: Array<{ key: string; value: string }>;
   /** source file the block came from */
   source: string;
+  /** parsed `#wssh {...}` annotation above the block, if any */
+  wssh: WsshMeta | null;
+  /** true when this is a single-alias block in the MAIN config (safe to edit) */
+  manageable: boolean;
 }

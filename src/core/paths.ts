@@ -12,6 +12,10 @@ export const DATA_DIR =
 
 export const FILES = {
   servers: path.join(DATA_DIR, 'servers.json'),
+  /** legacy servers.json renamed here once it is migrated into ~/.ssh/config */
+  serversMigrated: path.join(DATA_DIR, 'servers.json.migrated'),
+  /** per-alias usage stats (lastUsedAt / useCount) for config-backed servers */
+  usage: path.join(DATA_DIR, 'usage.json'),
   tunnels: path.join(DATA_DIR, 'tunnels.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
   vault: path.join(DATA_DIR, 'vault.json'),

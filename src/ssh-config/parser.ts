@@ -5,8 +5,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { SshConfigHost } from '../core/types.js';
+import type { SshConfigHost, WsshMeta } from '../core/types.js';
 import { SSH_CONFIG_FILE } from '../core/paths.js';
+import { parseWsshComment } from './wssh.js';
 
 export interface Block {
   aliases: string[];
@@ -15,6 +16,11 @@ export interface Block {
   /** line range in the source file [start, end) — only meaningful for main */
   start: number;
   end: number;
+  /** parsed `#wssh {...}` comment directly above the Host line, if any */
+  meta: WsshMeta | null;
+  /** line where the block's leading content starts: the `#wssh` line if present,
+   *  otherwise the `Host` line (used by the writer to splice atomically) */
+  metaStart: number;
 }
 
 /** Split a directive value honouring "double quoted paths with spaces". */
@@ -91,6 +97,9 @@ function parseLines(
   const blocks: Block[] = [];
   const baseDir = path.dirname(file);
   let current: Block | null = null;
+  // A `#wssh {...}` comment seen between blocks is held until the next Host.
+  let pendingMeta: WsshMeta | null = null;
+  let pendingMetaStart = -1;
 
   const closeAt = (idx: number): void => {
     if (current) {
@@ -103,7 +112,23 @@ function parseLines(
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i] ?? '';
     const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
+    if (!line) continue; // blank line: keep any pending #wssh (allow a gap)
+    if (line.startsWith('#')) {
+      const meta = parseWsshComment(line);
+      if (meta) {
+        // A `#wssh` line begins a new block — close the previous one (blank lines
+        // never close it) so the annotation attaches to the Host BELOW it.
+        closeAt(i);
+        pendingMeta = meta;
+        pendingMetaStart = i;
+      } else if (!current) {
+        // A non-#wssh comment between blocks detaches any pending #wssh, matching
+        // the writer (which only treats an immediately-adjacent #wssh as ours).
+        pendingMeta = null;
+        pendingMetaStart = -1;
+      }
+      continue;
+    }
     const m = line.match(/^(\w+)[\s=]+(.+)$/);
     if (!m) continue;
     const key = (m[1] ?? '').toLowerCase();
@@ -111,6 +136,7 @@ function parseLines(
 
     if (key === 'include' && followIncludes) {
       closeAt(i);
+      pendingMeta = null;
       for (const token of splitTokens(value)) {
         for (const inc of expandGlob(token, baseDir)) {
           blocks.push(...parseBlocks(inc, followIncludes, seen));
@@ -125,8 +151,17 @@ function parseLines(
         const aliases = splitTokens(value).filter(
           (a) => !a.includes('*') && !a.includes('?') && !a.startsWith('!'),
         );
-        current = { aliases, params: [], source: file, start: i, end: lines.length };
+        current = {
+          aliases,
+          params: [],
+          source: file,
+          start: i,
+          end: lines.length,
+          meta: pendingMeta,
+          metaStart: pendingMeta ? pendingMetaStart : i,
+        };
       }
+      pendingMeta = null;
       continue;
     }
 
@@ -142,6 +177,10 @@ function param(block: Block, name: string): string {
 }
 
 function blockToHost(block: Block, alias: string): SshConfigHost {
+  // Manageable only when it is a single-alias block living in the MAIN config —
+  // those are the ones the writer can safely splice in place.
+  const manageable =
+    block.aliases.length === 1 && path.resolve(block.source) === path.resolve(SSH_CONFIG_FILE);
   return {
     alias,
     hostName: param(block, 'HostName'),
@@ -151,6 +190,8 @@ function blockToHost(block: Block, alias: string): SshConfigHost {
     proxyJump: param(block, 'ProxyJump'),
     params: block.params.slice(),
     source: block.source,
+    wssh: block.meta,
+    manageable,
   };
 }
 
