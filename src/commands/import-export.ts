@@ -64,7 +64,7 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
       message: 'Как импортировать?',
       choices: [
         { name: '➕ Добавить к существующим (безопасно)', value: false },
-        { name: '♻️  Заменить все списки', value: true },
+        { name: '♻️ Заменить все списки', value: true },
       ],
     });
   }
@@ -114,7 +114,7 @@ export async function importExportMenu(): Promise<void> {
     choices: [
       { name: '📤 Экспортировать всё в файл', value: 'export' },
       { name: '📥 Импортировать из файла', value: 'import' },
-      { name: '↩  Назад', value: 'back' },
+      { name: '↩ Назад', value: 'back' },
     ],
   });
   if (action === 'back') return;

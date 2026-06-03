@@ -97,7 +97,7 @@ export async function vaultFlow(): Promise<void> {
       ...(exists && vault.isTouchIdEnabled()
         ? [{ name: '🚫 Выключить Touch ID', value: 'disableTouch' }]
         : []),
-      { name: '↩  Назад', value: 'back' },
+      { name: '↩ Назад', value: 'back' },
     ];
     const action = await ui.choose<string>({ message: 'Действие', choices });
 

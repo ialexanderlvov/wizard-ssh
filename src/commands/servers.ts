@@ -22,7 +22,7 @@ export async function connectServer(server: Server): Promise<number> {
 }
 
 export async function connectServerFlow(name?: string): Promise<number> {
-  const server = await resolveEntity(servers, name, '🖥  Выберите сервер');
+  const server = await resolveEntity(servers, name, '🖥 Выберите сервер');
   if (!server) return 0;
   return connectServer(server);
 }
@@ -82,7 +82,7 @@ export async function addServer(seed: Partial<Server> = {}): Promise<Server | nu
 
 export async function editServer(name?: string): Promise<void> {
   ui.ensureInteractive('Редактирование');
-  const server = await resolveEntity(servers, name, '✏️  Выберите сервер');
+  const server = await resolveEntity(servers, name, '✏️ Выберите сервер');
   if (!server) return;
 
   let working: Server = { ...server };
@@ -95,13 +95,13 @@ export async function editServer(name?: string): Promise<void> {
     const field = await ui.choose<string>({
       message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
       choices: [
-        { name: `🏷  Имя         ${working.name}`, value: 'name' },
+        { name: `🏷 Имя          ${working.name}`, value: 'name' },
         { name: `📝 Описание     ${working.description || '—'}`, value: 'description' },
-        { name: `#️⃣  Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
+        { name: `#️⃣ Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
         { name: '🌐 Подключение / авторизация', value: 'connection' },
         { name: '🔗 Запись в ~/.ssh/config', value: 'link' },
         { name: '💾 Сохранить и выйти', value: '__save__' },
-        { name: '↩  Выйти без сохранения', value: '__cancel__' },
+        { name: '↩ Выйти без сохранения', value: '__cancel__' },
       ],
     });
 
@@ -155,7 +155,7 @@ export async function editServer(name?: string): Promise<void> {
 export async function removeServerFlow(name?: string): Promise<void> {
   ui.ensureInteractive('Удаление');
   if (name) {
-    const server = await resolveEntity(servers, name, '🗑  Выберите сервер');
+    const server = await resolveEntity(servers, name, '🗑 Выберите сервер');
     if (!server) return;
     if (await ui.confirm({ message: `Удалить «${server.name}»?`, default: false })) {
       removeServerById(server);

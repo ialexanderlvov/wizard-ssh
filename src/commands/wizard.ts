@@ -42,10 +42,10 @@ export async function pickSshAlias(current?: string): Promise<string> {
 export async function pickKey(savedPath?: string | null): Promise<string> {
   const keys = findSshKeys();
   const MANUAL = '__manual__';
-  const choices = keys.map((k) => ({ name: `🗝  ${tilde(k)}`, value: k }));
-  choices.push({ name: '✍️  Ввести путь вручную', value: MANUAL });
+  const choices = keys.map((k) => ({ name: `🗝 ${tilde(k)}`, value: k }));
+  choices.push({ name: '✍️ Ввести путь вручную', value: MANUAL });
   const pick = await ui.choose<string>({
-    message: `🗝  Приватный SSH-ключ${keys.length ? ` (найдено: ${keys.length})` : ''}`,
+    message: `🗝 Приватный SSH-ключ${keys.length ? ` (найдено: ${keys.length})` : ''}`,
     choices,
     ...(savedPath && keys.includes(expandHome(savedPath))
       ? { default: expandHome(savedPath) }
@@ -76,7 +76,7 @@ export async function askConnectionTarget(
         value: 'sshconfig',
         description: 'user/port/key берутся из конфига',
       },
-      { name: '🖥  IP / домен', value: 'manual', description: 'указать вручную' },
+      { name: '🖥 IP / домен', value: 'manual', description: 'указать вручную' },
     ],
     default: defaults.hostMode ?? 'manual',
   });
@@ -96,7 +96,7 @@ export async function askConnectionTarget(
   }
 
   const host = await ui.text({
-    message: '🖥  IP или домен',
+    message: '🖥 IP или домен',
     default: defaults.host,
     validate: (v) => isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
   });
@@ -118,7 +118,7 @@ export async function askConnectionTarget(
         value: 'agent',
         description: 'ничего вводить не нужно',
       },
-      { name: '🗝  SSH-ключ', value: 'key', description: 'указать файл' },
+      { name: '🗝 SSH-ключ', value: 'key', description: 'указать файл' },
       {
         name: '🔑 Пароль',
         value: 'password',
@@ -190,7 +190,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
   if (type === 'remote') {
     const remotePort = Number(
       await ui.text({
-        message: '🛰  Порт на сервере (откроется удалённо)',
+        message: '🛰 Порт на сервере (откроется удалённо)',
         default: defaults.remotePort ? String(defaults.remotePort) : '',
         validate: portValidate,
       }),
@@ -254,7 +254,7 @@ export async function askMeta(
   ui.printSection('🏷', 'Название и метки');
   const name = (
     await ui.text({
-      message: '🏷  Имя (уникальное, для быстрого доступа)',
+      message: '🏷 Имя (уникальное, для быстрого доступа)',
       default: defaults.name || suggested,
       validate: (v) => {
         const t = v.trim();
@@ -269,7 +269,7 @@ export async function askMeta(
     default: defaults.description ?? '',
   });
   const tagsStr = await ui.text({
-    message: '#️⃣  Теги через запятую (необязательно)',
+    message: '#️⃣ Теги через запятую (необязательно)',
     default: (defaults.tags ?? []).join(', '),
   });
   return { name, description, tags: parseTags(tagsStr) };

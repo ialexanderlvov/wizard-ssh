@@ -32,7 +32,7 @@ const kindBadge = (e: Entity): string =>
 
 /** Compact two-line entry for choice lists. */
 export function entityLine(e: Entity): string {
-  const icon = e.kind === 'tunnel' ? '🚇' : '🖥 ';
+  const icon = e.kind === 'tunnel' ? '🚇' : '🖥';
   const name = chalk.bold.white(e.name);
   const desc = e.description ? chalk.dim(' — ' + e.description) : '';
   const tags = e.tags.length ? ' ' + chalk.dim('#' + e.tags.join(' #')) : '';
@@ -44,7 +44,7 @@ export function entityLine(e: Entity): string {
 
 export function detailBox(e: Entity): string {
   const rows: string[] = [];
-  const head = e.kind === 'tunnel' ? '🚇 Туннель' : '🖥  Сервер';
+  const head = e.kind === 'tunnel' ? '🚇 Туннель' : '🖥 Сервер';
   rows.push(
     chalk.dim(head + '  ') +
       chalk.bold.white(e.name) +

@@ -49,7 +49,7 @@ export async function searchFlow(query?: string): Promise<void> {
   const choices = [
     ...res.servers.map((s) => ({ name: entityLine(s), value: `s:${s.id}` })),
     ...res.tunnels.map((t) => ({ name: entityLine(t), value: `t:${t.id}` })),
-    ...res.configHosts.map((h) => ({ name: '🗂  ' + configHostLine(h), value: `c:${h.alias}` })),
+    ...res.configHosts.map((h) => ({ name: '🗂 ' + configHostLine(h), value: `c:${h.alias}` })),
   ];
   const pick = await ui.choose<string>({ message: 'Куда подключаемся', choices, pageSize: 15 });
   const [kind, ref] = [pick.slice(0, 1), pick.slice(2)];

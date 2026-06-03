@@ -22,7 +22,7 @@ async function loop(
   for (;;) {
     const action = await ui.choose<string>({
       message: title,
-      choices: [...items, { name: '↩  Назад', value: 'back' }],
+      choices: [...items, { name: '↩ Назад', value: 'back' }],
     });
     if (action === 'back') return;
     await run(action);
@@ -32,12 +32,12 @@ async function loop(
 
 const serversMenu = (): Promise<void> =>
   loop(
-    '🖥  Серверы',
+    '🖥 Серверы',
     [
       { name: '🔌 Подключиться', value: 'connect' },
       { name: '➕ Добавить', value: 'add' },
-      { name: '✏️  Редактировать', value: 'edit' },
-      { name: '🗑  Удалить', value: 'remove' },
+      { name: '✏️ Редактировать', value: 'edit' },
+      { name: '🗑 Удалить', value: 'remove' },
       { name: '📋 Список', value: 'list' },
     ],
     async (a) => {
@@ -55,8 +55,8 @@ const tunnelsMenu = (): Promise<void> =>
     [
       { name: '🔌 Поднять туннель', value: 'connect' },
       { name: '➕ Добавить', value: 'add' },
-      { name: '✏️  Редактировать', value: 'edit' },
-      { name: '🗑  Удалить', value: 'remove' },
+      { name: '✏️ Редактировать', value: 'edit' },
+      { name: '🗑 Удалить', value: 'remove' },
       { name: '📋 Список', value: 'list' },
     ],
     async (a) => {
@@ -70,13 +70,13 @@ const tunnelsMenu = (): Promise<void> =>
 
 const configMenu = (): Promise<void> =>
   loop(
-    '🗂  ~/.ssh/config',
+    '🗂 ~/.ssh/config',
     [
       { name: '📋 Список', value: 'list' },
       { name: '🔌 Подключиться к хосту', value: 'connect' },
       { name: '➕ Добавить хост', value: 'add' },
-      { name: '✏️  Редактировать', value: 'edit' },
-      { name: '🗑  Удалить', value: 'remove' },
+      { name: '✏️ Редактировать', value: 'edit' },
+      { name: '🗑 Удалить', value: 'remove' },
     ],
     async (a) => {
       if (a === 'list') configCmd.listConfigHosts();
@@ -89,7 +89,7 @@ const configMenu = (): Promise<void> =>
 
 const actionsMenu = (): Promise<void> =>
   loop(
-    '🛠  Действия по SSH',
+    '🛠 Действия по SSH',
     [
       { name: '🔎 Проверка доступности', value: 'check' },
       { name: '📋 ssh-copy-id (ключ на сервер)', value: 'copyId' },
@@ -115,13 +115,13 @@ export async function mainMenu(): Promise<void> {
         pageSize: 14,
         choices: [
           { name: '🔌 Быстрое подключение', value: 'quick' },
-          { name: '🖥  Серверы ▸', value: 'servers' },
+          { name: '🖥 Серверы ▸', value: 'servers' },
           { name: '🚇 Туннели ▸', value: 'tunnels' },
-          { name: '🗂  ~/.ssh/config ▸', value: 'config' },
-          { name: '🛠  Действия (check/copy-id/run/scp) ▸', value: 'actions' },
+          { name: '🗂 ~/.ssh/config ▸', value: 'config' },
+          { name: '🛠 Действия (check/copy-id/run/scp) ▸', value: 'actions' },
           { name: '🔍 Поиск по всему', value: 'search' },
           { name: '🔐 Хранилище паролей', value: 'vault' },
-          { name: '⚙️  Настройки', value: 'settings' },
+          { name: '⚙️ Настройки', value: 'settings' },
           { name: '📦 Экспорт / импорт', value: 'io' },
           { name: '🚪 Выход', value: 'exit' },
         ],

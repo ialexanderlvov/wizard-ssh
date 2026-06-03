@@ -43,7 +43,7 @@ export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | nu
 
 export async function editTunnel(name?: string): Promise<void> {
   ui.ensureInteractive('Редактирование');
-  const tunnel = await resolveEntity(tunnels, name, '✏️  Выберите туннель');
+  const tunnel = await resolveEntity(tunnels, name, '✏️ Выберите туннель');
   if (!tunnel) return;
 
   let working: Tunnel = { ...tunnel };
@@ -54,16 +54,16 @@ export async function editTunnel(name?: string): Promise<void> {
     console.log(detailBox(working) + '\n');
 
     const choices = [
-      { name: `🏷  Имя         ${working.name}`, value: 'name' },
+      { name: `🏷 Имя          ${working.name}`, value: 'name' },
       { name: `📝 Описание     ${working.description || '—'}`, value: 'description' },
-      { name: `#️⃣  Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
+      { name: `#️⃣ Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
       { name: '🌐 Подключение / авторизация', value: 'connection' },
       { name: `🚇 Проброс      ${forwardSummary(working)}`, value: 'forward' },
       ...(working.type === 'local'
         ? [{ name: `🌍 Авто-браузер ${working.openBrowser ? 'вкл' : 'выкл'}`, value: 'browser' }]
         : []),
       { name: '💾 Сохранить и выйти', value: '__save__' },
-      { name: '↩  Выйти без сохранения', value: '__cancel__' },
+      { name: '↩ Выйти без сохранения', value: '__cancel__' },
     ];
     const field = await ui.choose<string>({
       message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
@@ -124,7 +124,7 @@ export async function editTunnel(name?: string): Promise<void> {
 export async function removeTunnelFlow(name?: string): Promise<void> {
   ui.ensureInteractive('Удаление');
   if (name) {
-    const tunnel = await resolveEntity(tunnels, name, '🗑  Выберите туннель');
+    const tunnel = await resolveEntity(tunnels, name, '🗑 Выберите туннель');
     if (!tunnel) return;
     if (await ui.confirm({ message: `Удалить «${tunnel.name}»?`, default: false })) {
       removeTunnelById(tunnel);

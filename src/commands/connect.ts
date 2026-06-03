@@ -29,7 +29,7 @@ export async function quickConnect(): Promise<number> {
       ...filterEntities(allServers, term).map((s) => ({ name: entityLine(s), value: `s:${s.id}` })),
       ...filterEntities(allTunnels, term).map((t) => ({ name: entityLine(t), value: `t:${t.id}` })),
       ...filterConfigHosts(hosts, term).map((h) => ({
-        name: '🗂  ' + configHostLine(h),
+        name: '🗂 ' + configHostLine(h),
         value: `c:${h.alias}`,
       })),
     ],
@@ -84,7 +84,7 @@ export async function quickConnectByName(name?: string): Promise<number> {
     choices: [
       ...s.map((x) => ({ name: entityLine(x), value: `s:${x.id}` })),
       ...t.map((x) => ({ name: entityLine(x), value: `t:${x.id}` })),
-      ...c.map((x) => ({ name: '🗂  ' + configHostLine(x), value: `c:${x.alias}` })),
+      ...c.map((x) => ({ name: '🗂 ' + configHostLine(x), value: `c:${x.alias}` })),
     ],
   });
   return dispatch(pick);

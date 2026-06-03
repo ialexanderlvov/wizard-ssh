@@ -52,11 +52,11 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
   const get = (k: string): string =>
     current?.params.find((p) => p.key.toLowerCase() === k.toLowerCase())?.value ?? '';
   return {
-    HostName: await ui.text({ message: '🖥  HostName (IP/домен)', default: get('HostName') }),
+    HostName: await ui.text({ message: '🖥 HostName (IP/домен)', default: get('HostName') }),
     User: await ui.text({ message: '👤 User', default: get('User') }),
     Port: await ui.text({ message: '🔌 Port (пусто = 22)', default: get('Port') }),
     IdentityFile: await ui.text({
-      message: '🗝  IdentityFile (путь, необязательно)',
+      message: '🗝 IdentityFile (путь, необязательно)',
       default: get('IdentityFile'),
     }),
     ProxyJump: await ui.text({
@@ -88,7 +88,7 @@ export async function addConfigHost(): Promise<void> {
 
 export async function editConfigHost(alias?: string): Promise<void> {
   ui.ensureInteractive('Редактирование ~/.ssh/config');
-  const host = alias ? sshConfig.getHost(alias) : await pickHost('✏️  Выберите хост');
+  const host = alias ? sshConfig.getHost(alias) : await pickHost('✏️ Выберите хост');
   if (!host) {
     if (alias) ui.printError(`Хост «${alias}» не найден.`);
     return;
@@ -110,7 +110,7 @@ export async function editConfigHost(alias?: string): Promise<void> {
 
 export async function removeConfigHostFlow(alias?: string): Promise<void> {
   ui.ensureInteractive('Удаление из ~/.ssh/config');
-  const host = alias ? sshConfig.getHost(alias) : await pickHost('🗑  Выберите хост');
+  const host = alias ? sshConfig.getHost(alias) : await pickHost('🗑 Выберите хост');
   if (!host) {
     if (alias) ui.printError(`Хост «${alias}» не найден.`);
     return;

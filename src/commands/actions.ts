@@ -54,9 +54,9 @@ export async function copyIdFlow(name?: string): Promise<number> {
   if (!keyPath && found.length) {
     const DEFAULT = '__default__';
     const choice = await ui.choose<string>({
-      message: '🗝  Какой ключ установить на сервер?',
+      message: '🗝 Какой ключ установить на сервер?',
       choices: [
-        ...found.map((k) => ({ name: `🗝  ${tilde(k)}`, value: k })),
+        ...found.map((k) => ({ name: `🗝 ${tilde(k)}`, value: k })),
         { name: 'По умолчанию (ssh-copy-id сам выберет)', value: DEFAULT },
       ],
     });
@@ -110,29 +110,29 @@ export async function transferFlow(name?: string): Promise<number> {
   }
   const tool =
     toolChoices.length > 1
-      ? await ui.choose<TransferTool>({ message: '🛠  Чем передавать?', choices: toolChoices })
+      ? await ui.choose<TransferTool>({ message: '🛠 Чем передавать?', choices: toolChoices })
       : 'scp';
 
   const direction = await ui.choose<'upload' | 'download'>({
     message: '📂 Направление',
     choices: [
-      { name: '⬆️  Загрузить на сервер (upload)', value: 'upload' },
-      { name: '⬇️  Скачать с сервера (download)', value: 'download' },
+      { name: '⬆️ Загрузить на сервер (upload)', value: 'upload' },
+      { name: '⬇️ Скачать с сервера (download)', value: 'download' },
     ],
   });
   const localPath = await ui.text({
-    message: '🖥  Локальный путь',
+    message: '🖥 Локальный путь',
     validate: (v) => v.trim().length > 0 || 'Пусто',
   });
   const remotePath = await ui.text({
-    message: '☁️  Путь на сервере',
+    message: '☁️ Путь на сервере',
     validate: (v) => v.trim().length > 0 || 'Пусто',
   });
 
   const opts: TransferOptions = { direction, localPath, remotePath, tool };
   if (tool === 'rsync') {
     opts.archive = true;
-    opts.compress = await ui.confirm({ message: '🗜  Сжимать в пути (-z)?', default: true });
+    opts.compress = await ui.confirm({ message: '🗜 Сжимать в пути (-z)?', default: true });
     opts.delete = await ui.confirm({
       message: '🧹 Удалять лишнее на приёмнике (--delete)?',
       default: false,
