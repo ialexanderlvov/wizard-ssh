@@ -268,12 +268,17 @@ export async function vaultFlow(): Promise<void> {
         ? [{ value: 'lock', label: 'Заблокировать (сбросить сессию)' }]
         : []),
       ...(exists ? [{ value: 'rekey', label: 'Сменить парольную фразу' }] : []),
-      ...(exists && vault.secretCount() > 0
-        ? [{ value: 'revealSecret', label: 'Показать сохранённый пароль' }]
+      // Shown whenever the vault exists (even with 0 secrets) so the feature is
+      // discoverable; with nothing saved they just report «Нет сохранённых паролей».
+      ...(exists
+        ? [
+            {
+              value: 'revealSecret',
+              label: `Показать сохранённый пароль${vault.secretCount() ? ` (${vault.secretCount()})` : ''}`,
+            },
+          ]
         : []),
-      ...(exists && vault.secretCount() > 0
-        ? [{ value: 'deleteSecret', label: 'Удалить сохранённый пароль' }]
-        : []),
+      ...(exists ? [{ value: 'deleteSecret', label: 'Удалить сохранённый пароль' }] : []),
       ...(exists && vault.touchIdSupported() && !vault.isTouchIdEnabled()
         ? [{ value: 'enableTouch', label: 'Включить Touch ID' }]
         : []),

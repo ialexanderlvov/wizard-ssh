@@ -486,6 +486,20 @@ describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
     expect(tunnels.all()).toHaveLength(0); // main tunnels list untouched
   });
 
+  it('vaultFlow surfaces «Показать пароль» even with no secrets (reports none)', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m'); // vault exists, 0 secrets
+    const logSpy = vi.spyOn(console, 'log');
+    q.pick = ['revealSecret', PICK_BACK];
+    const { vaultFlow } = await import('../src/commands/settings.js');
+    await vaultFlow();
+    // the row was selectable (so it appeared) and reported there's nothing saved
+    const saidNone = logSpy.mock.calls
+      .flat()
+      .some((a) => typeof a === 'string' && a.includes('Нет сохранённых паролей'));
+    expect(saidNone).toBe(true);
+  });
+
   it('vaultFlow reveals a saved password on confirm (and keeps it)', async () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('m');
