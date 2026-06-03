@@ -486,6 +486,25 @@ describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
     expect(tunnels.all()).toHaveLength(0); // main tunnels list untouched
   });
 
+  it('vaultFlow reveals a saved password on confirm (and keeps it)', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('s3cr3t');
+    const { servers } = await import('../src/store/servers.store.js');
+    const s = servers.create({ name: 'revbox', host: '1.1.1.1', kind: 'server' });
+    servers.update(s.id, { secretId: id });
+    const logSpy = vi.spyOn(console, 'log');
+    q.pick = ['revealSecret', 'revbox', PICK_BACK];
+    q.confirm = [true]; // yes, show it on screen
+    const { vaultFlow } = await import('../src/commands/settings.js');
+    await vaultFlow();
+    const printed = logSpy.mock.calls
+      .flat()
+      .some((a) => typeof a === 'string' && a.includes('s3cr3t'));
+    expect(printed).toBe(true);
+    expect(vault.getSecret(id)).toBe('s3cr3t'); // reveal does not remove it
+  });
+
   it('vaultFlow deletes a saved password but keeps the server', async () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('m');

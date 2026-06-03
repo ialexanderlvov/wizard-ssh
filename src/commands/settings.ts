@@ -3,7 +3,7 @@
 import type { AuthMethod, Entity, SortKey } from '../core/types.js';
 import { settings } from '../store/settings.store.js';
 import { servers } from '../store/servers.store.js';
-import { tunnels } from '../store/tunnels.store.js';
+import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import * as ui from '../ui/index.js';
 import { isValidPort } from '../utils/validators.js';
@@ -145,34 +145,91 @@ function vaultStatus(): void {
   );
 }
 
-/** #6 — remove a saved password (keeps the server/tunnel; will ask next time). */
-async function deleteSavedPassword(): Promise<void> {
-  const holders: Array<{ kind: 'server' | 'tunnel'; entity: Entity }> = [
-    ...servers
-      .all()
-      .filter((e) => e.secretId)
-      .map((e): { kind: 'server'; entity: Entity } => ({ kind: 'server', entity: e })),
-    ...tunnels
-      .all()
-      .filter((e) => e.secretId)
-      .map((e): { kind: 'tunnel'; entity: Entity } => ({ kind: 'tunnel', entity: e })),
-  ];
+/** A connection (server / tunnel / temp tunnel) that has a saved password. */
+interface SecretHolder {
+  kindLabel: string;
+  entity: Entity;
+  /** drop the secretId on the owning store (keeps the entity itself) */
+  clear: () => void;
+}
+
+function secretHolders(): SecretHolder[] {
+  const out: SecretHolder[] = [];
+  for (const e of servers.all())
+    if (e.secretId)
+      out.push({
+        kindLabel: 'сервер',
+        entity: e,
+        clear: () => servers.update(e.id, { secretId: null }),
+      });
+  for (const e of tunnels.all())
+    if (e.secretId)
+      out.push({
+        kindLabel: 'туннель',
+        entity: e,
+        clear: () => void tunnels.update(e.id, { secretId: null }),
+      });
+  for (const e of tempTunnels.all())
+    if (e.secretId)
+      out.push({
+        kindLabel: 'врем. туннель',
+        entity: e,
+        clear: () => void tempTunnels.update(e.id, { secretId: null }),
+      });
+  return out;
+}
+
+async function pickSecretHolder(message: string): Promise<SecretHolder | null> {
+  const holders = secretHolders();
   if (!holders.length) {
     ui.printWarn('Нет сохранённых паролей.');
-    return;
+    return null;
   }
-  const picked = await ui.pickFromList<(typeof holders)[number]>({
-    message: 'У какого подключения удалить сохранённый пароль?',
+  const picked = await ui.pickFromList<SecretHolder>({
+    message,
     items: holders,
-    render: (h) =>
-      `${ui.chalk.dim(h.kind === 'server' ? 'сервер' : 'туннель')}  ${ui.chalk.bold(h.entity.name)}`,
+    render: (h) => `${ui.chalk.dim(h.kindLabel)}  ${ui.chalk.bold(h.entity.name)}`,
     search: (h) => h.entity.name,
     pageSize: 14,
   });
-  if (picked === ui.BACK) return;
+  return picked === ui.BACK ? null : picked;
+}
+
+/** Reveal the plaintext of a saved password (vault must be unlocked first). */
+async function revealSavedPassword(): Promise<void> {
+  const picked = await pickSecretHolder('У какого подключения показать пароль?');
+  if (!picked) return;
+  const id = picked.entity.secretId;
+  if (!id) return;
+  if (
+    !(await ui.confirm({
+      message: `Показать пароль для «${picked.entity.name}» на экране?`,
+      default: false,
+    }))
+  ) {
+    ui.printInfo('Отменено.');
+    return;
+  }
+  if (!(await unlockVault())) {
+    ui.printWarn('Хранилище не разблокировано — пароль не показан.');
+    return;
+  }
+  const pw = vault.getSecret(id);
+  if (pw == null) {
+    ui.printWarn('Сохранённый пароль не найден.');
+    return;
+  }
+  ui.printOk(`Пароль для «${picked.entity.name}»:`);
+  console.log('  ' + ui.chalk.bold.yellow(pw));
+  ui.printInfo('Скроется при возврате в меню.');
+}
+
+/** #6 — remove a saved password (keeps the server/tunnel; will ask next time). */
+async function deleteSavedPassword(): Promise<void> {
+  const picked = await pickSecretHolder('У какого подключения удалить сохранённый пароль?');
+  if (!picked) return;
   vault.removeSecret(picked.entity.secretId);
-  const store = picked.kind === 'server' ? servers : tunnels;
-  store.update(picked.entity.id, { secretId: null });
+  picked.clear();
   ui.printOk(
     `Пароль для «${picked.entity.name}» удалён (данные сохранены, спросим при подключении).`,
   );
@@ -193,6 +250,7 @@ async function resetVault(): Promise<void> {
   vault.reset();
   servers.all().forEach((e) => e.secretId && servers.update(e.id, { secretId: null }));
   tunnels.all().forEach((e) => e.secretId && tunnels.update(e.id, { secretId: null }));
+  tempTunnels.all().forEach((e) => e.secretId && tempTunnels.update(e.id, { secretId: null }));
   settings.update({ vault: { enabled: false, touchId: false } });
   ui.printOk('Хранилище сброшено. Можно создать новое с новой парольной фразой.');
 }
@@ -210,6 +268,9 @@ export async function vaultFlow(): Promise<void> {
         ? [{ value: 'lock', label: 'Заблокировать (сбросить сессию)' }]
         : []),
       ...(exists ? [{ value: 'rekey', label: 'Сменить парольную фразу' }] : []),
+      ...(exists && vault.secretCount() > 0
+        ? [{ value: 'revealSecret', label: 'Показать сохранённый пароль' }]
+        : []),
       ...(exists && vault.secretCount() > 0
         ? [{ value: 'deleteSecret', label: 'Удалить сохранённый пароль' }]
         : []),
@@ -250,6 +311,8 @@ export async function vaultFlow(): Promise<void> {
           }
         }
       }
+    } else if (action === 'revealSecret') {
+      await revealSavedPassword();
     } else if (action === 'deleteSecret') {
       await deleteSavedPassword();
     } else if (action === 'enableTouch') {
