@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault.",
   "type": "module",
+  "packageManager": "pnpm@10.33.2",
   "bin": {
     "wssh": "./dist/cli.js",
     "wizard-ssh": "./dist/cli.js"
@@ -26,8 +27,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepare": "husky",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm build"
   },
   "keywords": [
     "ssh",
@@ -54,6 +56,7 @@
     "@eslint/js": "^9.17.0",
     "@types/figlet": "^1.7.0",
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "husky": "^9.1.7",
@@ -72,6 +75,11 @@
     ],
     "*.{json,md,yml,yaml}": [
       "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
     ]
   }
 }
