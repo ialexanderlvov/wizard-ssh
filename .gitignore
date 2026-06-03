@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.vitest/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+Untitled-*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Wizard SSH local data must NEVER be committed (lives in ~/.wizard-ssh)
+.wizard-ssh/
+*.vault.json
+wizard-ssh-data/
