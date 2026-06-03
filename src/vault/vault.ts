@@ -187,6 +187,23 @@ class Vault {
     return Object.keys(this.read()?.secrets ?? {}).length;
   }
 
+  listSecretIds(): string[] {
+    return Object.keys(this.read()?.secrets ?? {});
+  }
+
+  /** Wipe the whole vault (e.g. forgotten passphrase). Callers must also clear
+   *  any secretId references on entities so they revert to asking each time. */
+  reset(): void {
+    touchid.deleteKey();
+    try {
+      fs.rmSync(FILES.vault, { force: true });
+    } catch {
+      /* noop */
+    }
+    this.file = null;
+    this.key = null;
+  }
+
   /** Re-encrypt the whole vault under a new passphrase. Requires unlocked. */
   rekey(newPassphrase: string): void {
     if (!this.key) throw new Error('Vault is locked');

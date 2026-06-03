@@ -1,69 +1,128 @@
-/** Default settings + password-vault management. */
+/** Default settings (as an editable menu) + password-vault management. */
 
-import type { AuthMethod, SortKey } from '../core/types.js';
-import { FILES } from '../core/paths.js';
+import type { AuthMethod, Entity, SortKey } from '../core/types.js';
 import { settings } from '../store/settings.store.js';
+import { servers } from '../store/servers.store.js';
+import { tunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import * as ui from '../ui/index.js';
 import { isValidPort } from '../utils/validators.js';
 import { ensureVaultSetup, unlockVault } from './helpers.js';
 
-export async function settingsFlow(): Promise<void> {
-  ui.ensureInteractive('Настройки');
-  const s = settings.get();
-  ui.printSection('⚙️', 'Настройки по умолчанию');
+interface Row {
+  label: string;
+  value: string;
+}
 
-  const defaultUser = await ui.text({
-    message: 'SSH-пользователь по умолчанию',
-    default: s.defaultUser,
+const pick = async (message: string, rows: Row[]): Promise<string | typeof ui.BACK> => {
+  const res = await ui.pickFromList<Row>({
+    message,
+    items: rows,
+    render: (r) => r.label,
+    search: (r) => r.label,
+    pageSize: 14,
   });
-  const defaultSshPort = Number(
-    await ui.text({
+  return res === ui.BACK ? ui.BACK : res.value;
+};
+
+// ---------- settings as an editable menu (#7) ----------
+
+async function editSetting(key: string): Promise<void> {
+  const s = settings.get();
+  if (key === 'defaultUser') {
+    settings.update({
+      defaultUser: (
+        await ui.text({ message: 'SSH-пользователь по умолчанию', default: s.defaultUser })
+      ).trim(),
+    });
+  } else if (key === 'defaultSshPort') {
+    const v = await ui.text({
       message: 'SSH-порт по умолчанию',
       default: String(s.defaultSshPort),
-      validate: (v) => isValidPort(v) || '1..65535',
-    }),
-  );
-  const defaultAuth = await ui.choose<AuthMethod>({
-    message: 'Метод авторизации по умолчанию',
-    choices: [
-      { name: 'ssh-agent / по умолчанию', value: 'agent' },
-      { name: 'SSH-ключ', value: 'key' },
-      { name: 'Пароль', value: 'password' },
-    ],
-    default: s.defaultAuth,
-  });
-  const defaultRemoteHost = await ui.text({
-    message: 'Удалённый хост сервиса по умолчанию',
-    default: s.defaultRemoteHost,
-  });
-  const openBrowser = await ui.confirm({
-    message: 'Открывать браузер при local-пробросе',
-    default: s.openBrowser,
-  });
-  const defaultSort = await ui.choose<SortKey>({
-    message: 'Сортировка списков по умолчанию',
-    choices: [
-      { name: 'Последнему использованию', value: 'recent' },
-      { name: 'Имени', value: 'name' },
-      { name: 'Числу подключений', value: 'uses' },
-      { name: 'Дате создания', value: 'created' },
-      { name: 'Дате изменения', value: 'updated' },
-    ],
-    default: s.defaultSort,
-  });
-
-  settings.update({
-    defaultUser,
-    defaultSshPort,
-    defaultAuth,
-    defaultRemoteHost,
-    openBrowser,
-    defaultSort,
-  });
-  ui.printOk('Настройки сохранены.');
-  console.log(ui.chalk.dim('Файл данных: ' + FILES.settings));
+      validate: (x) => isValidPort(x) || '1..65535',
+    });
+    settings.update({ defaultSshPort: Number(v) });
+  } else if (key === 'defaultAuth') {
+    settings.update({
+      defaultAuth: await ui.choose<AuthMethod>({
+        message: 'Метод авторизации по умолчанию',
+        choices: [
+          { name: 'ssh-agent / по умолчанию', value: 'agent' },
+          { name: 'SSH-ключ', value: 'key' },
+          { name: 'Пароль', value: 'password' },
+        ],
+        default: s.defaultAuth,
+      }),
+    });
+  } else if (key === 'defaultRemoteHost') {
+    settings.update({
+      defaultRemoteHost: (
+        await ui.text({
+          message: 'Удалённый хост сервиса по умолчанию',
+          default: s.defaultRemoteHost,
+        })
+      ).trim(),
+    });
+  } else if (key === 'openBrowser') {
+    settings.update({
+      openBrowser: await ui.confirm({
+        message: 'Открывать браузер при local-пробросе?',
+        default: s.openBrowser,
+      }),
+    });
+  } else if (key === 'defaultSort') {
+    settings.update({
+      defaultSort: await ui.choose<SortKey>({
+        message: 'Сортировка списков по умолчанию',
+        choices: [
+          { name: 'Последнему использованию', value: 'recent' },
+          { name: 'Имени', value: 'name' },
+          { name: 'Числу подключений', value: 'uses' },
+          { name: 'Дате создания', value: 'created' },
+          { name: 'Дате изменения', value: 'updated' },
+        ],
+        default: s.defaultSort,
+      }),
+    });
+  }
+  ui.printOk('Сохранено.');
 }
+
+export async function settingsFlow(): Promise<void> {
+  ui.ensureInteractive('Настройки');
+  const sortLabels: Record<SortKey, string> = {
+    recent: 'по использованию',
+    name: 'по имени',
+    uses: 'по подключениям',
+    created: 'по дате создания',
+    updated: 'по дате изменения',
+  };
+  for (;;) {
+    const s = settings.get();
+    const rows: Row[] = [
+      { value: 'defaultUser', label: `SSH-пользователь: ${ui.chalk.cyan(s.defaultUser)}` },
+      { value: 'defaultSshPort', label: `SSH-порт: ${ui.chalk.cyan(String(s.defaultSshPort))}` },
+      { value: 'defaultAuth', label: `Авторизация: ${ui.chalk.cyan(s.defaultAuth)}` },
+      {
+        value: 'defaultRemoteHost',
+        label: `Удалённый хост: ${ui.chalk.cyan(s.defaultRemoteHost)}`,
+      },
+      {
+        value: 'openBrowser',
+        label: `Открывать браузер: ${ui.chalk.cyan(s.openBrowser ? 'да' : 'нет')}`,
+      },
+      {
+        value: 'defaultSort',
+        label: `Сортировка списков: ${ui.chalk.cyan(sortLabels[s.defaultSort])}`,
+      },
+    ];
+    const key = await pick('Настройки (Enter — изменить, Esc — назад)', rows);
+    if (key === ui.BACK) return;
+    await editSetting(key);
+  }
+}
+
+// ---------- vault ----------
 
 function vaultStatus(): void {
   const supported = vault.touchIdSupported();
@@ -79,29 +138,84 @@ function vaultStatus(): void {
   );
 }
 
+/** #6 — remove a saved password (keeps the server/tunnel; will ask next time). */
+async function deleteSavedPassword(): Promise<void> {
+  const holders: Array<{ kind: 'server' | 'tunnel'; entity: Entity }> = [
+    ...servers
+      .all()
+      .filter((e) => e.secretId)
+      .map((e): { kind: 'server'; entity: Entity } => ({ kind: 'server', entity: e })),
+    ...tunnels
+      .all()
+      .filter((e) => e.secretId)
+      .map((e): { kind: 'tunnel'; entity: Entity } => ({ kind: 'tunnel', entity: e })),
+  ];
+  if (!holders.length) {
+    ui.printWarn('Нет сохранённых паролей.');
+    return;
+  }
+  const picked = await ui.pickFromList<(typeof holders)[number]>({
+    message: 'У какого подключения удалить сохранённый пароль?',
+    items: holders,
+    render: (h) =>
+      `${ui.chalk.dim(h.kind === 'server' ? 'сервер' : 'туннель')}  ${ui.chalk.bold(h.entity.name)}`,
+    search: (h) => h.entity.name,
+    pageSize: 14,
+  });
+  if (picked === ui.BACK) return;
+  vault.removeSecret(picked.entity.secretId);
+  const store = picked.kind === 'server' ? servers : tunnels;
+  store.update(picked.entity.id, { secretId: null });
+  ui.printOk(
+    `Пароль для «${picked.entity.name}» удалён (данные сохранены, спросим при подключении).`,
+  );
+}
+
+/** #6 — wipe the vault when the passphrase is forgotten; entities keep their data. */
+async function resetVault(): Promise<void> {
+  const ok = await ui.confirm({
+    message: ui.chalk.red(
+      'Сбросить хранилище? Все сохранённые пароли будут удалены (серверы/туннели останутся).',
+    ),
+    default: false,
+  });
+  if (!ok) {
+    ui.printInfo('Отменено.');
+    return;
+  }
+  vault.reset();
+  servers.all().forEach((e) => e.secretId && servers.update(e.id, { secretId: null }));
+  tunnels.all().forEach((e) => e.secretId && tunnels.update(e.id, { secretId: null }));
+  settings.update({ vault: { enabled: false, touchId: false } });
+  ui.printOk('Хранилище сброшено. Можно создать новое с новой парольной фразой.');
+}
+
 export async function vaultFlow(): Promise<void> {
   ui.ensureInteractive('Управление хранилищем');
   for (;;) {
     vaultStatus();
     const exists = vault.exists();
-    const choices = [
-      ...(!exists ? [{ name: '🆕 Создать хранилище', value: 'setup' }] : []),
-      ...(exists && !vault.isUnlocked() ? [{ name: '🔓 Разблокировать', value: 'unlock' }] : []),
+    const rows: Row[] = [
+      ...(!exists ? [{ value: 'setup', label: 'Создать хранилище' }] : []),
+      ...(exists && !vault.isUnlocked() ? [{ value: 'unlock', label: 'Разблокировать' }] : []),
       ...(exists && vault.isUnlocked()
-        ? [{ name: '🔒 Заблокировать (сбросить сессию)', value: 'lock' }]
+        ? [{ value: 'lock', label: 'Заблокировать (сбросить сессию)' }]
         : []),
-      ...(exists ? [{ name: '🔑 Сменить парольную фразу', value: 'rekey' }] : []),
+      ...(exists ? [{ value: 'rekey', label: 'Сменить парольную фразу' }] : []),
+      ...(exists && vault.secretCount() > 0
+        ? [{ value: 'deleteSecret', label: 'Удалить сохранённый пароль' }]
+        : []),
       ...(exists && vault.touchIdSupported() && !vault.isTouchIdEnabled()
-        ? [{ name: '👆 Включить Touch ID', value: 'enableTouch' }]
+        ? [{ value: 'enableTouch', label: 'Включить Touch ID' }]
         : []),
       ...(exists && vault.isTouchIdEnabled()
-        ? [{ name: '🚫 Выключить Touch ID', value: 'disableTouch' }]
+        ? [{ value: 'disableTouch', label: 'Выключить Touch ID' }]
         : []),
-      { name: '↩ Назад', value: 'back' },
+      ...(exists ? [{ value: 'reset', label: 'Сбросить хранилище (забыл фразу)' }] : []),
     ];
-    const action = await ui.choose<string>({ message: 'Действие', choices });
+    const action = await pick('Действие', rows);
+    if (action === ui.BACK) return;
 
-    if (action === 'back') return;
     if (action === 'setup') {
       await ensureVaultSetup();
     } else if (action === 'unlock') {
@@ -128,6 +242,8 @@ export async function vaultFlow(): Promise<void> {
           }
         }
       }
+    } else if (action === 'deleteSecret') {
+      await deleteSavedPassword();
     } else if (action === 'enableTouch') {
       if (!(await unlockVault())) ui.printWarn('Сначала разблокируйте.');
       else if (vault.enableTouchId()) {
@@ -138,6 +254,8 @@ export async function vaultFlow(): Promise<void> {
       vault.disableTouchId();
       settings.update({ vault: { ...settings.get().vault, touchId: false } });
       ui.printOk('Touch ID выключен.');
+    } else if (action === 'reset') {
+      await resetVault();
     }
     await ui.pause();
   }
