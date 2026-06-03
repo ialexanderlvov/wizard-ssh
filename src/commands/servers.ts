@@ -95,13 +95,13 @@ export async function editServer(name?: string): Promise<void> {
     const field = await ui.choose<string>({
       message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
       choices: [
-        { name: `🏷 Имя          ${working.name}`, value: 'name' },
-        { name: `📝 Описание     ${working.description || '—'}`, value: 'description' },
-        { name: `#️⃣ Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
-        { name: '🌐 Подключение / авторизация', value: 'connection' },
-        { name: '🔗 Запись в ~/.ssh/config', value: 'link' },
-        { name: '💾 Сохранить и выйти', value: '__save__' },
-        { name: '↩ Выйти без сохранения', value: '__cancel__' },
+        { name: `Имя          ${working.name}`, value: 'name' },
+        { name: `Описание     ${working.description || '—'}`, value: 'description' },
+        { name: `Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
+        { name: 'Подключение / авторизация', value: 'connection' },
+        { name: 'Запись в ~/.ssh/config', value: 'link' },
+        { name: 'Сохранить и выйти', value: '__save__' },
+        { name: 'Выйти без сохранения', value: '__cancel__' },
       ],
     });
 

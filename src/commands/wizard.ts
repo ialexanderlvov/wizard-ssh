@@ -42,8 +42,8 @@ export async function pickSshAlias(current?: string): Promise<string> {
 export async function pickKey(savedPath?: string | null): Promise<string> {
   const keys = findSshKeys();
   const MANUAL = '__manual__';
-  const choices = keys.map((k) => ({ name: `🗝 ${tilde(k)}`, value: k }));
-  choices.push({ name: '✍️ Ввести путь вручную', value: MANUAL });
+  const choices = keys.map((k) => ({ name: `${tilde(k)}`, value: k }));
+  choices.push({ name: 'Ввести путь вручную', value: MANUAL });
   const pick = await ui.choose<string>({
     message: `🗝 Приватный SSH-ключ${keys.length ? ` (найдено: ${keys.length})` : ''}`,
     choices,
@@ -72,11 +72,11 @@ export async function askConnectionTarget(
     message: '🧭 Способ адресации хоста',
     choices: [
       {
-        name: '🔗 Алиас из ~/.ssh/config',
+        name: 'Алиас из ~/.ssh/config',
         value: 'sshconfig',
         description: 'user/port/key берутся из конфига',
       },
-      { name: '🖥 IP / домен', value: 'manual', description: 'указать вручную' },
+      { name: 'IP / домен', value: 'manual', description: 'указать вручную' },
     ],
     default: defaults.hostMode ?? 'manual',
   });
@@ -114,13 +114,13 @@ export async function askConnectionTarget(
     message: '🔐 Как авторизуемся?',
     choices: [
       {
-        name: '🤝 ssh-agent / по умолчанию',
+        name: 'ssh-agent / по умолчанию',
         value: 'agent',
         description: 'ничего вводить не нужно',
       },
-      { name: '🗝 SSH-ключ', value: 'key', description: 'указать файл' },
+      { name: 'SSH-ключ', value: 'key', description: 'указать файл' },
       {
-        name: '🔑 Пароль',
+        name: 'Пароль',
         value: 'password',
         description: 'можно сохранить в зашифрованном хранилище',
       },

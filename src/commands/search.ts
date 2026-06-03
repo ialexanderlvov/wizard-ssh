@@ -1,11 +1,9 @@
 /** Unified search across servers, tunnels and ~/.ssh/config, with quick-connect. */
 
+import type { Server, Tunnel } from '../core/types.js';
 import { searchEverything } from '../search/index.js';
 import * as ui from '../ui/index.js';
-import { configHostLine, entityLine } from '../ui/format.js';
 import { renderConfigHostsTable, renderEntityTable } from '../ui/tables.js';
-import { servers } from '../store/servers.store.js';
-import { tunnels } from '../store/tunnels.store.js';
 import { connectServer } from './servers.js';
 import { connectTunnel } from './tunnels.js';
 import { connectConfigHostFlow } from './config.js';
@@ -14,7 +12,7 @@ export async function searchFlow(query?: string): Promise<void> {
   let q = query;
   if (!q) {
     ui.ensureInteractive('Поиск');
-    q = await ui.text({ message: '🔍 Поиск по серверам, туннелям и ~/.ssh/config' });
+    q = await ui.text({ message: 'Поиск по серверам, туннелям и ~/.ssh/config' });
   }
   if (!q.trim()) return;
 
@@ -38,28 +36,25 @@ export async function searchFlow(query?: string): Promise<void> {
   }
 
   if (!ui.isInteractive()) return;
-  if (
-    !(await ui.confirm({
-      message: 'Подключиться к одному из найденных?',
-      default: res.total === 1,
-    }))
-  )
-    return;
 
-  const choices = [
-    ...res.servers.map((s) => ({ name: entityLine(s), value: `s:${s.id}` })),
-    ...res.tunnels.map((t) => ({ name: entityLine(t), value: `t:${t.id}` })),
-    ...res.configHosts.map((h) => ({ name: '🗂 ' + configHostLine(h), value: `c:${h.alias}` })),
+  const items: ui.ConnectItem[] = [
+    ...res.servers.map((e): ui.ConnectItem => ({ kind: 'entity', entity: e })),
+    ...res.tunnels.map((e): ui.ConnectItem => ({ kind: 'entity', entity: e })),
+    ...res.configHosts.map((h): ui.ConnectItem => ({ kind: 'config', host: h })),
   ];
-  const pick = await ui.choose<string>({ message: 'Куда подключаемся', choices, pageSize: 15 });
-  const [kind, ref] = [pick.slice(0, 1), pick.slice(2)];
-  if (kind === 's') {
-    const s = servers.findById(ref);
-    if (s) await connectServer(s);
-  } else if (kind === 't') {
-    const t = tunnels.findById(ref);
-    if (t) await connectTunnel(t);
-  } else if (kind === 'c') {
-    await connectConfigHostFlow(ref);
+  const picked = await ui.pickFromList<ui.ConnectItem>({
+    message: 'Подключиться (Esc — просто посмотреть)',
+    items,
+    render: ui.connectRowRenderer(items),
+    search: ui.connectSearch,
+    pageSize: 15,
+  });
+  if (picked === ui.BACK) return;
+  if (picked.kind === 'config') {
+    await connectConfigHostFlow(picked.host.alias);
+  } else if (picked.entity.kind === 'tunnel') {
+    await connectTunnel(picked.entity as Tunnel);
+  } else {
+    await connectServer(picked.entity as Server);
   }
 }

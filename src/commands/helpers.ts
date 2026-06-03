@@ -7,7 +7,6 @@ import { vault } from '../vault/vault.js';
 import { destination } from '../ssh/args.js';
 import { filterEntities } from '../search/index.js';
 import * as ui from '../ui/index.js';
-import { entityLine } from '../ui/format.js';
 
 // ---------- vault ----------
 
@@ -111,19 +110,23 @@ export async function handlePasswordSecret(
 
 // ---------- entity selection ----------
 
-/** Fuzzy autocomplete picker over a list of entities. */
+/** Interactive picker over a list of entities: filter, Tab-sort, Esc → back. */
 export async function pickEntity<T extends Entity>(items: T[], message: string): Promise<T | null> {
   if (!items.length) {
     ui.printWarn('Список пуст.');
     return null;
   }
   ui.ensureInteractive('Выбор из списка');
-  const id = await ui.searchChoose<string>({
+  const render = ui.entityRowRenderer(items);
+  const res = await ui.pickFromList<T>({
     message,
-    source: (term) =>
-      filterEntities(items, term).map((e) => ({ name: entityLine(e), value: e.id })),
+    items,
+    render,
+    search: ui.entitySearch,
+    sorts: ui.ENTITY_SORTS as ReadonlyArray<ui.ListSort<T>>,
+    pageSize: 12,
   });
-  return items.find((e) => e.id === id) ?? null;
+  return res === ui.BACK ? null : res;
 }
 
 export interface ResolvableCollection<T extends Entity> {

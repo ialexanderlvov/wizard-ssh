@@ -5,9 +5,7 @@ import type { SshConfigParam } from '../ssh-config/index.js';
 import * as sshConfig from '../ssh-config/index.js';
 import { runInteractive } from '../ssh/runner.js';
 import * as ui from '../ui/index.js';
-import { configHostLine } from '../ui/format.js';
 import { renderConfigHostsTable } from '../ui/tables.js';
-import { filterConfigHosts } from '../search/index.js';
 import { isValidSshAlias } from '../utils/validators.js';
 import { nowIso } from '../utils/time.js';
 
@@ -20,12 +18,15 @@ async function pickHost(message: string): Promise<SshConfigHost | null> {
     return null;
   }
   ui.ensureInteractive('Выбор хоста');
-  const alias = await ui.searchChoose<string>({
+  const res = await ui.pickFromList<SshConfigHost>({
     message,
-    source: (term) =>
-      filterConfigHosts(hosts, term).map((h) => ({ name: configHostLine(h), value: h.alias })),
+    items: hosts,
+    render: ui.configRowRenderer(hosts),
+    search: ui.configSearch,
+    sorts: ui.CONFIG_SORTS,
+    pageSize: 14,
   });
-  return hosts.find((h) => h.alias === alias) ?? null;
+  return res === ui.BACK ? null : res;
 }
 
 /** Merge standard answers into existing params, preserving extra options. */

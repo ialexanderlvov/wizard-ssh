@@ -56,7 +56,7 @@ export async function copyIdFlow(name?: string): Promise<number> {
     const choice = await ui.choose<string>({
       message: '🗝 Какой ключ установить на сервер?',
       choices: [
-        ...found.map((k) => ({ name: `🗝 ${tilde(k)}`, value: k })),
+        ...found.map((k) => ({ name: `${tilde(k)}`, value: k })),
         { name: 'По умолчанию (ssh-copy-id сам выберет)', value: DEFAULT },
       ],
     });
@@ -100,11 +100,11 @@ export async function transferFlow(name?: string): Promise<number> {
   ui.ensureInteractive('Передача файлов');
 
   const toolChoices: Array<{ name: string; value: TransferTool }> = [
-    { name: '📦 scp — простое копирование', value: 'scp' },
+    { name: 'scp — простое копирование', value: 'scp' },
   ];
   if (commandExists('rsync')) {
     toolChoices.unshift({
-      name: '🔄 rsync — дельта-синхронизация (быстрее на повторных)',
+      name: 'rsync — дельта-синхронизация (быстрее на повторных)',
       value: 'rsync',
     });
   }
@@ -116,8 +116,8 @@ export async function transferFlow(name?: string): Promise<number> {
   const direction = await ui.choose<'upload' | 'download'>({
     message: '📂 Направление',
     choices: [
-      { name: '⬆️ Загрузить на сервер (upload)', value: 'upload' },
-      { name: '⬇️ Скачать с сервера (download)', value: 'download' },
+      { name: 'Загрузить на сервер (upload)', value: 'upload' },
+      { name: 'Скачать с сервера (download)', value: 'download' },
     ],
   });
   const localPath = await ui.text({
