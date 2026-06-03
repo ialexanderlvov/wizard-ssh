@@ -27,3 +27,7 @@ function normalizeTunnel(raw: unknown): Tunnel {
 }
 
 export const tunnels = new EntityCollection<Tunnel>(FILES.tunnels, normalizeTunnel);
+
+/** Ad-hoc "temporary" tunnels, persisted to their own file so they stay out of
+ *  the main tunnels list. Same shape and behaviour as `tunnels`. */
+export const tempTunnels = new EntityCollection<Tunnel>(FILES.tempTunnels, normalizeTunnel);

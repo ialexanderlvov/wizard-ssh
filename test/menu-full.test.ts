@@ -107,11 +107,13 @@ describe('mainMenu navigation', () => {
       'box',
       'connect',
       PICK_BACK, // leave servers submenu
-      // tunnels submenu: add, quick, temp, list -> browse -> 'tnl' -> connect, back
+      // tunnels submenu: add, quick, temp ▸ (create -> back), list -> browse -> 'tnl' -> connect, back
       'tunnels',
       'add',
       'quick',
-      'temp',
+      'temp', // open the «Временные туннели» submenu
+      'create', // -> raiseTemporaryTunnel
+      PICK_BACK, // leave temp submenu
       'list',
       'tnl',
       'connect',

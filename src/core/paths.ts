@@ -17,6 +17,8 @@ export const FILES = {
   /** per-alias usage stats (lastUsedAt / useCount) for config-backed servers */
   usage: path.join(DATA_DIR, 'usage.json'),
   tunnels: path.join(DATA_DIR, 'tunnels.json'),
+  /** ad-hoc "temporary" tunnels — kept in their own list, separate from tunnels */
+  tempTunnels: path.join(DATA_DIR, 'temp-tunnels.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
   vault: path.join(DATA_DIR, 'vault.json'),
   binDir: path.join(DATA_DIR, 'bin'),

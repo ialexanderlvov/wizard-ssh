@@ -5,7 +5,7 @@
 import { PromptAbortError } from '../core/errors.js';
 import type { Entity, Server, Tunnel } from '../core/types.js';
 import { servers } from '../store/servers.store.js';
-import { tunnels } from '../store/tunnels.store.js';
+import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import * as ui from '../ui/index.js';
 import { detailBox } from '../ui/format.js';
 
@@ -152,13 +152,13 @@ const tunnelsMenu = (): Promise<void> =>
     [
       { label: 'Список / поднять', value: 'list' },
       { label: 'Создать и сразу поднять (из ~/.ssh/config)', value: 'quick' },
-      { label: 'Временный — на любой хост (без сохранения)', value: 'temp' },
+      { label: 'Временные туннели (на любой хост) ▸', value: 'temp' },
       { label: 'Добавить', value: 'add' },
     ],
     async (a) => {
       if (a === 'add') await tunnelCmd.addTunnel();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
-      else if (a === 'temp') await tunnelCmd.raiseTemporaryTunnel();
+      else if (a === 'temp') await tempTunnelsMenu();
       else if (a === 'list')
         await browseEntities(
           [ROOT, 'Туннели'],
@@ -166,6 +166,27 @@ const tunnelsMenu = (): Promise<void> =>
           (e) => tunnelCmd.connectTunnel(e as Tunnel),
           (name) => tunnelCmd.editTunnel(name),
           (name) => tunnelCmd.removeTunnelFlow(name),
+        );
+    },
+  );
+
+const tempTunnelsMenu = (): Promise<void> =>
+  loop(
+    'Временные туннели',
+    [ROOT, 'Туннели'],
+    [
+      { label: 'Список / поднять', value: 'list' },
+      { label: 'Создать и поднять (на любой хост)', value: 'create' },
+    ],
+    async (a) => {
+      if (a === 'create') await tunnelCmd.raiseTemporaryTunnel();
+      else if (a === 'list')
+        await browseEntities(
+          [ROOT, 'Туннели', 'Временные'],
+          () => tempTunnels.all(),
+          (e) => tunnelCmd.connectTunnel(e as Tunnel, tempTunnels),
+          (name) => tunnelCmd.editTunnel(name, tempTunnels),
+          (name) => tunnelCmd.removeTunnelFlow(name, tempTunnels),
         );
     },
   );

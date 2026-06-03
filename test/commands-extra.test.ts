@@ -472,16 +472,18 @@ describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
     expect(runner.runTunnel).not.toHaveBeenCalled();
   });
 
-  it('raiseTemporaryTunnel: raises a forward to a manual host without saving it', async () => {
-    // askConnectionTarget(manual): hostMode, host/user/port, auth; askForward(local)
+  it('raiseTemporaryTunnel: saves to the temp list (separate file) and raises it', async () => {
+    // askConnectionTarget(manual) + askForward(local) + askMeta(name/desc/tags)
     q.choose = ['manual', 'agent', 'local'];
-    q.text = ['9.9.9.9', 'root', '22', '8080', '127.0.0.1', '8080'];
+    q.text = ['9.9.9.9', 'root', '22', '8080', '127.0.0.1', '8080', 'tmp1', '', ''];
     q.confirm = [false]; // openBrowser
     const { raiseTemporaryTunnel } = await import('../src/commands/tunnels.js');
     expect(await raiseTemporaryTunnel()).toBe(0);
     expect(runner.runTunnel).toHaveBeenCalled();
-    const { tunnels } = await import('../src/store/tunnels.store.js');
-    expect(tunnels.all()).toHaveLength(0); // ephemeral — nothing persisted
+    const { tunnels, tempTunnels } = await import('../src/store/tunnels.store.js');
+    expect(tempTunnels.all()).toHaveLength(1); // persisted to the temp list
+    expect(tempTunnels.findByName('tmp1')?.host).toBe('9.9.9.9');
+    expect(tunnels.all()).toHaveLength(0); // main tunnels list untouched
   });
 
   it('vaultFlow deletes a saved password but keeps the server', async () => {

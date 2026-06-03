@@ -1,7 +1,8 @@
 /** Tunnel CRUD + connect flows. Mirrors servers.ts, with forward config. */
 
 import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
-import { tunnels } from '../store/tunnels.store.js';
+import type { EntityCollection } from '../store/collection.js';
+import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import * as sshConfig from '../ssh-config/index.js';
 import { runTunnel } from '../ssh/runner.js';
@@ -10,21 +11,26 @@ import { detailBox, forwardSummary } from '../ui/format.js';
 import { renderEntityTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
 import { parseTags, slugify } from '../utils/strings.js';
-import { nowIso } from '../utils/time.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
 import { handlePasswordSecret, resolveEntity, resolvePassword } from './helpers.js';
 
-export async function connectTunnel(tunnel: Tunnel): Promise<number> {
+/** Tunnels live in one of two collections: the main list or the temporary one. */
+type TunnelStore = EntityCollection<Tunnel>;
+
+export async function connectTunnel(tunnel: Tunnel, store: TunnelStore = tunnels): Promise<number> {
   console.log('\n' + detailBox(tunnel));
   const password = await resolvePassword(tunnel);
-  tunnels.touch(tunnel.id);
+  store.touch(tunnel.id);
   return runTunnel(tunnel, password);
 }
 
-export async function connectTunnelFlow(name?: string): Promise<number> {
-  const tunnel = await resolveEntity(tunnels, name, '🚇 Выберите туннель');
+export async function connectTunnelFlow(
+  name?: string,
+  store: TunnelStore = tunnels,
+): Promise<number> {
+  const tunnel = await resolveEntity(store, name, '🚇 Выберите туннель');
   if (!tunnel) return 0;
-  return connectTunnel(tunnel);
+  return connectTunnel(tunnel, store);
 }
 
 /** #9 — pick a ~/.ssh/config host, define the forward, save and raise it now. */
@@ -68,30 +74,21 @@ export async function createAndRaiseTunnel(): Promise<number> {
   return connectTunnel(tunnel);
 }
 
-/** Raise a one-off tunnel to ANY host — including one not in ~/.ssh/config —
- *  without saving it. Useful for quick, throwaway forwards. */
+/** Create + raise a tunnel to ANY host — including one not in ~/.ssh/config.
+ *  Saved to its OWN list (temp-tunnels.json), kept apart from the main tunnels. */
 export async function raiseTemporaryTunnel(): Promise<number> {
   ui.ensureInteractive('Временный туннель');
-  ui.printSection('🚇', 'Временный туннель (без сохранения)');
+  ui.printSection('🚇', 'Временный туннель (на любой хост)');
   const target = await askConnectionTarget({});
+  const secretId = await handlePasswordSecret(target, null);
   const fwd = await askForward({});
-  const tunnel: Tunnel = {
-    kind: 'tunnel',
-    id: '',
-    name: target.hostMode === 'sshconfig' ? target.sshHost : target.host || 'temp',
-    description: 'временный (не сохранён)',
-    tags: [],
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    lastUsedAt: null,
-    useCount: 0,
-    ...target,
-    ...fwd,
-  };
-  console.log('\n' + detailBox(tunnel));
-  ui.printInfo('Туннель не сохраняется — поднимаем разово (Ctrl+C — закрыть).');
-  const password = await resolvePassword(tunnel);
-  return runTunnel(tunnel, password);
+  const suggested = slugify(
+    `${target.hostMode === 'sshconfig' ? target.sshHost : target.host}-${fwd.localPort}`,
+  );
+  const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
+  const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
+  ui.printOk(`Временный туннель «${tunnel.name}» сохранён (отдельный список).`);
+  return connectTunnel(tunnel, tempTunnels);
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
@@ -110,9 +107,9 @@ export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | nu
   return tunnel;
 }
 
-export async function editTunnel(name?: string): Promise<void> {
+export async function editTunnel(name?: string, store: TunnelStore = tunnels): Promise<void> {
   ui.ensureInteractive('Редактирование');
-  const tunnel = await resolveEntity(tunnels, name, '✏️ Выберите туннель');
+  const tunnel = await resolveEntity(store, name, '✏️ Выберите туннель');
   if (!tunnel) return;
 
   let working: Tunnel = { ...tunnel };
@@ -141,7 +138,7 @@ export async function editTunnel(name?: string): Promise<void> {
 
     if (field === '__save__') {
       if (dirty) {
-        tunnels.update(tunnel.id, working);
+        store.update(tunnel.id, working);
         ui.printOk('Изменения сохранены.');
       } else ui.printInfo('Изменений не было.');
       return;
@@ -160,7 +157,7 @@ export async function editTunnel(name?: string): Promise<void> {
           validate: (v) =>
             !isValidName(v.trim())
               ? 'Некорректное имя'
-              : tunnels.nameExists(v.trim(), tunnel.id)
+              : store.nameExists(v.trim(), tunnel.id)
                 ? 'Имя занято'
                 : true,
         })
@@ -190,18 +187,18 @@ export async function editTunnel(name?: string): Promise<void> {
   }
 }
 
-export async function removeTunnelFlow(name?: string): Promise<void> {
+export async function removeTunnelFlow(name?: string, store: TunnelStore = tunnels): Promise<void> {
   ui.ensureInteractive('Удаление');
   if (name) {
-    const tunnel = await resolveEntity(tunnels, name, '🗑 Выберите туннель');
+    const tunnel = await resolveEntity(store, name, '🗑 Выберите туннель');
     if (!tunnel) return;
     if (await ui.confirm({ message: `Удалить «${tunnel.name}»?`, default: false })) {
-      removeTunnelById(tunnel);
+      removeTunnelById(tunnel, store);
       ui.printOk(`«${tunnel.name}» удалён.`);
     } else ui.printInfo('Отменено.');
     return;
   }
-  const list = tunnels.sorted('name');
+  const list = store.sorted('name');
   if (!list.length) {
     ui.printWarn('Список туннелей пуст.');
     return;
@@ -216,16 +213,16 @@ export async function removeTunnelFlow(name?: string): Promise<void> {
   }
   if (await ui.confirm({ message: `Удалить ${ids.length}?`, default: false })) {
     ids.forEach((id) => {
-      const t = tunnels.findById(id);
-      if (t) removeTunnelById(t);
+      const t = store.findById(id);
+      if (t) removeTunnelById(t, store);
     });
     ui.printOk(`Удалено: ${ids.length}.`);
   } else ui.printInfo('Отменено.');
 }
 
-function removeTunnelById(tunnel: Tunnel): void {
+function removeTunnelById(tunnel: Tunnel, store: TunnelStore): void {
   if (tunnel.secretId) vault.removeSecret(tunnel.secretId);
-  tunnels.remove(tunnel.id);
+  store.remove(tunnel.id);
 }
 
 export function listTunnels(opts: { sort?: SortKey; reverse?: boolean; json?: boolean }): Tunnel[] {
