@@ -41,6 +41,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@inquirer/core": "^11.2.1",
     "@inquirer/prompts": "^7.2.1",
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
@@ -54,6 +55,7 @@
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
     "@eslint/js": "^9.17.0",
+    "@inquirer/testing": "^3.3.9",
     "@types/figlet": "^1.7.0",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^2.1.9",
