@@ -12,6 +12,7 @@
 import {
   createPrompt,
   useState,
+  useEffect,
   useKeypress,
   usePagination,
   isEnterKey,
@@ -74,6 +75,14 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
   const [cursor, setCursor] = useState(0);
   const [sortIdx, setSortIdx] = useState(0);
   const [status, setStatus] = useState<'idle' | 'done'>('idle');
+
+  // Node's readline waits `escapeCodeTimeout` ms (default 500) after a lone Esc
+  // to tell it apart from an escape sequence — arrows, etc. all start with the
+  // ESC byte. We only read local key presses here (sequences arrive atomically),
+  // so shrink it; otherwise backing out with Esc lags about half a second.
+  useEffect((rl) => {
+    (rl as unknown as { escapeCodeTimeout: number }).escapeCodeTimeout = 1;
+  }, []);
 
   const sorts = cfg.sorts ?? [];
   const searchOf = cfg.search ?? ((it: unknown) => stripAnsi(cfg.render(it, false)));
