@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -11,10 +11,12 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
 function cmdMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({
     runInteractive: async () => 0,
     runTunnel: async () => 0,
@@ -83,7 +85,7 @@ describe('helpers remaining branches', () => {
 describe('config connect via picker', () => {
   it('connectConfigHostFlow with no alias uses the picker', async () => {
     writeConfig('Host pickme\n    HostName 9.9.9.9\n');
-    q.search = ['pickme'];
+    q.pick = ['pickme'];
     const { connectConfigHostFlow } = await import('../src/commands/config.js');
     expect(await connectConfigHostFlow()).toBe(0);
   });
@@ -93,7 +95,7 @@ describe('vaultFlow unlocked-state choices', () => {
   it('shows lock when already unlocked', async () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('master'); // unlocked
-    q.choose = ['lock', 'back'];
+    q.pick = ['lock', PICK_BACK];
     const { vaultFlow } = await import('../src/commands/settings.js');
     await vaultFlow();
     expect(vault.isUnlocked()).toBe(false);

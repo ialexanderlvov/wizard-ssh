@@ -1,25 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { freshHome } from './helpers.js';
+import { freshHome, listMock, PICK_BACK } from './helpers.js';
 
-const q = { choose: [] as unknown[] };
+// Shared queue object: promptMock-style fields + the list-prompt `pick` queue.
+// Navigation now flows entirely through ui.pickFromList (list-prompt), so `pick`
+// drives every menu/submenu/entity selection.
+const q = { choose: [] as unknown[], pick: [] as unknown[] };
 const chooseMock = vi.fn(async () => q.choose.shift());
 
 const srv = {
-  connectServerFlow: vi.fn(async () => 0),
+  connectServer: vi.fn(async () => 0),
   addServer: vi.fn(async () => null),
   editServer: vi.fn(async () => {}),
   removeServerFlow: vi.fn(async () => {}),
-  listServers: vi.fn(() => []),
 };
 const tun = {
-  connectTunnelFlow: vi.fn(async () => 0),
+  connectTunnel: vi.fn(async () => 0),
   addTunnel: vi.fn(async () => null),
   editTunnel: vi.fn(async () => {}),
   removeTunnelFlow: vi.fn(async () => {}),
-  listTunnels: vi.fn(() => []),
+  createAndRaiseTunnel: vi.fn(async () => 0),
 };
 const cfg = {
-  listConfigHosts: vi.fn(() => []),
   connectConfigHostFlow: vi.fn(async () => 0),
   addConfigHost: vi.fn(async () => {}),
   editConfigHost: vi.fn(async () => {}),
@@ -48,6 +49,9 @@ function setup(): void {
     multiChoose: async () => [],
     searchChoose: async () => '',
   }));
+  // The custom list prompt MUST be mocked so ui.BACK identity holds and every
+  // pickFromList navigation resolves from the shared `q.pick` queue.
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/commands/servers.js', () => srv);
   vi.doMock('../src/commands/tunnels.js', () => tun);
   vi.doMock('../src/commands/config.js', () => cfg);
@@ -62,6 +66,7 @@ beforeEach(() => {
   vi.resetModules();
   freshHome();
   q.choose = [];
+  q.pick = [];
   [
     chooseMock,
     ...Object.values(srv),
@@ -80,39 +85,50 @@ beforeEach(() => {
 
 describe('mainMenu navigation', () => {
   it('walks every top-level action and submenu, then exits', async () => {
-    q.choose = [
+    // browseEntities reads the REAL store, so seed one server + one tunnel.
+    const { servers } = await import('../src/store/servers.store.js');
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    servers.create({ name: 'box', host: '1.1.1.1', kind: 'server' });
+    tunnels.create({ name: 'tnl', type: 'local', localPort: 8181, remotePort: 81, kind: 'tunnel' });
+
+    q.pick = [
+      // quick connect
       'quick',
+      // search + vault + settings + io (all delegate to mocked flows)
       'search',
       'vault',
       'settings',
       'io',
+      // servers submenu: add, then list -> browse -> pick 'box' -> connect (browser returns), back
       'servers',
-      'connect',
       'add',
-      'edit',
-      'remove',
       'list',
-      'back',
+      'box',
+      'connect',
+      PICK_BACK, // leave servers submenu
+      // tunnels submenu: add, quick (createAndRaiseTunnel), list -> browse -> 'tnl' -> connect, back
       'tunnels',
-      'connect',
       'add',
-      'edit',
-      'remove',
+      'quick',
       'list',
-      'back',
+      'tnl',
+      'connect',
+      PICK_BACK, // leave tunnels submenu
+      // config submenu: list, add, edit, remove, back
       'config',
       'list',
-      'connect',
       'add',
       'edit',
       'remove',
-      'back',
+      PICK_BACK,
+      // actions submenu: check, copyId, run, transfer, back
       'actions',
       'check',
       'copyId',
       'run',
       'transfer',
-      'back',
+      PICK_BACK,
+      // leave main menu
       'exit',
     ];
     const { mainMenu } = await import('../src/commands/menu.js');
@@ -123,15 +139,23 @@ describe('mainMenu navigation', () => {
     expect(settingsMod.vaultFlow).toHaveBeenCalled();
     expect(settingsMod.settingsFlow).toHaveBeenCalled();
     expect(ioMod.importExportMenu).toHaveBeenCalled();
-    expect(srv.connectServerFlow).toHaveBeenCalled();
+
+    // servers submenu: add + browse-connect (connectServer, NOT connectServerFlow)
     expect(srv.addServer).toHaveBeenCalled();
-    expect(srv.editServer).toHaveBeenCalled();
-    expect(srv.removeServerFlow).toHaveBeenCalled();
-    expect(srv.listServers).toHaveBeenCalled();
-    expect(tun.connectTunnelFlow).toHaveBeenCalled();
+    expect(srv.connectServer).toHaveBeenCalled();
+
+    // tunnels submenu: add + quick-create + browse-connect
     expect(tun.addTunnel).toHaveBeenCalled();
-    expect(cfg.listConfigHosts).toHaveBeenCalled();
+    expect(tun.createAndRaiseTunnel).toHaveBeenCalled();
+    expect(tun.connectTunnel).toHaveBeenCalled();
+
+    // config submenu
+    expect(cfg.connectConfigHostFlow).toHaveBeenCalled();
     expect(cfg.addConfigHost).toHaveBeenCalled();
+    expect(cfg.editConfigHost).toHaveBeenCalled();
+    expect(cfg.removeConfigHostFlow).toHaveBeenCalled();
+
+    // actions submenu
     expect(act.checkFlow).toHaveBeenCalled();
     expect(act.copyIdFlow).toHaveBeenCalled();
     expect(act.runFlow).toHaveBeenCalled();
@@ -140,14 +164,16 @@ describe('mainMenu navigation', () => {
 
   it('recovers from a flow error and keeps the menu alive', async () => {
     connectMod.quickConnect.mockRejectedValueOnce(new Error('disk full'));
-    q.choose = ['quick', 'exit'];
+    q.pick = ['quick', 'exit'];
     const { mainMenu } = await import('../src/commands/menu.js');
     await expect(mainMenu()).resolves.toBeUndefined();
   });
 
   it('Ctrl+C at the menu prompt exits cleanly', async () => {
     const { PromptAbortError } = await import('../src/core/errors.js');
-    chooseMock.mockRejectedValueOnce(new PromptAbortError());
+    // menuChoose awaits pickFromList; a thrown PromptAbortError bubbles up to
+    // mainMenu's catch, which prints the farewell and returns.
+    q.pick = [new PromptAbortError()];
     const { mainMenu } = await import('../src/commands/menu.js');
     await expect(mainMenu()).resolves.toBeUndefined();
   });
@@ -155,7 +181,7 @@ describe('mainMenu navigation', () => {
   it('Ctrl+C inside a flow exits cleanly', async () => {
     const { PromptAbortError } = await import('../src/core/errors.js');
     settingsMod.settingsFlow.mockRejectedValueOnce(new PromptAbortError());
-    q.choose = ['settings'];
+    q.pick = ['settings', 'exit'];
     const { mainMenu } = await import('../src/commands/menu.js');
     await expect(mainMenu()).resolves.toBeUndefined();
   });

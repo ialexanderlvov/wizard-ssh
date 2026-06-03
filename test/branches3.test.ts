@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -11,6 +11,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
 const runner = {
@@ -23,6 +24,7 @@ const feat = { copyCode: 0, transferCode: 0, healthOpen: false };
 
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/ssh/features.js', () => ({
     healthCheck: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
@@ -97,6 +99,9 @@ describe('server edit: save/cancel branches', () => {
 
   it('editServer with an unknown name just returns', async () => {
     await seed();
+    // Unknown name → resolveEntity prints not-found, then (store non-empty) falls
+    // back to pickEntity (pickFromList). Backing out returns no entity → no edit.
+    q.pick = [PICK_BACK];
     const { editServer } = await import('../src/commands/servers.js');
     await expect(editServer('nope-xyz-nomatch')).resolves.toBeUndefined();
   });
@@ -135,6 +140,8 @@ describe('tunnel edit: cancel branches', () => {
   it('editTunnel unknown name returns', async () => {
     const { tunnels } = await import('../src/store/tunnels.store.js');
     tunnels.create({ name: 'tn', type: 'local', localPort: 1, remotePort: 1, kind: 'tunnel' });
+    // Unknown name → not-found, then pickEntity (store non-empty); back out → no edit.
+    q.pick = [PICK_BACK];
     const { editTunnel } = await import('../src/commands/tunnels.js');
     await expect(editTunnel('nope-xyz')).resolves.toBeUndefined();
   });

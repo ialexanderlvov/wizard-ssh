@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -11,6 +11,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
 const runner = {
@@ -22,6 +23,7 @@ const runner = {
 
 function cmdMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/vault/touchid.js', () => ({
     isSupported: () => false,
@@ -49,7 +51,7 @@ beforeEach(() => {
 describe('config: pickers, not-found, warnings', () => {
   it('editConfigHost with no alias uses the host picker', async () => {
     writeConfig('Host h1\n    HostName 1.1.1.1\n');
-    q.search = ['h1'];
+    q.pick = ['h1'];
     q.text = ['2.2.2.2', 'u', '22', '', ''];
     const { editConfigHost } = await import('../src/commands/config.js');
     await editConfigHost();
@@ -119,7 +121,7 @@ describe('helpers direct', () => {
     const { servers } = await import('../src/store/servers.store.js');
     const a = servers.create({ name: 'web-1', host: '1.1.1.1', kind: 'server' });
     servers.create({ name: 'web-2', host: '2.2.2.2', kind: 'server' });
-    q.search = [a.id];
+    q.pick = ['web-1'];
     const { resolveEntity } = await import('../src/commands/helpers.js');
     expect((await resolveEntity(servers, 'web', 'msg'))?.id).toBe(a.id);
   });
@@ -215,7 +217,7 @@ describe('vault flow rekey mismatch', () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('master');
     vault.lock();
-    q.choose = ['rekey', 'back'];
+    q.pick = ['rekey', PICK_BACK];
     q.secret = ['master', 'new1', 'new2'];
     const { vaultFlow } = await import('../src/commands/settings.js');
     await vaultFlow();

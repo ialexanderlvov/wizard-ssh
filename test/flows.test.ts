@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 // Scripted answers consumed (FIFO) by the mocked prompt wrappers.
 const q = {
@@ -12,6 +12,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 
 function resetQ(): void {
@@ -21,10 +22,12 @@ function resetQ(): void {
   q.secret = [];
   q.multi = [];
   q.search = [];
+  q.pick = [];
 }
 
 function mockPrompts(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
 }
 
 beforeEach(() => {
@@ -196,6 +199,17 @@ describe('tunnel + config + settings + menu flows', () => {
   });
 
   it('settingsFlow updates defaults', async () => {
+    // settingsFlow is now a loop menu: pick a row → edit that one setting → loop;
+    // BACK exits. Text/choose/confirm queues line up with the pick order below.
+    q.pick = [
+      'defaultUser',
+      'defaultSshPort',
+      'defaultRemoteHost',
+      'defaultAuth',
+      'defaultSort',
+      'openBrowser',
+      PICK_BACK,
+    ];
     q.text = ['admin', '2200', '127.0.0.5'];
     q.choose = ['key', 'name']; // defaultAuth, defaultSort
     q.confirm = [false]; // openBrowser
@@ -205,12 +219,14 @@ describe('tunnel + config + settings + menu flows', () => {
     await settingsFlow();
     expect(settings.get().defaultUser).toBe('admin');
     expect(settings.get().defaultSshPort).toBe(2200);
+    expect(settings.get().defaultRemoteHost).toBe('127.0.0.5');
     expect(settings.get().defaultAuth).toBe('key');
     expect(settings.get().defaultSort).toBe('name');
+    expect(settings.get().openBrowser).toBe(false);
   });
 
   it('mainMenu exits cleanly', async () => {
-    q.choose = ['exit'];
+    q.pick = ['exit'];
     mockPrompts();
     const { mainMenu } = await import('../src/commands/menu.js');
     await expect(mainMenu()).resolves.toBeUndefined();

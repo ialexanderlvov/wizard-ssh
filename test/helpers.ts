@@ -26,6 +26,8 @@ export interface PromptQueues {
   secret: unknown[];
   multi: unknown[];
   search: unknown[];
+  /** Selections for the custom list prompt — see {@link listMock}. */
+  pick?: unknown[];
 }
 
 /**
@@ -57,4 +59,57 @@ export function promptMock(q: PromptQueues) {
     },
     pause: async () => {},
   };
+}
+
+interface ListConfigLike {
+  items?: unknown[];
+  search?: (it: unknown) => string;
+  render?: (it: unknown) => string;
+}
+
+/** Queue this to make the mocked picker return BACK (e.g. Esc / «← Назад»). */
+export const PICK_BACK = '__BACK__';
+
+/**
+ * Scripted stand-in for src/ui/list-prompt.js (the custom filter/sort picker).
+ * It MUST be doMock'd alongside promptMock so that `ui.BACK` resolves to the
+ * very symbol this mock returns (both come from the same mocked module).
+ *
+ * Each queued `q.pick` entry resolves against the picker's `items`:
+ *   • an Error          → thrown (simulate Ctrl+C via PromptAbortError)
+ *   • a function        → called with `items`; its result is returned
+ *   • PICK_BACK / empty → BACK (also how loop-menus terminate)
+ *   • a string          → first item whose `.value` === it (menu/settings/vault
+ *                         rows), else the first item whose search/render text
+ *                         contains it (servers/tunnels/config hosts — i.e. match
+ *                         by name or alias). No match → BACK.
+ */
+export function listMock(q: { pick?: unknown[] }) {
+  const BACK = Symbol('mock-pickFromList-BACK');
+  const pickFromList = async (config: ListConfigLike): Promise<unknown> => {
+    const queue = (q.pick ??= []);
+    const sel = queue.shift();
+    if (sel instanceof Error) throw sel;
+    if (sel === undefined || sel === PICK_BACK) return BACK;
+    if (typeof sel === 'function') {
+      const r = (sel as (items: unknown[]) => unknown)(config.items ?? []);
+      return r === undefined ? BACK : r;
+    }
+    const items = config.items ?? [];
+    const byValue = items.find(
+      (it) =>
+        it != null &&
+        typeof it === 'object' &&
+        'value' in it &&
+        (it as { value: unknown }).value === sel,
+    );
+    if (byValue !== undefined) return byValue;
+    const needle = String(sel).toLowerCase();
+    const byText = items.find((it) => {
+      const hay = config.search ? config.search(it) : config.render ? config.render(it) : '';
+      return String(hay).toLowerCase().includes(needle);
+    });
+    return byText === undefined ? BACK : byText;
+  };
+  return { BACK, pickFromList };
 }

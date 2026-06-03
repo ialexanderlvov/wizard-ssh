@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, promptMock } from './helpers.js';
 import type { Tunnel } from '../src/core/types.js';
 
 const q = {
@@ -12,6 +12,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
 const runner = {
@@ -29,6 +30,7 @@ const feat = {
 
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/ssh/features.js', () => ({
     healthCheck: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
@@ -78,8 +80,8 @@ describe('actions: every resolution + option branch', () => {
 
   it('checkFlow: no name → picker', async () => {
     const { servers } = await import('../src/store/servers.store.js');
-    const s = servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
-    q.search = [s.id];
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    q.pick = ['box']; // picker resolves the seeded server by name
     const { checkFlow } = await import('../src/commands/actions.js');
     expect(await checkFlow()).toBe(2); // unreachable → printError branch
   });

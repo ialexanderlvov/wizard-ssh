@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -11,6 +11,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
 
@@ -30,6 +31,7 @@ const touch = { supported: false };
 
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/ssh/features.js', () => ({
     healthCheck: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
@@ -169,11 +171,11 @@ describe('connect branches', () => {
 
   it('fuzzy single match connects; multi match prompts', async () => {
     const { servers } = await import('../src/store/servers.store.js');
-    const a = servers.create({ name: 'web-alpha', host: '1.1.1.1', kind: 'server' });
+    servers.create({ name: 'web-alpha', host: '1.1.1.1', kind: 'server' });
     servers.create({ name: 'web-beta', host: '2.2.2.2', kind: 'server' });
     const { quickConnectByName } = await import('../src/commands/connect.js');
     // multiple "web" matches → picker
-    q.choose = [`s:${a.id}`];
+    q.pick = ['web-alpha'];
     expect(await quickConnectByName('web')).toBe(0);
     expect(runner.runInteractive).toHaveBeenCalled();
   });
@@ -187,7 +189,8 @@ describe('connect branches', () => {
       remotePort: 1,
       kind: 'tunnel',
     });
-    q.search = [`t:${t.id}`];
+    void t;
+    q.pick = ['qt'];
     const { quickConnect } = await import('../src/commands/connect.js');
     expect(await quickConnect()).toBe(0);
     expect(runner.runTunnel).toHaveBeenCalled();
@@ -195,7 +198,7 @@ describe('connect branches', () => {
 
   it('quickConnect dispatches to a config host pick', async () => {
     writeConfig('Host qc\n    HostName 9.9.9.9\n');
-    q.search = ['c:qc'];
+    q.pick = ['qc'];
     const { quickConnect } = await import('../src/commands/connect.js');
     expect(await quickConnect()).toBe(0);
     expect(runner.runInteractive).toHaveBeenCalled();
@@ -306,8 +309,8 @@ describe('search → connect to tunnel / config host', () => {
       remotePort: 1,
       kind: 'tunnel',
     });
-    q.confirm = [true];
-    q.choose = [`t:${t.id}`];
+    void t;
+    q.pick = ['web-tun'];
     const { searchFlow } = await import('../src/commands/search.js');
     await searchFlow('web');
     expect(runner.runTunnel).toHaveBeenCalled();
@@ -315,8 +318,7 @@ describe('search → connect to tunnel / config host', () => {
 
   it('connects to a config-host result', async () => {
     writeConfig('Host web-cfg\n    HostName 9.9.9.9\n');
-    q.confirm = [true];
-    q.choose = ['c:web-cfg'];
+    q.pick = ['web-cfg'];
     const { searchFlow } = await import('../src/commands/search.js');
     await searchFlow('web');
     expect(runner.runInteractive).toHaveBeenCalled();
@@ -436,11 +438,73 @@ describe('vault management flow', () => {
     vault.setup('master');
     vault.lock();
 
-    q.choose = ['unlock', 'enableTouch', 'disableTouch', 'rekey', 'lock', 'back'];
+    q.pick = ['unlock', 'enableTouch', 'disableTouch', 'rekey', 'lock', PICK_BACK];
     q.secret = ['master', 'newmaster', 'newmaster'];
     const { vaultFlow } = await import('../src/commands/settings.js');
     await vaultFlow();
     expect(vault.isUnlocked()).toBe(false); // ended with lock
+  });
+});
+
+describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
+  it('createAndRaiseTunnel: pick a config host, define forward, save and raise', async () => {
+    writeConfig('Host qchost\n    HostName 9.9.9.9\n');
+    q.pick = ['qchost'];
+    q.choose = ['local'];
+    // askForward(local): remotePort, remoteHost, localPort + openBrowser confirm;
+    // askMeta: name, description, tags
+    q.text = ['8080', '127.0.0.1', '8080', 'qctun', '', ''];
+    q.confirm = [false];
+    const { createAndRaiseTunnel } = await import('../src/commands/tunnels.js');
+    expect(await createAndRaiseTunnel()).toBe(0);
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.findByName('qctun');
+    expect(t?.type).toBe('local');
+    expect(t?.hostMode).toBe('sshconfig');
+    expect(runner.runTunnel).toHaveBeenCalled();
+  });
+
+  it('createAndRaiseTunnel warns when ~/.ssh/config has no hosts', async () => {
+    const { createAndRaiseTunnel } = await import('../src/commands/tunnels.js');
+    expect(await createAndRaiseTunnel()).toBe(0);
+    expect(runner.runTunnel).not.toHaveBeenCalled();
+  });
+
+  it('vaultFlow deletes a saved password but keeps the server', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('pw');
+    const { servers } = await import('../src/store/servers.store.js');
+    const s = servers.create({ name: 'mybox', host: '1.1.1.1', kind: 'server' });
+    servers.update(s.id, { secretId: id });
+    q.pick = ['deleteSecret', 'mybox', PICK_BACK];
+    const { vaultFlow } = await import('../src/commands/settings.js');
+    await vaultFlow();
+    expect(vault.hasSecret(id)).toBe(false);
+    expect(servers.findByName('mybox')).toBeTruthy();
+    expect(servers.findByName('mybox')?.secretId).toBeNull();
+  });
+
+  it('vaultFlow reset wipes the vault; entities keep their data', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const id = vault.setSecret('pw');
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.create({
+      name: 'rt',
+      type: 'local',
+      localPort: 1,
+      remotePort: 1,
+      kind: 'tunnel',
+    });
+    tunnels.update(t.id, { secretId: id });
+    q.pick = ['reset', PICK_BACK];
+    q.confirm = [true]; // confirm the destructive reset
+    const { vaultFlow } = await import('../src/commands/settings.js');
+    await vaultFlow();
+    expect(vault.exists()).toBe(false);
+    expect(tunnels.findByName('rt')).toBeTruthy();
+    expect(tunnels.findByName('rt')?.secretId).toBeNull();
   });
 });
 

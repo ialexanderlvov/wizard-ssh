@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -8,6 +8,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 function resetQ(): void {
   (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
@@ -22,6 +23,7 @@ const runner = {
 
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/vault/touchid.js', () => ({
     isSupported: () => false,
@@ -143,8 +145,8 @@ describe('server edit (connection + link) + multi-delete', () => {
 describe('interactive quick-connect + search→connect', () => {
   it('quickConnect picks from the fuzzy list', async () => {
     const { servers } = await import('../src/store/servers.store.js');
-    const s = servers.create({ name: 'pickme', host: '1.2.3.4', kind: 'server' });
-    q.search = [`s:${s.id}`];
+    servers.create({ name: 'pickme', host: '1.2.3.4', kind: 'server' });
+    q.pick = ['pickme'];
     const { quickConnect } = await import('../src/commands/connect.js');
     expect(await quickConnect()).toBe(0);
     expect(runner.runInteractive).toHaveBeenCalled();
@@ -152,9 +154,8 @@ describe('interactive quick-connect + search→connect', () => {
 
   it('searchFlow offers to connect to a result', async () => {
     const { servers } = await import('../src/store/servers.store.js');
-    const s = servers.create({ name: 'web-prod', host: '1.2.3.4', kind: 'server' });
-    q.confirm = [true]; // connect to one?
-    q.choose = [`s:${s.id}`]; // which one
+    servers.create({ name: 'web-prod', host: '1.2.3.4', kind: 'server' });
+    q.pick = ['web-prod']; // which one (no confirm prompt any more)
     const { searchFlow } = await import('../src/commands/search.js');
     await searchFlow('web');
     expect(runner.runInteractive).toHaveBeenCalled();

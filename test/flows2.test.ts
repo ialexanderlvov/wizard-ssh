@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome, promptMock } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 const q = {
   text: [] as unknown[],
@@ -11,6 +11,7 @@ const q = {
   secret: [] as unknown[],
   multi: [] as unknown[],
   search: [] as unknown[],
+  pick: [] as unknown[],
 };
 function resetQ(): void {
   (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
@@ -25,6 +26,7 @@ const runner = {
 
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/ssh/features.js', () => ({
     healthCheck: async () => ({ host: 'h', port: 22, open: false, ms: 1 }),
@@ -144,7 +146,7 @@ describe('config edit / remove', () => {
 
 describe('vault flow + import/export menu + menu nav', () => {
   it('vaultFlow can create a vault', async () => {
-    q.choose = ['setup', 'back'];
+    q.pick = ['setup', PICK_BACK];
     q.secret = ['masterpw', 'masterpw'];
     const { vaultFlow } = await import('../src/commands/settings.js');
     await vaultFlow();
@@ -160,7 +162,17 @@ describe('vault flow + import/export menu + menu nav', () => {
   });
 
   it('mainMenu walks submenus and exits', async () => {
-    q.choose = ['servers', 'back', 'tunnels', 'back', 'config', 'back', 'actions', 'back', 'exit'];
+    q.pick = [
+      'servers',
+      PICK_BACK,
+      'tunnels',
+      PICK_BACK,
+      'config',
+      PICK_BACK,
+      'actions',
+      PICK_BACK,
+      'exit',
+    ];
     const { mainMenu } = await import('../src/commands/menu.js');
     await expect(mainMenu()).resolves.toBeUndefined();
   });
