@@ -36,11 +36,11 @@
 ## 🚀 Быстрый старт
 
 ```bash
-npm install
-npm run build
-npm link          # делает доступными команды `wssh` и `wizard-ssh`
+pnpm install
+pnpm build
+pnpm link --global   # делает доступными команды `wssh` и `wizard-ssh`
 
-wssh              # интерактивное меню
+wssh                 # интерактивное меню
 ```
 
 Подробнее в [docs/INSTALL.md](docs/INSTALL.md) и [docs/USAGE.md](docs/USAGE.md).
@@ -97,12 +97,13 @@ src/
 ## 🛠 Разработка
 
 ```bash
-npm run dev          # запуск через tsx без сборки
-npm run typecheck    # tsc --noEmit
-npm run lint         # eslint
-npm run format       # prettier --write
-npm test             # vitest
-npm run build        # tsup → dist/
+pnpm dev             # запуск через tsx без сборки
+pnpm typecheck       # tsc --noEmit
+pnpm lint            # eslint
+pnpm format          # prettier --write
+pnpm test            # vitest
+pnpm test:coverage   # vitest + покрытие
+pnpm build           # tsup → dist/
 ```
 
 Коммиты — по [Conventional Commits](https://www.conventionalcommits.org/) (проверяется

@@ -3,6 +3,12 @@
 ## Требования
 
 - **Node.js ≥ 18** (рекомендуется 20+; есть `.nvmrc`).
+- **pnpm** (менеджер пакетов проекта; версия закреплена в `packageManager`). Проще всего
+  через corepack — он сам поставит нужную версию:
+  ```bash
+  corepack enable
+  # или глобально: npm i -g pnpm
+  ```
 - **ssh** в `PATH` (есть везде, где есть OpenSSH).
 - Для пароля по SSH — **sshpass**:
   ```bash
@@ -18,13 +24,13 @@
   xcode-select --install
   ```
 
-## Вариант 1. Из исходников + `npm link` (рекомендуется для локального использования)
+## Вариант 1. Из исходников + `pnpm link` (рекомендуется для локального использования)
 
 ```bash
 git clone <repo> wizard-ssh && cd wizard-ssh
-npm install          # ставит зависимости и инициализирует husky
-npm run build        # компилирует TypeScript в dist/ (tsup)
-npm link             # регистрирует глобально команды `wssh` и `wizard-ssh`
+pnpm install         # ставит зависимости и инициализирует husky
+pnpm build           # компилирует TypeScript в dist/ (tsup)
+pnpm link --global   # регистрирует глобально команды `wssh` и `wizard-ssh`
 ```
 
 Проверка:
@@ -38,7 +44,7 @@ wssh                 # интерактивное меню
 Удалить глобальную ссылку:
 
 ```bash
-npm unlink -g wizard-ssh
+pnpm uninstall --global wizard-ssh
 ```
 
 ## Вариант 2. Глобальная установка пакета
@@ -46,9 +52,9 @@ npm unlink -g wizard-ssh
 После публикации (или из локальной папки):
 
 ```bash
-npm install -g wizard-ssh
+pnpm add -g wizard-ssh
 # или из каталога с собранным проектом:
-npm install -g .
+pnpm add -g .
 ```
 
 `bin` пакета регистрирует две команды: **`wssh`** (основная) и `wizard-ssh` (алиас).
@@ -56,14 +62,14 @@ npm install -g .
 ## Вариант 3. Запуск без установки
 
 ```bash
-npm run dev -- server ls      # через tsx, без сборки
+pnpm dev -- server ls         # через tsx, без сборки
 # или после build:
 node dist/cli.js --help
 ```
 
 ## Алиас в shell (по желанию)
 
-Если не хотите `npm link`, добавьте алиас в `~/.zshrc` / `~/.bashrc`:
+Если не хотите `pnpm link`, добавьте алиас в `~/.zshrc` / `~/.bashrc`:
 
 ```bash
 alias wssh='node /полный/путь/к/wizard-ssh/dist/cli.js'
@@ -86,6 +92,6 @@ alias wssh='node /полный/путь/к/wizard-ssh/dist/cli.js'
 
 ```bash
 git pull
-npm install
-npm run build        # при npm link этого достаточно — dist обновится «на месте»
+pnpm install
+pnpm build           # при pnpm link этого достаточно — dist обновится «на месте»
 ```
