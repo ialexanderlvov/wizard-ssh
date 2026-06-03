@@ -1,18 +1,18 @@
-/** Unified search across servers, tunnels and ~/.ssh/config, with quick-connect. */
+/** Unified search across servers (= ~/.ssh/config hosts) and tunnels, with
+ *  quick-connect. */
 
 import type { Server, Tunnel } from '../core/types.js';
 import { searchEverything } from '../search/index.js';
 import * as ui from '../ui/index.js';
-import { renderConfigHostsTable, renderEntityTable } from '../ui/tables.js';
+import { renderEntityTable } from '../ui/tables.js';
 import { connectServer } from './servers.js';
 import { connectTunnel } from './tunnels.js';
-import { connectConfigHostFlow } from './config.js';
 
 export async function searchFlow(query?: string): Promise<void> {
   let q = query;
   if (!q) {
     ui.ensureInteractive('Поиск');
-    q = await ui.text({ message: 'Поиск по серверам, туннелям и ~/.ssh/config' });
+    q = await ui.text({ message: 'Поиск по серверам и туннелям' });
   }
   if (!q.trim()) return;
 
@@ -30,17 +30,12 @@ export async function searchFlow(query?: string): Promise<void> {
     ui.printSection('🚇', `Туннели (${res.tunnels.length})`);
     console.log(renderEntityTable(res.tunnels));
   }
-  if (res.configHosts.length) {
-    ui.printSection('🗂', `~/.ssh/config (${res.configHosts.length})`);
-    console.log(renderConfigHostsTable(res.configHosts));
-  }
 
   if (!ui.isInteractive()) return;
 
   const items: ui.ConnectItem[] = [
     ...res.servers.map((e): ui.ConnectItem => ({ kind: 'entity', entity: e })),
     ...res.tunnels.map((e): ui.ConnectItem => ({ kind: 'entity', entity: e })),
-    ...res.configHosts.map((h): ui.ConnectItem => ({ kind: 'config', host: h })),
   ];
   const picked = await ui.pickFromList<ui.ConnectItem>({
     message: 'Подключиться (Esc — просто посмотреть)',
@@ -50,9 +45,8 @@ export async function searchFlow(query?: string): Promise<void> {
     pageSize: 15,
   });
   if (picked === ui.BACK) return;
-  if (picked.kind === 'config') {
-    await connectConfigHostFlow(picked.host.alias);
-  } else if (picked.entity.kind === 'tunnel') {
+  if (picked.kind === 'config') return; // not produced any more
+  if (picked.entity.kind === 'tunnel') {
     await connectTunnel(picked.entity as Tunnel);
   } else {
     await connectServer(picked.entity as Server);

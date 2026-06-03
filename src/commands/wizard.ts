@@ -141,6 +141,68 @@ export async function askConnectionTarget(
   };
 }
 
+/** Connection details for a SERVER. A server is always a ~/.ssh/config Host, so
+ *  there is no alias-vs-manual choice — we ask the host fields directly. */
+export async function askServerConnection(
+  defaults: Partial<ConnectionTarget> = {},
+): Promise<ConnectionTarget> {
+  const s = settings.get();
+  ui.printSection('🌐', 'Подключение');
+  const host = await ui.text({
+    message: '🖥 HostName (IP или домен)',
+    default: defaults.host,
+    validate: (v) => isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
+  });
+  const user = await ui.text({
+    message: '👤 SSH-пользователь',
+    default: defaults.user || s.defaultUser,
+    validate: (v) => v.trim().length > 0 || 'Не может быть пустым',
+  });
+  const sshPortStr = await ui.text({
+    message: '🔌 SSH-порт',
+    default: String(defaults.sshPort ?? s.defaultSshPort),
+    validate: portValidate,
+  });
+  const auth = await ui.choose<'agent' | 'key' | 'password'>({
+    message: '🔐 Как авторизуемся?',
+    choices: [
+      { name: 'ssh-agent / по умолчанию', value: 'agent', description: 'ничего вводить не нужно' },
+      { name: 'SSH-ключ (IdentityFile)', value: 'key', description: 'указать файл ключа' },
+      { name: 'Пароль', value: 'password', description: 'можно сохранить в хранилище' },
+    ],
+    default: defaults.auth ?? s.defaultAuth,
+  });
+  const keyPath = auth === 'key' ? await pickKey(defaults.keyPath) : null;
+  return {
+    hostMode: 'sshconfig',
+    sshHost: '',
+    host: host.trim(),
+    user: user.trim(),
+    sshPort: Number(sshPortStr),
+    auth,
+    keyPath,
+    secretId: defaults.secretId ?? null,
+  };
+}
+
+/** Description + tags (the parts that ride in the `#wssh` comment). */
+export async function askAnnotations(
+  defaults: { description?: string; tags?: string[] } = {},
+): Promise<{ description: string; tags: string[] }> {
+  ui.printSection('🏷', 'Описание и метки');
+  const description = await ui.text({
+    message: '📝 Описание (необязательно)',
+    default: defaults.description ?? '',
+  });
+  const tags = parseTags(
+    await ui.text({
+      message: '🏷 Теги через запятую (необязательно)',
+      default: (defaults.tags ?? []).join(', '),
+    }),
+  );
+  return { description, tags };
+}
+
 export interface ForwardAnswers {
   type: ForwardType;
   localPort: number;

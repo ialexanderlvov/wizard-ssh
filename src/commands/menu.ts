@@ -10,7 +10,6 @@ import { detailBox } from '../ui/format.js';
 
 import * as serverCmd from './servers.js';
 import * as tunnelCmd from './tunnels.js';
-import * as configCmd from './config.js';
 import * as actions from './actions.js';
 import { quickConnect } from './connect.js';
 import { searchFlow } from './search.js';
@@ -105,7 +104,7 @@ async function browseEntities(
 
 const serversMenu = (): Promise<void> =>
   loop(
-    'Серверы',
+    'Серверы / ~/.ssh/config',
     [
       { label: 'Список / подключиться', value: 'list' },
       { label: 'Добавить', value: 'add' },
@@ -114,7 +113,7 @@ const serversMenu = (): Promise<void> =>
       if (a === 'add') await serverCmd.addServer();
       else if (a === 'list')
         await browseEntities(
-          'Серверы',
+          'Серверы (= хосты ~/.ssh/config)',
           () => servers.all(),
           (e) => serverCmd.connectServer(e as Server),
           (name) => serverCmd.editServer(name),
@@ -145,23 +144,6 @@ const tunnelsMenu = (): Promise<void> =>
     },
   );
 
-const configMenu = (): Promise<void> =>
-  loop(
-    '~/.ssh/config',
-    [
-      { label: 'Список / подключиться', value: 'list' },
-      { label: 'Добавить хост', value: 'add' },
-      { label: 'Редактировать', value: 'edit' },
-      { label: 'Удалить', value: 'remove' },
-    ],
-    async (a) => {
-      if (a === 'list') await configCmd.connectConfigHostFlow();
-      else if (a === 'add') await configCmd.addConfigHost();
-      else if (a === 'edit') await configCmd.editConfigHost();
-      else if (a === 'remove') await configCmd.removeConfigHostFlow();
-    },
-  );
-
 const actionsMenu = (): Promise<void> =>
   loop(
     'Действия по SSH',
@@ -188,9 +170,8 @@ export async function mainMenu(): Promise<void> {
     try {
       action = await menuChoose(`Главное меню  (${counts})`, [
         { label: 'Быстрое подключение', value: 'quick' },
-        { label: 'Серверы ▸', value: 'servers' },
+        { label: 'Серверы / ~/.ssh/config ▸', value: 'servers' },
         { label: 'Туннели ▸', value: 'tunnels' },
-        { label: '~/.ssh/config ▸', value: 'config' },
         { label: 'Действия ▸', value: 'actions' },
         { label: 'Поиск по всему', value: 'search' },
         { label: 'Хранилище паролей', value: 'vault' },
@@ -216,7 +197,6 @@ export async function mainMenu(): Promise<void> {
         await ui.pause();
       } else if (action === 'servers') await serversMenu();
       else if (action === 'tunnels') await tunnelsMenu();
-      else if (action === 'config') await configMenu();
       else if (action === 'actions') await actionsMenu();
       else if (action === 'search') {
         await searchFlow();

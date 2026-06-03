@@ -1,13 +1,14 @@
-/** CRUD over the real ~/.ssh/config, plus connecting straight to an alias. */
+/** CRUD over the real ~/.ssh/config, plus connecting straight to an alias.
+ *  Servers ARE config hosts, so connecting goes through the same path. */
 
-import type { Server, SshConfigHost } from '../core/types.js';
+import type { SshConfigHost } from '../core/types.js';
 import type { SshConfigParam } from '../ssh-config/index.js';
 import * as sshConfig from '../ssh-config/index.js';
-import { runInteractive } from '../ssh/runner.js';
+import { servers } from '../store/servers.store.js';
 import * as ui from '../ui/index.js';
 import { renderConfigHostsTable } from '../ui/tables.js';
 import { isValidSshAlias } from '../utils/validators.js';
-import { nowIso } from '../utils/time.js';
+import { connectServer } from './servers.js';
 
 const STD_KEYS = ['HostName', 'User', 'Port', 'IdentityFile', 'ProxyJump'] as const;
 
@@ -99,6 +100,7 @@ export async function editConfigHost(alias?: string): Promise<void> {
   const { backup } = sshConfig.upsertHost({
     alias: host.alias,
     params: mergeParams(host.params, answers),
+    wssh: host.wssh, // keep the #wssh annotation (desc/tags/auth/secret) intact
   });
   ui.printOk(`Хост ${host.alias} обновлён.`);
   if (backup) ui.printInfo(`Бэкап: ${backup}`);
@@ -148,7 +150,8 @@ export function listConfigHosts(opts: { json?: boolean } = {}): SshConfigHost[] 
   return hosts;
 }
 
-/** Connect straight to a config alias (no saved server needed). */
+/** Connect straight to a config alias — same path as connecting to a server,
+ *  since every config host IS a server. */
 export async function connectConfigHostFlow(alias?: string): Promise<number> {
   const host = alias
     ? sshConfig.getHost(alias)
@@ -157,25 +160,6 @@ export async function connectConfigHostFlow(alias?: string): Promise<number> {
     if (alias) ui.printError(`Хост «${alias}» не найден.`);
     return 0;
   }
-  const ad: Server = {
-    kind: 'server',
-    id: '',
-    name: host.alias,
-    description: 'из ~/.ssh/config',
-    tags: [],
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    lastUsedAt: null,
-    useCount: 0,
-    hostMode: 'sshconfig',
-    sshHost: host.alias,
-    host: '',
-    user: '',
-    sshPort: 22,
-    auth: 'agent',
-    keyPath: null,
-    secretId: null,
-    linkedSshHost: host.alias,
-  };
-  return runInteractive(ad);
+  const server = servers.findById(host.alias);
+  return server ? connectServer(server) : 0;
 }

@@ -1,16 +1,14 @@
-/** Unified quick-connect: pick (or name-resolve) across servers, tunnels and
- *  ~/.ssh/config aliases, then connect appropriately. */
+/** Unified quick-connect: pick (or name-resolve) across servers (= ~/.ssh/config
+ *  hosts) and tunnels, then connect appropriately. */
 
 import type { Server, Tunnel } from '../core/types.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
-import { filterConfigHosts, filterEntities } from '../search/index.js';
-import * as sshConfig from '../ssh-config/index.js';
+import { filterEntities } from '../search/index.js';
 import * as ui from '../ui/index.js';
 import { ts } from '../utils/time.js';
 import { connectServer } from './servers.js';
 import { connectTunnel } from './tunnels.js';
-import { connectConfigHostFlow } from './config.js';
 
 type ConnectItem = ui.ConnectItem;
 
@@ -26,15 +24,15 @@ const QC_SORTS: ReadonlyArray<ui.ListSort<ConnectItem>> = [
 ];
 
 function allConnectItems(): ConnectItem[] {
+  // Servers ARE ~/.ssh/config hosts, so this single list already covers config.
   return [
     ...servers.sorted('recent').map((e): ConnectItem => ({ kind: 'entity', entity: e })),
     ...tunnels.sorted('recent').map((e): ConnectItem => ({ kind: 'entity', entity: e })),
-    ...sshConfig.listHosts().map((h): ConnectItem => ({ kind: 'config', host: h })),
   ];
 }
 
 async function dispatch(i: ConnectItem): Promise<number> {
-  if (i.kind === 'config') return connectConfigHostFlow(i.host.alias);
+  if (i.kind === 'config') return connectServer(servers.findById(i.host.alias) as Server);
   const e = i.entity;
   return e.kind === 'tunnel' ? connectTunnel(e as Tunnel) : connectServer(e as Server);
 }
@@ -66,19 +64,14 @@ export async function quickConnectByName(name?: string): Promise<number> {
   if (server) return connectServer(server);
   const tunnel = tunnels.findByName(name);
   if (tunnel) return connectTunnel(tunnel);
-  const host = sshConfig.getHost(name);
-  if (host) return connectConfigHostFlow(host.alias);
 
-  // fuzzy fallback across all three sources
+  // fuzzy fallback across servers (= config hosts) and tunnels
   const hits: ConnectItem[] = [
     ...filterEntities(servers.all(), name).map((e): ConnectItem => ({ kind: 'entity', entity: e })),
     ...filterEntities(tunnels.all(), name).map((e): ConnectItem => ({ kind: 'entity', entity: e })),
-    ...filterConfigHosts(sshConfig.listHosts(), name).map(
-      (h): ConnectItem => ({ kind: 'config', host: h }),
-    ),
   ];
   if (hits.length === 0) {
-    ui.printError(`«${name}» не найдено среди серверов, туннелей и ~/.ssh/config.`);
+    ui.printError(`«${name}» не найдено среди серверов и туннелей.`);
     return 1;
   }
   if (hits.length === 1) return dispatch(hits[0]!);

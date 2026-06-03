@@ -1,16 +1,16 @@
-/** Server CRUD + connect flows. Reused by commander and the interactive menu. */
+/** Server CRUD + connect flows. A server is a Host in ~/.ssh/config (its name is
+ *  the alias); app-only extras live in the `#wssh {...}` comment. */
 
 import type { Server, SortKey } from '../core/types.js';
 import { servers } from '../store/servers.store.js';
 import { vault } from '../vault/vault.js';
-import * as sshConfig from '../ssh-config/index.js';
 import { runInteractive } from '../ssh/runner.js';
 import * as ui from '../ui/index.js';
-import { detailBox } from '../ui/format.js';
+import { detailBox, targetSummary } from '../ui/format.js';
 import { renderEntityTable } from '../ui/tables.js';
-import { isValidName, isValidSshAlias } from '../utils/validators.js';
-import { parseTags, slugify, tilde } from '../utils/strings.js';
-import { askConnectionTarget, askMeta } from './wizard.js';
+import { isValidSshAlias } from '../utils/validators.js';
+import { parseTags } from '../utils/strings.js';
+import { askAnnotations, askServerConnection } from './wizard.js';
 import { handlePasswordSecret, pickEntity, resolveEntity, resolvePassword } from './helpers.js';
 
 /** Connect an interactive shell to a server. Returns the ssh exit code. */
@@ -27,56 +27,27 @@ export async function connectServerFlow(name?: string): Promise<number> {
   return connectServer(server);
 }
 
-/** Offer to mirror a manual server into ~/.ssh/config. */
-async function offerLink(server: Server): Promise<void> {
-  if (server.hostMode === 'sshconfig') return;
-  const link = await ui.confirm({
-    message: '🔗 Записать этот сервер в ~/.ssh/config?',
-    default: false,
-  });
-  if (!link) return;
-  const alias = (
-    await ui.text({
-      message: '🔗 Алиас в ~/.ssh/config',
-      default: slugify(server.name),
-      validate: (v) => isValidSshAlias(v) || 'Только буквы, цифры, . _ -',
-    })
-  ).trim();
-  const params = [
-    { key: 'HostName', value: server.host },
-    { key: 'User', value: server.user },
-    ...(server.sshPort && server.sshPort !== 22
-      ? [{ key: 'Port', value: String(server.sshPort) }]
-      : []),
-    ...(server.auth === 'key' && server.keyPath
-      ? [{ key: 'IdentityFile', value: tilde(server.keyPath) }]
-      : []),
-  ];
-  const { backup, created } = sshConfig.upsertHost({ alias, params });
-  servers.update(server.id, { linkedSshHost: alias });
-  ui.printOk(`${created ? 'Добавлено' : 'Обновлено'} в ~/.ssh/config: ${alias}.`);
-  if (backup) ui.printInfo(`Бэкап конфига: ${backup}`);
-}
-
 export async function addServer(seed: Partial<Server> = {}): Promise<Server | null> {
   ui.ensureInteractive('Добавление сервера');
-  ui.printSection('➕', 'Новый сервер');
-  const target = await askConnectionTarget(seed);
+  ui.printSection('➕', 'Новый сервер (Host в ~/.ssh/config)');
+  const alias = (
+    await ui.text({
+      message: '🔗 Имя сервера (= алиас в ~/.ssh/config)',
+      default: seed.name,
+      validate: (v) =>
+        !isValidSshAlias(v.trim())
+          ? 'Только буквы, цифры, точка, дефис, подчёркивание (без пробелов)'
+          : servers.nameExists(v.trim())
+            ? 'Такой хост уже есть в ~/.ssh/config'
+            : true,
+    })
+  ).trim();
+  const target = await askServerConnection(seed);
   const secretId = await handlePasswordSecret(target, null);
-  const suggested = slugify(
-    seed.name || (target.hostMode === 'sshconfig' ? target.sshHost : target.host),
-  );
-  const meta = await askMeta(seed, (n) => servers.nameExists(n), suggested);
-  const server = servers.create({
-    ...target,
-    secretId,
-    ...meta,
-    kind: 'server',
-    linkedSshHost: null,
-  });
-  ui.printOk(`Сервер «${server.name}» сохранён.`);
-  await offerLink(servers.findById(server.id) as Server);
-  console.log(detailBox(servers.findById(server.id) as Server));
+  const ann = await askAnnotations(seed);
+  const server = servers.create({ name: alias, ...target, secretId, ...ann, kind: 'server' });
+  ui.printOk(`Сервер «${server.name}» сохранён в ~/.ssh/config.`);
+  console.log(detailBox(server));
   return server;
 }
 
@@ -84,6 +55,12 @@ export async function editServer(name?: string): Promise<void> {
   ui.ensureInteractive('Редактирование');
   const server = await resolveEntity(servers, name, '✏️ Выберите сервер');
   if (!server) return;
+  if (!server.manageable) {
+    ui.printWarn(
+      `«${server.name}» задан мульти-алиасным блоком / Include / Match — авто-редактирование не поддерживается. Подключаться можно.`,
+    );
+    return;
+  }
 
   let working: Server = { ...server };
   let dirty = false;
@@ -99,7 +76,6 @@ export async function editServer(name?: string): Promise<void> {
         { name: `Описание     ${working.description || '—'}`, value: 'description' },
         { name: `Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
         { name: 'Подключение / авторизация', value: 'connection' },
-        { name: 'Запись в ~/.ssh/config', value: 'link' },
         { name: 'Сохранить и выйти', value: '__save__' },
         { name: 'Выйти без сохранения', value: '__cancel__' },
       ],
@@ -108,7 +84,7 @@ export async function editServer(name?: string): Promise<void> {
     if (field === '__save__') {
       if (dirty) {
         servers.update(server.id, working);
-        ui.printOk('Изменения сохранены.');
+        ui.printOk('Изменения сохранены в ~/.ssh/config.');
       } else ui.printInfo('Изменений не было.');
       return;
     }
@@ -121,11 +97,11 @@ export async function editServer(name?: string): Promise<void> {
     if (field === 'name') {
       working.name = (
         await ui.text({
-          message: 'Новое имя',
+          message: 'Новый алиас',
           default: working.name,
           validate: (v) =>
-            !isValidName(v.trim())
-              ? 'Некорректное имя'
+            !isValidSshAlias(v.trim())
+              ? 'Только буквы, цифры, точка, дефис, подчёркивание'
               : servers.nameExists(v.trim(), server.id)
                 ? 'Имя занято'
                 : true,
@@ -141,13 +117,10 @@ export async function editServer(name?: string): Promise<void> {
       );
       dirty = true;
     } else if (field === 'connection') {
-      const target = await askConnectionTarget(working);
+      const target = await askServerConnection(working);
       const secretId = await handlePasswordSecret(target, working.secretId);
       working = { ...working, ...target, secretId };
       dirty = true;
-    } else if (field === 'link') {
-      await offerLink(working);
-      working = servers.findById(server.id) as Server;
     }
   }
 }
@@ -157,23 +130,28 @@ export async function removeServerFlow(name?: string): Promise<void> {
   if (name) {
     const server = await resolveEntity(servers, name, '🗑 Выберите сервер');
     if (!server) return;
-    if (await ui.confirm({ message: `Удалить «${server.name}»?`, default: false })) {
+    if (!server.manageable) {
+      ui.printWarn(
+        `«${server.name}» нельзя удалить автоматически (мульти-алиас / Include / Match).`,
+      );
+      return;
+    }
+    if (
+      await ui.confirm({ message: `Удалить «${server.name}» из ~/.ssh/config?`, default: false })
+    ) {
       removeServerById(server);
       ui.printOk(`«${server.name}» удалён.`);
     } else ui.printInfo('Отменено.');
     return;
   }
-  const list = servers.sorted('name');
+  const list = servers.sorted('name').filter((s) => s.manageable);
   if (!list.length) {
-    ui.printWarn('Список серверов пуст.');
+    ui.printWarn('Нет серверов, доступных для удаления.');
     return;
   }
   const ids = await ui.multiChoose<string>({
     message: 'Отметьте серверы для удаления (пробел — отметить, Enter — подтвердить)',
-    choices: list.map((s) => ({
-      name: `${s.name} — ${s.hostMode === 'sshconfig' ? '@' + s.sshHost : s.user + '@' + s.host}`,
-      value: s.id,
-    })),
+    choices: list.map((s) => ({ name: `${s.name} — ${targetSummary(s)}`, value: s.id })),
   });
   if (!ids.length) {
     ui.printInfo('Ничего не выбрано.');

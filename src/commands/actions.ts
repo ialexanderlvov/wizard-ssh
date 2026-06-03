@@ -48,8 +48,9 @@ export async function copyIdFlow(name?: string): Promise<number> {
   const server = await resolveServerLike(name, '📋 Сервер для копирования ключа (ssh-copy-id)');
   if (!server) return 0;
 
-  // Pick a public/identity key to install.
-  let keyPath: string | null = server.auth === 'key' ? server.keyPath : null;
+  // Pick a public/identity key to install. A server with a known IdentityFile
+  // (incl. config-backed servers) reuses it; otherwise we offer a picker.
+  let keyPath: string | null = server.keyPath ?? null;
   const found = findSshKeys();
   if (!keyPath && found.length) {
     const DEFAULT = '__default__';
