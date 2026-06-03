@@ -18,6 +18,12 @@
   sudo apt install sshpass
   ```
 - Для `ssh-copy-id` / `scp` — соответствующие утилиты OpenSSH (обычно уже есть).
+- Для передачи через **rsync** — пакет `rsync` (опционально; если не установлен, мастер
+  передачи предложит только scp):
+  ```bash
+  brew install rsync   # macOS (системный rsync тоже подходит)
+  sudo apt install rsync
+  ```
 - Для разблокировки хранилища по **Touch ID** (опционально, только macOS) —
   **Xcode Command Line Tools** (нужен `swiftc`):
   ```bash

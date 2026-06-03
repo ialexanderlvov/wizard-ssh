@@ -18,4 +18,5 @@ export {
   type CheckResult,
   type Endpoint,
   type TransferOptions,
+  type TransferTool,
 } from './features.js';

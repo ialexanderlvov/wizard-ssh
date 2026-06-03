@@ -101,11 +101,25 @@ export async function runCommand(
   return runSshInherit(buildRunArgs(server, command), password);
 }
 
+export type TransferTool = 'scp' | 'rsync';
+
 export interface TransferOptions {
   direction: 'upload' | 'download';
   localPath: string;
   remotePath: string;
+  /** scp: copy directories recursively (rsync archive mode covers this). */
   recursive?: boolean;
+  /** which transfer tool to use (default scp) */
+  tool?: TransferTool;
+  // rsync-only options:
+  /** archive mode (-a): recurse + preserve perms/times/links. Default on for rsync. */
+  archive?: boolean;
+  /** compress in transit (-z) */
+  compress?: boolean;
+  /** delete extraneous files at the destination (--delete) */
+  delete?: boolean;
+  /** dry run, change nothing (-n) */
+  dryRun?: boolean;
 }
 
 function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
@@ -125,12 +139,34 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
     : [...args, remoteSpec, expandHome(opts.localPath)];
 }
 
-/** Transfer files via scp (uses the same auth as a connect). */
+/** rsync over SSH. The SSH transport (port/key/auth) is passed via `-e`, so
+ *  config aliases, custom ports and password auth all work the same as scp. */
+function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
+  const sshCmd = ['ssh', ...targetOptions(t)].join(' ');
+  const args: string[] = ['-e', sshCmd, '-h']; // -h: human-readable sizes
+  if (opts.archive ?? true) args.push('-a');
+  else if (opts.recursive) args.push('-r');
+  if (opts.compress) args.push('-z');
+  if (opts.delete) args.push('--delete');
+  if (opts.dryRun) args.push('-n');
+  args.push('--progress');
+
+  const remoteSpec = `${destination(t)}:${opts.remotePath}`;
+  return opts.direction === 'upload'
+    ? [...args, expandHome(opts.localPath), remoteSpec]
+    : [...args, remoteSpec, expandHome(opts.localPath)];
+}
+
+/** Transfer files via scp or rsync (uses the same auth as a connect). */
 export async function transfer(
   server: Server,
   opts: TransferOptions,
   password?: string,
 ): Promise<number> {
+  if (opts.tool === 'rsync') {
+    if (!commandExists('rsync')) return Promise.reject(new Error('rsync не найден в PATH.'));
+    return runProgram('rsync', buildRsyncArgs(server, opts), password);
+  }
   if (!commandExists('scp')) return Promise.reject(new Error('scp не найден в PATH.'));
   return runProgram('scp', buildScpArgs(server, opts), password);
 }

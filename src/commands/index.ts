@@ -193,7 +193,7 @@ export function registerCommands(program: Command): void {
   program
     .command('transfer [name]')
     .alias('scp')
-    .description('передача файлов по scp')
+    .description('передача файлов по scp или rsync')
     .action(async (n?: string) => {
       const code = await actions.transferFlow(n);
       if (code) process.exitCode = code;

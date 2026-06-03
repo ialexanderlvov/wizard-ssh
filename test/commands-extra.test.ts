@@ -135,6 +135,25 @@ describe('actions branches', () => {
     const { transferFlow } = await import('../src/commands/actions.js');
     expect(await transferFlow('box')).toBe(1);
   });
+
+  it('transferFlow via rsync picks the tool and rsync options', async () => {
+    vi.doMock('../src/utils/exec.js', async (o) => {
+      const a = await o<typeof import('../src/utils/exec.js')>();
+      return { ...a, commandExists: () => true }; // rsync available
+    });
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    q.choose = ['rsync', 'upload'];
+    q.text = ['./a', '/b'];
+    q.confirm = [true, false, false]; // compress, delete, dry-run
+    const { transferFlow } = await import('../src/commands/actions.js');
+    expect(await transferFlow('box')).toBe(0);
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tool: 'rsync', compress: true, archive: true }),
+      undefined,
+    );
+  });
 });
 
 describe('connect branches', () => {

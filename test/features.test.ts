@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  cmds: new Set<string>(['ssh', 'ssh-copy-id', 'scp']),
+  cmds: new Set<string>(['ssh', 'ssh-copy-id', 'scp', 'rsync']),
   runProgram: vi.fn(async () => 0),
   runSshInherit: vi.fn(async () => 0),
 }));
@@ -44,7 +44,7 @@ beforeEach(() => {
   h.runProgram.mockClear();
   h.runSshInherit.mockClear();
   h.cmds.clear();
-  ['ssh', 'ssh-copy-id', 'scp'].forEach((c) => h.cmds.add(c));
+  ['ssh', 'ssh-copy-id', 'scp', 'rsync'].forEach((c) => h.cmds.add(c));
 });
 
 describe('copyId', () => {
@@ -144,5 +144,64 @@ describe('copyId / resolveEndpoint port branches', () => {
         secretId: null,
       }),
     ).toEqual({ host: '1.2.3.4', port: 22 });
+  });
+});
+
+describe('transfer via rsync', () => {
+  it('uploads with -e ssh transport, archive mode by default', async () => {
+    expect(
+      await transfer(server(), {
+        tool: 'rsync',
+        direction: 'upload',
+        localPath: './a',
+        remotePath: '/b',
+      }),
+    ).toBe(0);
+    const [prog, args] = h.runProgram.mock.calls[0] ?? [];
+    expect(prog).toBe('rsync');
+    const a = args as string[];
+    expect(a[0]).toBe('-e');
+    expect(a[1]).toContain('ssh');
+    expect(a[1]).toContain('-p 2222'); // transport carries the port
+    expect(a).toContain('-a');
+    expect(a.at(-1)).toBe('deploy@1.2.3.4:/b');
+  });
+
+  it('passes compress / delete / dry-run + download direction; alias transport has no -p', async () => {
+    await transfer(server({ hostMode: 'sshconfig', sshHost: 'alias' }), {
+      tool: 'rsync',
+      direction: 'download',
+      localPath: './local',
+      remotePath: '/remote',
+      compress: true,
+      delete: true,
+      dryRun: true,
+    });
+    const a = h.runProgram.mock.calls[0]?.[1] as string[];
+    expect(a).toEqual(expect.arrayContaining(['-z', '--delete', '-n', '--progress']));
+    expect(a[1]).not.toContain('-p');
+    expect(a[a.length - 2]).toBe('alias:/remote');
+    expect(a[a.length - 1]).toContain('local');
+  });
+
+  it('falls back to -r when archive is disabled', async () => {
+    await transfer(server(), {
+      tool: 'rsync',
+      direction: 'upload',
+      localPath: 'a',
+      remotePath: 'b',
+      archive: false,
+      recursive: true,
+    });
+    const a = h.runProgram.mock.calls[0]?.[1] as string[];
+    expect(a).toContain('-r');
+    expect(a).not.toContain('-a');
+  });
+
+  it('rejects when rsync is missing', async () => {
+    h.cmds.delete('rsync');
+    await expect(
+      transfer(server(), { tool: 'rsync', direction: 'upload', localPath: 'a', remotePath: 'b' }),
+    ).rejects.toThrow(/rsync/);
   });
 });
