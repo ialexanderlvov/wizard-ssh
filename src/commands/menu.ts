@@ -84,13 +84,14 @@ async function loop(
   }
 }
 
-/** Filterable browse of entities → per-item action menu (connect/edit/delete). */
+/** Filterable browse of entities → per-item action menu (connect/check/edit/delete). */
 async function browseEntities(
   crumbs: string[],
   list: () => Entity[],
   connect: (e: Entity) => Promise<number>,
   edit: (name: string) => Promise<void>,
   remove: (name: string) => Promise<void>,
+  check: (e: Entity) => Promise<unknown>,
 ): Promise<void> {
   for (;;) {
     ui.clearScreen();
@@ -117,6 +118,7 @@ async function browseEntities(
       picked.name,
       [
         { label: tr.menu.entityAction.connect, value: 'connect' },
+        { label: tr.menu.entityAction.check, value: 'check' },
         { label: tr.menu.entityAction.edit, value: 'edit' },
         { label: tr.menu.entityAction.remove, value: 'remove' },
       ],
@@ -129,6 +131,11 @@ async function browseEntities(
         await connect(picked);
         await ui.pause(); // let the session result be read before leaving the browser
         return; // a connect blocks until done; leave the browser afterwards
+      }
+      if (act === 'check') {
+        await check(picked);
+        await ui.pause(); // let the reachability result be read, then back to the list
+        continue;
       }
       if (act === 'edit') await edit(picked.name);
       if (act === 'remove') await remove(picked.name);
@@ -145,12 +152,14 @@ const serversMenu = (): Promise<void> =>
     [root()],
     [
       { label: tr.menu.servers.list, value: 'list' },
+      { label: tr.menu.servers.checkAll, value: 'checkAll' },
       { label: tr.menu.servers.add, value: 'add' },
       { label: tr.menu.servers.duplicate, value: 'duplicate' },
     ],
     async (a) => {
       if (a === 'add') await serverCmd.addServer();
       else if (a === 'duplicate') await serverCmd.duplicateServerFlow();
+      else if (a === 'checkAll') await actions.statusFlow({ serversOnly: true });
       else if (a === 'list') {
         await browseEntities(
           [root(), tr.menu.servers.title],
@@ -158,6 +167,7 @@ const serversMenu = (): Promise<void> =>
           (e) => serverCmd.connectServer(e as Server),
           (name) => serverCmd.editServer(name),
           (name) => serverCmd.removeServerFlow(name),
+          (e) => actions.checkTarget(e, e.name),
         );
         return true; // navigation: Esc out of the list returns here, no pause
       }
@@ -170,6 +180,7 @@ const tunnelsMenu = (): Promise<void> =>
     [root()],
     [
       { label: tr.menu.tunnels.list, value: 'list' },
+      { label: tr.menu.tunnels.checkAll, value: 'checkAll' },
       { label: tr.menu.tunnels.quick, value: 'quick' },
       { label: tr.menu.tunnels.bg, value: 'bg' },
       { label: tr.menu.tunnels.temp, value: 'temp' },
@@ -180,6 +191,7 @@ const tunnelsMenu = (): Promise<void> =>
       if (a === 'add') await tunnelCmd.addTunnel();
       else if (a === 'clone') await tunnelCmd.cloneTunnelFlow();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
+      else if (a === 'checkAll') await actions.statusFlow({ tunnelsOnly: true });
       else if (a === 'bg') {
         await backgroundTunnelsMenu();
         return true; // navigation: returns straight back to this menu
@@ -193,6 +205,7 @@ const tunnelsMenu = (): Promise<void> =>
           (e) => tunnelCmd.connectTunnel(e as Tunnel),
           (name) => tunnelCmd.editTunnel(name),
           (name) => tunnelCmd.removeTunnelFlow(name),
+          (e) => actions.checkTarget(e, e.name),
         );
         return true; // navigation
       }
@@ -216,6 +229,7 @@ const tempTunnelsMenu = (): Promise<void> =>
           (e) => tunnelCmd.connectTunnel(e as Tunnel, tempTunnels),
           (name) => tunnelCmd.editTunnel(name, tempTunnels),
           (name) => tunnelCmd.removeTunnelFlow(name, tempTunnels),
+          (e) => actions.checkTarget(e, e.name),
         );
         return true; // navigation
       }

@@ -8,6 +8,7 @@ const en: Dict = {
   browseTitle: 'List',
   entityAction: {
     connect: 'Connect',
+    check: 'Check reachability',
     edit: 'Edit',
     remove: 'Delete',
   },
@@ -27,12 +28,14 @@ const en: Dict = {
   servers: {
     title: 'Servers / ~/.ssh/config',
     list: 'List / connect',
+    checkAll: 'Check all (reachability)',
     add: 'Add',
     duplicate: 'Duplicate',
   },
   tunnels: {
     title: 'Tunnels',
     list: 'List / start',
+    checkAll: 'Check all (reachability)',
     quick: 'Create and start now (from ~/.ssh/config)',
     bg: 'Background sessions ▸',
     temp: 'Temporary tunnels (to any host) ▸',

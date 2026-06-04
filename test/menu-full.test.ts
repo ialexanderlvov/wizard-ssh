@@ -32,6 +32,8 @@ const cfg = {
 };
 const act = {
   checkFlow: vi.fn(async () => 0),
+  checkTarget: vi.fn(async () => true),
+  statusFlow: vi.fn(async () => 0),
   copyIdFlow: vi.fn(async () => 0),
   runFlow: vi.fn(async () => 0),
   transferFlow: vi.fn(async () => 0),
@@ -233,5 +235,36 @@ describe('Esc out of a sub-list returns straight to the parent menu', () => {
     await mainMenu();
 
     expect(pauseMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('reachability: check one or check all', () => {
+  it('Servers ▸ Check all runs a servers-only fleet status', async () => {
+    q.pick = ['servers', 'checkAll', PICK_BACK, 'exit'];
+    const { mainMenu } = await import('../src/commands/menu.js');
+    await mainMenu();
+    expect(act.statusFlow).toHaveBeenCalledWith({ serversOnly: true });
+  });
+
+  it('Tunnels ▸ Check all runs a tunnels-only fleet status', async () => {
+    q.pick = ['tunnels', 'checkAll', PICK_BACK, 'exit'];
+    const { mainMenu } = await import('../src/commands/menu.js');
+    await mainMenu();
+    expect(act.statusFlow).toHaveBeenCalledWith({ tunnelsOnly: true });
+  });
+
+  it('Tunnels ▸ List ▸ pick ▸ Check checks that single tunnel', async () => {
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    tunnels.create({ name: 'tnl', type: 'local', localPort: 8080, remotePort: 80, kind: 'tunnel' });
+
+    // tunnels → list → pick 'tnl' → Check → leave list → leave tunnels → exit
+    q.pick = ['tunnels', 'list', 'tnl', 'check', PICK_BACK, PICK_BACK, 'exit'];
+    const { mainMenu } = await import('../src/commands/menu.js');
+    await mainMenu();
+
+    expect(act.checkTarget).toHaveBeenCalledTimes(1);
+    expect(act.checkTarget).toHaveBeenCalledWith(expect.objectContaining({ name: 'tnl' }), 'tnl');
+    // a single connect did not happen — we only checked
+    expect(tun.connectTunnel).not.toHaveBeenCalled();
   });
 });
