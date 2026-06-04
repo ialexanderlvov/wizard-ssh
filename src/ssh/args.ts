@@ -37,6 +37,14 @@ export function targetOptions(t: ConnectionTarget): string[] {
     args.push('-i', expandHome(t.keyPath), '-o', 'IdentitiesOnly=yes');
   } else if (t.auth === 'password') {
     args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
+    // The password is handed to ssh via sshpass's SSHPASS env var, which ssh
+    // would otherwise pass on to any helper process it spawns — a ProxyCommand,
+    // a ProxyJump's `ssh -W`, or a PermitLocalCommand script — leaking the
+    // plaintext password into those children's environment. Disable proxying and
+    // local commands for password auth so the secret never escapes sshpass→ssh.
+    // (Direct IP/manual hosts have no proxy anyway, so this is a no-op there; use
+    // key/agent auth if you genuinely need a jump host.)
+    args.push('-o', 'ProxyCommand=none', '-o', 'ProxyJump=none', '-o', 'PermitLocalCommand=no');
   }
   return args;
 }
