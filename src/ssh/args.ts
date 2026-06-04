@@ -25,7 +25,11 @@ export function targetOptions(t: ConnectionTarget): string[] {
   }
 
   if (t.auth === 'key' && t.keyPath) {
-    args.push('-i', expandHome(t.keyPath));
+    // -i alone only ADDS the key — the agent may still offer its own keys first
+    // and trip "Too many authentication failures" on strict servers. IdentitiesOnly=yes
+    // makes the choice deterministic: only configured / -i keys are tried, never the
+    // agent's surplus (it still honours every IdentityFile from ~/.ssh/config).
+    args.push('-i', expandHome(t.keyPath), '-o', 'IdentitiesOnly=yes');
   } else if (t.auth === 'password') {
     args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
   }

@@ -42,6 +42,20 @@ describe('args extras', () => {
     const t = { type: 'remote', remotePort: 9000, remoteHost: '', localPort: 3000 } as Tunnel;
     expect(forwardFlags(t)).toEqual(['-R', '9000:localhost:3000']);
   });
+
+  it('key auth pins the identity with IdentitiesOnly=yes right after -i', () => {
+    const a = targetOptions(manual({ auth: 'key', keyPath: '/home/me/.ssh/id_ed25519' }));
+    const i = a.indexOf('-i');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(a[i + 1]).toBe('/home/me/.ssh/id_ed25519');
+    expect(a[i + 2]).toBe('-o');
+    expect(a[i + 3]).toBe('IdentitiesOnly=yes');
+  });
+
+  it('agent and password auth never add IdentitiesOnly', () => {
+    expect(targetOptions(manual({ auth: 'agent' })).join(' ')).not.toContain('IdentitiesOnly');
+    expect(targetOptions(manual({ auth: 'password' })).join(' ')).not.toContain('IdentitiesOnly');
+  });
 });
 
 describe('checkTcp', () => {

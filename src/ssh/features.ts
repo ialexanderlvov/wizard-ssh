@@ -191,7 +191,8 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
     args.push('-o', 'StrictHostKeyChecking=accept-new');
     if (t.sshPort && t.sshPort !== 22) args.push('-P', String(t.sshPort)); // scp uses -P
   }
-  if (t.auth === 'key' && t.keyPath) args.push('-i', expandHome(t.keyPath));
+  if (t.auth === 'key' && t.keyPath)
+    args.push('-i', expandHome(t.keyPath), '-o', 'IdentitiesOnly=yes'); // pin the chosen key
   else if (t.auth === 'password')
     args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
 
