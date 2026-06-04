@@ -1,3 +1,5 @@
+import net from 'node:net';
+
 /** Control characters (incl. CR/LF) that must never reach a child-process argv
  *  or a ~/.ssh/config line: a newline would inject an arbitrary config directive
  *  (e.g. ProxyCommand) and other control chars are never valid in a host/user/
@@ -22,12 +24,13 @@ export function isValidHostOrIp(v: unknown): boolean {
   if (typeof v !== 'string') return false;
   const s = v.trim();
   if (!s || s.length > 253 || hasUnsafeChars(s) || /\s/.test(s)) return false;
+  // Defer IP validation to the platform parser: it rejects out-of-range octets,
+  // leading-zero (octal-ambiguous) octets like `010.0.0.1`, and structurally
+  // invalid IPv6 (multiple `::`, dangling colon) that a hand-rolled regex let
+  // through and that different libc inet_aton/getaddrinfo would parse divergently.
   const ipv4 = /^\d{1,3}(\.\d{1,3}){3}$/;
-  if (ipv4.test(s))
-    return s.split('.').every((o) => o.length <= 3 && Number(o) >= 0 && Number(o) <= 255);
-  // IPv6 (bare): hex groups separated by colons, allowing one "::" run.
-  if (s.includes(':') && /^[0-9a-fA-F:]+$/.test(s))
-    return /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/.test(s) && !/:::/.test(s);
+  if (ipv4.test(s)) return net.isIP(s) === 4;
+  if (s.includes(':')) return net.isIP(s) === 6;
   const domain =
     /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   return domain.test(s);

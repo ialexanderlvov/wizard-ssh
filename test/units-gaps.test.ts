@@ -26,6 +26,19 @@ describe('validators: IPv6', () => {
     expect(isValidHostOrIp('::1')).toBe(true);
     expect(isValidHostOrIp('not a host!')).toBe(false);
   });
+  it('rejects structurally invalid IPv6 (multiple :: / dangling colon)', () => {
+    expect(isValidHostOrIp('1::2::3')).toBe(false);
+    expect(isValidHostOrIp('1:2:')).toBe(false);
+  });
+});
+
+describe('validators: IPv4 leading zeros', () => {
+  it('rejects octal-ambiguous leading-zero octets', () => {
+    expect(isValidHostOrIp('010.0.0.1')).toBe(false);
+    expect(isValidHostOrIp('1.2.3.04')).toBe(false);
+    expect(isValidHostOrIp('10.0.0.1')).toBe(true);
+    expect(isValidHostOrIp('0.0.0.0')).toBe(true);
+  });
 });
 
 describe('ui/format authSummary', () => {

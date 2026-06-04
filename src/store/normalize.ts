@@ -17,6 +17,9 @@ type Raw = Record<string, unknown>;
 export const asRaw = (v: unknown): Raw => (v && typeof v === 'object' ? (v as Raw) : {});
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown, d: number): number => {
+  // Number('') and Number('   ') are 0 (finite), which would silently override
+  // the default with 0 for an empty/whitespace field — treat those as absent.
+  if (typeof v === 'string' && v.trim() === '') return d;
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
 };
