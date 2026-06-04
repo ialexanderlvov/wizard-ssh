@@ -1,5 +1,10 @@
 # 🧙 Wizard SSH (`wssh`)
 
+[![npm version](https://img.shields.io/npm/v/wizard-ssh.svg)](https://www.npmjs.com/package/wizard-ssh)
+[![ci](https://github.com/ialexanderlvov/wizard-ssh/actions/workflows/ci.yml/badge.svg)](https://github.com/ialexanderlvov/wizard-ssh/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/npm/l/wizard-ssh.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/wizard-ssh.svg)](https://nodejs.org)
+
 Красивый интерактивный CLI для управления **SSH-серверами, туннелями и `~/.ssh/config`**:
 полный CRUD, нечёткий поиск по всему сразу, мгновенное подключение, прямые и
 обратные туннели и **зашифрованное хранилище паролей** (мастер-фраза или Touch ID).
