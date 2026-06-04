@@ -9,6 +9,7 @@ import { destination } from '../ssh/args.js';
 import { capture } from '../utils/exec.js';
 import { filterEntities } from '../search/index.js';
 import * as ui from '../ui/index.js';
+import { tr } from '../i18n/index.js';
 
 // ---------- vault ----------
 
@@ -35,9 +36,7 @@ export function resolveVaultPassphrase(): string | null {
   // never silently mid-session in an interactive terminal, and warn when it does
   // fire so a poisoned env is detectable.
   if (cmd && !ui.isInteractive()) {
-    ui.printWarn(
-      'Парольная фраза получена из WSSH_VAULT_PASSPHRASE_CMD (sh -c). Доверяйте окружению.',
-    );
+    ui.printWarn(tr.helpers.vaultCmdWarning);
     const res = capture('sh', ['-c', cmd]);
     if (res.status === 0) {
       const v = res.stdout.replace(/\r?\n$/, '');
@@ -54,28 +53,28 @@ export function vaultSupportsTouchId(): boolean {
 /** Create the vault on first use (passphrase + optional Touch ID). */
 export async function ensureVaultSetup(): Promise<boolean> {
   if (vault.exists()) return true;
-  ui.ensureInteractive('Настройка хранилища паролей');
-  ui.printSection('🔐', 'Хранилище паролей');
-  ui.printInfo('Пароли шифруются AES-256-GCM. Парольную фразу вводите один раз за сессию.');
+  ui.ensureInteractive(tr.helpers.setupEnsure);
+  ui.printSection('🔐', tr.helpers.setupSection);
+  ui.printInfo(tr.helpers.setupIntro);
   const p1 = await ui.secret({
-    message: '🔑 Придумайте парольную фразу хранилища',
-    validate: (v) => v.length >= 4 || 'Минимум 4 символа',
+    message: tr.helpers.newPassphrase,
+    validate: (v) => v.length >= 4 || tr.helpers.minChars,
   });
-  const p2 = await ui.secret({ message: '🔑 Повторите парольную фразу' });
+  const p2 = await ui.secret({ message: tr.helpers.repeatPassphrase });
   if (p1 !== p2) {
-    ui.printError('Парольные фразы не совпадают.');
+    ui.printError(tr.helpers.passphraseMismatch);
     return false;
   }
   let touchId = false;
   if (vault.touchIdSupported()) {
     touchId = await ui.confirm({
-      message: '👆 Включить разблокировку по Touch ID (macOS)?',
+      message: tr.helpers.enableTouchId,
       default: true,
     });
   }
   vault.setup(p1, { enableTouchId: touchId });
   settings.update({ vault: { enabled: true, touchId: touchId && vault.isTouchIdEnabled() } });
-  ui.printOk('Хранилище создано.');
+  ui.printOk(tr.helpers.vaultCreated);
   return true;
 }
 
@@ -95,10 +94,10 @@ export async function unlockVault(): Promise<boolean> {
         const env = resolveVaultPassphrase();
         if (env != null) return env;
       }
-      ui.ensureInteractive('Ввод парольной фразы хранилища');
+      ui.ensureInteractive(tr.helpers.unlockEnsure);
       return ui.secret({
-        message: '🔑 Парольная фраза хранилища',
-        validate: (v) => v.length > 0 || 'Не может быть пустым',
+        message: tr.helpers.passphrasePrompt,
+        validate: (v) => v.length > 0 || tr.common.notEmpty,
       });
     },
     onError: ui.printWarn,
@@ -112,13 +111,13 @@ export async function resolvePassword(t: ConnectionTarget): Promise<string | und
     if (await unlockVault()) {
       const pw = vault.getSecret(t.secretId);
       if (pw != null) return pw;
-      ui.printWarn('Сохранённый пароль не найден — введите вручную.');
+      ui.printWarn(tr.helpers.savedPwNotFound);
     }
   }
-  ui.ensureInteractive('Ввод пароля');
+  ui.ensureInteractive(tr.helpers.enterPwEnsure);
   return ui.secret({
-    message: `🔒 Пароль SSH для ${destination(t)}`,
-    validate: (v) => v.length > 0 || 'Не может быть пустым',
+    message: tr.helpers.sshPasswordFor(destination(t)),
+    validate: (v) => v.length > 0 || tr.common.notEmpty,
   });
 }
 
@@ -136,21 +135,21 @@ export async function handlePasswordSecret(
 ): Promise<string | null> {
   if (target.auth !== 'password') return null;
   const save = await ui.confirm({
-    message: '💾 Сохранить пароль в зашифрованном хранилище?',
+    message: tr.helpers.savePwQuestion,
     default: Boolean(prevSecretId),
   });
   if (!save) return null;
   if (!(await ensureVaultSetup())) return prevSecretId;
   if (!(await unlockVault())) {
-    ui.printWarn('Хранилище не разблокировано — пароль не сохранён.');
+    ui.printWarn(tr.helpers.vaultNotUnlocked);
     return prevSecretId;
   }
   const pw = await ui.secret({
-    message: '🔒 Пароль SSH (будет зашифрован)',
-    validate: (v) => v.length > 0 || 'Не может быть пустым',
+    message: tr.helpers.sshPasswordEncrypted,
+    validate: (v) => v.length > 0 || tr.common.notEmpty,
   });
   const id = vault.setSecret(pw); // a fresh blob; the previous one lives until commit
-  ui.printOk('Пароль сохранён в хранилище.');
+  ui.printOk(tr.helpers.pwSaved);
   return id;
 }
 
@@ -177,10 +176,10 @@ export function rollbackSecretChange(
 /** Interactive picker over a list of entities: filter, Tab-sort, Esc → back. */
 export async function pickEntity<T extends Entity>(items: T[], message: string): Promise<T | null> {
   if (!items.length) {
-    ui.printWarn('Список пуст.');
+    ui.printWarn(tr.common.listEmpty);
     return null;
   }
-  ui.ensureInteractive('Выбор из списка');
+  ui.ensureInteractive(tr.helpers.pickEnsure);
   const render = ui.entityRowRenderer(items);
   const res = await ui.pickFromList<T>({
     message,
@@ -213,9 +212,9 @@ export async function resolveEntity<T extends Entity>(
   const hits = filterEntities(items, name);
   if (hits.length === 1) return hits[0] ?? null;
   if (!hits.length) {
-    ui.printError(`«${name}» не найдено.`);
+    ui.printError(tr.helpers.notFound(name));
     return items.length ? pickEntity(items, message) : null;
   }
-  ui.printInfo(`Несколько совпадений по «${name}»:`);
+  ui.printInfo(tr.helpers.multipleMatches(name));
   return pickEntity(hits, message);
 }

@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { FILES, ensureDir } from '../core/paths.js';
 import { isMac } from '../utils/platform.js';
 import { commandExists, capture } from '../utils/exec.js';
+import { tr } from '../i18n/index.js';
 
 const KEYCHAIN_SERVICE = 'wizard-ssh';
 const KEYCHAIN_ACCOUNT = 'vault-master-key';
@@ -71,7 +72,7 @@ function ensureHelper(): boolean {
 }
 
 /** Show the Touch ID prompt. Resolves true only on a successful match. */
-export function authenticate(reason = 'разблокировать пароли wizard-ssh'): boolean {
+export function authenticate(reason = tr.vault.touchidReason): boolean {
   if (!ensureHelper()) return false;
   const res = spawnSync(HELPER_BIN, [reason], { stdio: 'inherit', timeout: 60_000 });
   return res.status === 0;

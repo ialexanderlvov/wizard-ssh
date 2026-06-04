@@ -3,6 +3,7 @@
 import boxen from 'boxen';
 import figlet from 'figlet';
 import { chalk, brand, accent, danger, warn } from './theme.js';
+import { tr } from '../i18n/index.js';
 
 export function printBanner(): void {
   let art: string;
@@ -13,18 +14,13 @@ export function printBanner(): void {
   }
   console.log('\n' + brand.multiline(art));
   console.log(
-    boxen(
-      chalk.bold('Wizard SSH') +
-        '\n' +
-        chalk.dim('Серверы · туннели · ~/.ssh/config — CRUD, поиск и мгновенное подключение.'),
-      {
-        padding: { top: 0, bottom: 0, left: 2, right: 2 },
-        margin: { top: 0, bottom: 1, left: 0, right: 0 },
-        borderStyle: 'round',
-        borderColor: 'cyan',
-        float: 'left',
-      },
-    ),
+    boxen(chalk.bold('Wizard SSH') + '\n' + chalk.dim(tr.cli.bannerSubtitle), {
+      padding: { top: 0, bottom: 0, left: 2, right: 2 },
+      margin: { top: 0, bottom: 1, left: 0, right: 0 },
+      borderStyle: 'round',
+      borderColor: 'cyan',
+      float: 'left',
+    }),
   );
 }
 

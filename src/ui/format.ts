@@ -5,6 +5,7 @@ import type { ConnectionTarget, Entity, SshConfigHost, Tunnel } from '../core/ty
 import { chalk, accent, TYPE_BADGE } from './theme.js';
 import { relativeTime, absoluteTime } from '../utils/time.js';
 import { tilde } from '../utils/strings.js';
+import { tr } from '../i18n/index.js';
 
 export function targetSummary(t: ConnectionTarget): string {
   // Config-backed servers carry a resolved host — show it; otherwise (a tunnel
@@ -46,7 +47,8 @@ export function entityLine(e: Entity): string {
 
 export function detailBox(e: Entity): string {
   const rows: string[] = [];
-  const head = e.kind === 'tunnel' ? '🚇 Туннель' : '🖥 Сервер';
+  const d = tr.ui.detail;
+  const head = e.kind === 'tunnel' ? d.tunnel : d.server;
   rows.push(
     chalk.dim(head + '  ') +
       chalk.bold.white(e.name) +
@@ -55,52 +57,54 @@ export function detailBox(e: Entity): string {
   rows.push('');
 
   if (e.hostMode === 'sshconfig' && !e.host) {
-    rows.push(chalk.dim('Хост       ') + chalk.magenta('~/.ssh/config → ' + e.sshHost));
+    rows.push(chalk.dim(d.host) + chalk.magenta(d.configArrow + e.sshHost));
   } else {
-    rows.push(chalk.dim('Хост       ') + chalk.white(`${e.user || 'root'}@${e.host}`));
+    rows.push(chalk.dim(d.host) + chalk.white(`${e.user || 'root'}@${e.host}`));
     if (e.sshPort && Number(e.sshPort) !== 22)
-      rows.push(chalk.dim('SSH-порт   ') + chalk.white(String(e.sshPort)));
+      rows.push(chalk.dim(d.sshPort) + chalk.white(String(e.sshPort)));
     const authLabel =
       e.auth === 'password'
-        ? 'пароль'
+        ? d.authPassword
         : e.keyPath
-          ? 'ключ'
+          ? d.authKey
           : e.hostMode === 'sshconfig'
-            ? 'config'
-            : 'agent';
+            ? d.authConfig
+            : d.authAgent;
     rows.push(
-      chalk.dim('Авторизация ') +
+      chalk.dim(d.auth) +
         chalk.white(authLabel) +
         (e.keyPath ? chalk.dim(`  (${tilde(e.keyPath)})`) : '') +
-        (e.auth === 'password'
-          ? chalk.dim(e.secretId ? '  (пароль сохранён)' : '  (спросим при подключении)')
-          : ''),
+        (e.auth === 'password' ? chalk.dim(e.secretId ? d.passwordSaved : d.passwordAsk) : ''),
     );
     if (e.kind === 'server' && e.hostMode === 'sshconfig')
-      rows.push(chalk.dim('Источник   ') + chalk.magenta('~/.ssh/config → ' + e.sshHost));
+      rows.push(chalk.dim(d.source) + chalk.magenta(d.configArrow + e.sshHost));
   }
 
   if (e.kind === 'tunnel') {
     const t = e as Tunnel;
     rows.push(
-      chalk.dim('Проброс    ') + (TYPE_BADGE[t.type] ?? '') + ' ' + chalk.gray(forwardSummary(t)),
+      chalk.dim(d.forward) + (TYPE_BADGE[t.type] ?? '') + ' ' + chalk.gray(forwardSummary(t)),
     );
     if (t.type === 'local') {
       rows.push(
-        chalk.dim('Открыть    ') +
+        chalk.dim(d.open) +
           accent(`http://localhost:${t.localPort}`) +
-          (t.openBrowser ? chalk.dim('  (авто)') : ''),
+          (t.openBrowser ? chalk.dim(d.auto) : ''),
       );
     }
   }
 
   if (e.tags.length)
-    rows.push(chalk.dim('Теги       ') + chalk.cyan(e.tags.map((x) => '#' + x).join(' ')));
+    rows.push(chalk.dim(d.tags) + chalk.cyan(e.tags.map((x) => '#' + x).join(' ')));
   rows.push('');
   rows.push(
     chalk.dim(
-      `создан ${absoluteTime(e.createdAt)} · изменён ${absoluteTime(e.updatedAt)} · ` +
-        `использован ${relativeTime(e.lastUsedAt)} · ${e.useCount}×`,
+      d.footer(
+        absoluteTime(e.createdAt),
+        absoluteTime(e.updatedAt),
+        relativeTime(e.lastUsedAt),
+        e.useCount,
+      ),
     ),
   );
 

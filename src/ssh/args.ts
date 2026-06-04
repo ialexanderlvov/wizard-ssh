@@ -5,6 +5,7 @@ import type { ConnectionTarget, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
 import { isValidTmuxSession } from '../utils/validators.js';
+import { tr } from '../i18n/index.js';
 
 const ROBUST_OPTS = [
   '-o',
@@ -90,10 +91,7 @@ export function buildConnectArgs(t: ConnectionTarget, opts: ConnectOptions = {})
     // ssh hands to the remote login shell — reject shell metacharacters so it
     // can't smuggle a remote command (and so a name with spaces/`-` doesn't
     // silently break the session).
-    if (!isValidTmuxSession(session))
-      throw new WizardError(
-        'Недопустимое имя tmux-сессии: разрешены латиница, цифры, точка, дефис и подчёркивание (до 64 символов).',
-      );
+    if (!isValidTmuxSession(session)) throw new WizardError(tr.ssh.argsBadTmuxSession);
     return [
       ...targetOptions(t),
       '-t',

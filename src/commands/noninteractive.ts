@@ -20,6 +20,7 @@ import {
 } from '../utils/validators.js';
 import { expandHome, parseTags, slugify } from '../utils/strings.js';
 import * as ui from '../ui/index.js';
+import { tr } from '../i18n/index.js';
 
 export interface ServerAddFlags {
   host?: string;
@@ -35,8 +36,7 @@ export interface ServerAddFlags {
  *  clean token — a newline would inject an arbitrary config directive. */
 function resolveUser(user: string | undefined, fallback: string): string {
   const u = (user ?? fallback).trim();
-  if (u && !isValidUser(u))
-    throw new WizardError(`Некорректное имя пользователя: ${JSON.stringify(u)}`);
+  if (u && !isValidUser(u)) throw new WizardError(tr.noninteractive.invalidUser(JSON.stringify(u)));
   return u;
 }
 
@@ -44,36 +44,31 @@ function resolveUser(user: string | undefined, fallback: string): string {
  *  reaches ~/.ssh/config (the file-exists check happens separately). */
 function resolveKeyPath(key: string): string {
   const p = expandHome(key.trim());
-  if (!isSafeKeyPath(p)) throw new WizardError('Недопустимый символ в пути к ключу.');
-  if (!fs.existsSync(p)) throw new WizardError(`SSH-ключ не найден: ${p}`);
+  if (!isSafeKeyPath(p)) throw new WizardError(tr.noninteractive.invalidKeyPath);
+  if (!fs.existsSync(p)) throw new WizardError(tr.noninteractive.keyNotFound(p));
   return p;
 }
 
 function resolveAuth(auth: string | undefined, key: string | undefined): AuthMethod {
   const a = (auth ?? (key ? 'key' : 'agent')).toLowerCase();
-  if (a === 'password')
-    throw new WizardError(
-      '--auth password недоступен в неинтерактивном режиме (нужен ввод пароля).',
-    );
-  if (a !== 'agent' && a !== 'key')
-    throw new WizardError(`--auth должно быть agent|key (получено: ${a}).`);
+  if (a === 'password') throw new WizardError(tr.noninteractive.authPasswordDisabled);
+  if (a !== 'agent' && a !== 'key') throw new WizardError(tr.noninteractive.authInvalid(a));
   return a;
 }
 
 export function addServerNonInteractive(name: string | undefined, f: ServerAddFlags): Server {
   const alias = (name ?? '').trim();
-  if (!isValidSshAlias(alias))
-    throw new WizardError('Укажите корректное имя/алиас: wssh server add <name> --host <ip>');
-  if (servers.nameExists(alias)) throw new WizardError(`Хост «${alias}» уже есть в ~/.ssh/config.`);
+  if (!isValidSshAlias(alias)) throw new WizardError(tr.noninteractive.serverAddUsage);
+  if (servers.nameExists(alias)) throw new WizardError(tr.noninteractive.serverNameExists(alias));
   if (!f.host || !isValidHostOrIp(f.host.trim()))
-    throw new WizardError('Нужен корректный --host <ip|домен>.');
+    throw new WizardError(tr.noninteractive.hostRequired);
   const port = f.port ?? String(settings.get().defaultSshPort);
-  if (!isValidPort(port)) throw new WizardError(`Некорректный --port: ${f.port}`);
+  if (!isValidPort(port)) throw new WizardError(tr.noninteractive.portInvalid(f.port));
 
   const auth = resolveAuth(f.auth, f.key);
   let keyPath: string | null = null;
   if (auth === 'key') {
-    if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
+    if (!f.key) throw new WizardError(tr.noninteractive.authKeyRequiresPath);
     keyPath = resolveKeyPath(f.key);
   }
   const user = resolveUser(f.user, settings.get().defaultUser);
@@ -92,7 +87,7 @@ export function addServerNonInteractive(name: string | undefined, f: ServerAddFl
     description: f.desc ?? '',
     tags: parseTags(f.tags ?? ''),
   });
-  ui.printOk(`Сервер «${server.name}» создан в ~/.ssh/config.`);
+  ui.printOk(tr.noninteractive.serverCreated(server.name));
   return server;
 }
 
@@ -116,28 +111,28 @@ export interface TunnelAddFlags {
 export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
   const type = (f.type ?? 'local').toLowerCase() as ForwardType;
   if (!['local', 'remote', 'dynamic'].includes(type))
-    throw new WizardError('--type должно быть local|remote|dynamic.');
-  if (!f.local || !isValidPort(f.local)) throw new WizardError('Нужен корректный --local <порт>.');
+    throw new WizardError(tr.noninteractive.typeInvalid);
+  if (!f.local || !isValidPort(f.local)) throw new WizardError(tr.noninteractive.localPortRequired);
   const localPort = Number(f.local);
 
   let remotePort: number | null = null;
   if (type !== 'dynamic') {
     if (!f.remotePort || !isValidPort(f.remotePort))
-      throw new WizardError(`Для --type ${type} нужен корректный --remote-port.`);
+      throw new WizardError(tr.noninteractive.remotePortRequired(type));
     remotePort = Number(f.remotePort);
   }
   const remoteHost = (f.remoteHost ?? settings.get().defaultRemoteHost) || '127.0.0.1';
   if (!isValidForwardHost(remoteHost))
-    throw new WizardError(`Некорректный --remote-host: ${JSON.stringify(remoteHost)}`);
+    throw new WizardError(tr.noninteractive.remoteHostInvalid(JSON.stringify(remoteHost)));
 
   // connection: a config alias, or a manual host
   let conn: Pick<Tunnel, 'hostMode' | 'sshHost' | 'host' | 'user' | 'sshPort' | 'auth' | 'keyPath'>;
   if (f.alias) {
-    if (!isValidSshAlias(f.alias)) throw new WizardError(`Некорректный --alias: ${f.alias}`);
+    if (!isValidSshAlias(f.alias)) throw new WizardError(tr.noninteractive.aliasInvalid(f.alias));
     const auth = resolveAuth(f.auth, f.key);
     let keyPath: string | null = null;
     if (auth === 'key') {
-      if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
+      if (!f.key) throw new WizardError(tr.noninteractive.authKeyRequiresPath);
       keyPath = resolveKeyPath(f.key);
     }
     conn = {
@@ -151,13 +146,13 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     };
   } else {
     if (!f.host || !isValidHostOrIp(f.host.trim()))
-      throw new WizardError('Укажите --alias <конфиг> или --host <ip|домен>.');
+      throw new WizardError(tr.noninteractive.aliasOrHostRequired);
     const port = f.port ?? String(settings.get().defaultSshPort);
-    if (!isValidPort(port)) throw new WizardError(`Некорректный --port: ${f.port}`);
+    if (!isValidPort(port)) throw new WizardError(tr.noninteractive.portInvalid(f.port));
     const auth = resolveAuth(f.auth, f.key);
     let keyPath: string | null = null;
     if (auth === 'key') {
-      if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
+      if (!f.key) throw new WizardError(tr.noninteractive.authKeyRequiresPath);
       keyPath = resolveKeyPath(f.key);
     }
     conn = {
@@ -174,8 +169,7 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
   // An explicit --name must satisfy the same contract as the wizard/import, so a
   // non-interactive add can't persist a garbled/over-long/control-char name that
   // the interactive path would reject. The slugified fallback is always valid.
-  if (f.name && !isValidName(f.name.trim()))
-    throw new WizardError('Некорректное --name: 1–64 символа, буквы/цифры и пробел . @ : - _');
+  if (f.name && !isValidName(f.name.trim())) throw new WizardError(tr.noninteractive.nameInvalid);
   const suggested = slugify(f.name || `${f.alias || f.host}-${localPort}`);
   let name = (f.name || suggested).trim();
   let i = 2;
@@ -194,6 +188,6 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     description: f.desc ?? '',
     tags: parseTags(f.tags ?? ''),
   });
-  ui.printOk(`Туннель «${tunnel.name}» создан.`);
+  ui.printOk(tr.noninteractive.tunnelCreated(tunnel.name));
   return tunnel;
 }

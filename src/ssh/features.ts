@@ -8,6 +8,7 @@ import { expandHome } from '../utils/strings.js';
 import { destination, targetOptions, buildRunArgs } from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { runProgram, runSshInherit } from './runner.js';
+import { tr } from '../i18n/index.js';
 
 export interface Endpoint {
   host: string;
@@ -128,7 +129,7 @@ export async function copyId(
   password?: string,
 ): Promise<number> {
   if (!commandExists('ssh-copy-id')) {
-    return Promise.reject(new Error('ssh-copy-id не найден в PATH.'));
+    return Promise.reject(new Error(tr.ssh.featuresCopyIdNotFound));
   }
   const args: string[] = [];
   if (pubKeyPath) args.push('-i', expandHome(pubKeyPath));
@@ -214,10 +215,10 @@ export async function transfer(
   password?: string,
 ): Promise<number> {
   if (opts.tool === 'rsync') {
-    if (!commandExists('rsync')) return Promise.reject(new Error('rsync не найден в PATH.'));
+    if (!commandExists('rsync')) return Promise.reject(new Error(tr.ssh.featuresRsyncNotFound));
     return runProgram('rsync', buildRsyncArgs(server, opts), password);
   }
-  if (!commandExists('scp')) return Promise.reject(new Error('scp не найден в PATH.'));
+  if (!commandExists('scp')) return Promise.reject(new Error(tr.ssh.featuresScpNotFound));
   return runProgram('scp', buildScpArgs(server, opts), password);
 }
 

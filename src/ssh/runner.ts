@@ -15,6 +15,7 @@ import { chalk, accent } from '../ui/theme.js';
 import { printSection, printInfo, printOk, printWarn, printError } from '../ui/messages.js';
 import { confirm, isInteractive } from '../ui/prompts.js';
 import { targetSummary } from '../ui/format.js';
+import { tr } from '../i18n/index.js';
 import { buildConnectArgs, buildTunnelArgs, type ConnectOptions } from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { forgetHostKey, isHostKeyError, knownHostsToken } from './hostkey.js';
@@ -26,27 +27,28 @@ export interface PreflightOptions {
 
 /** Validate a target before spawning. Returns null when OK, else a message. */
 export function preflight(t: ConnectionTarget, opts: PreflightOptions = {}): string | null {
-  if (!commandExists('ssh')) return 'ssh не найден в PATH.';
+  if (!commandExists('ssh')) return tr.ssh.runnerSshNotFound;
 
   if (t.hostMode === 'sshconfig') {
-    if (!t.sshHost.trim()) return 'Не задан алиас ~/.ssh/config.';
+    if (!t.sshHost.trim()) return tr.ssh.runnerNoSshConfigAlias;
   } else if (!t.host.trim()) {
-    return 'Не задан IP/домен.';
+    return tr.ssh.runnerNoHost;
   }
 
   if (opts.forwardPorts) {
     const { local, remote, type } = opts.forwardPorts;
-    if (!isValidPort(local)) return `Некорректный локальный порт: ${local}`;
-    if (type !== 'dynamic' && !isValidPort(remote)) return `Некорректный удалённый порт: ${remote}`;
+    if (!isValidPort(local)) return tr.ssh.runnerBadLocalPort(local);
+    if (type !== 'dynamic' && !isValidPort(remote))
+      return tr.ssh.runnerBadRemotePort(remote as number);
   }
 
   if (t.auth === 'key') {
-    if (!t.keyPath) return 'Авторизация по ключу выбрана, но путь к ключу не задан.';
+    if (!t.keyPath) return tr.ssh.runnerKeyPathMissing;
     if (!fs.existsSync(expandHome(t.keyPath)))
-      return `SSH-ключ не найден: ${expandHome(t.keyPath)}`;
+      return tr.ssh.runnerKeyNotFound(expandHome(t.keyPath));
   }
   if (t.auth === 'password' && !commandExists('sshpass')) {
-    return 'sshpass не установлен — нужен для парольной авторизации.\n  brew install hudochenkov/sshpass/sshpass · apt install sshpass';
+    return tr.ssh.runnerSshpassMissing;
   }
   return null;
 }
@@ -107,7 +109,7 @@ function spawnPass(
     };
 
     child.on('error', (e: Error) => {
-      printError(`Не удалось запустить ${cmd}: ${e.message}`);
+      printError(tr.ssh.runnerSpawnFailed(cmd, e.message));
       done(1);
     });
     child.on('close', (code) => done(code ?? 0));
@@ -131,17 +133,17 @@ function knownHostsTarget(t: ConnectionTarget): string {
  *  reconnect. Returns true when the key was removed (caller should retry). */
 async function offerForgetHostKey(target: ConnectionTarget): Promise<boolean> {
   if (!isInteractive()) {
-    printWarn('Ключ хоста изменился. Удалить старый: wssh forget-host <host>.');
+    printWarn(tr.ssh.runnerHostKeyChangedNonInteractive);
     return false;
   }
   const token = knownHostsTarget(target);
-  printWarn('Ключ хоста изменился (Host key verification failed).');
+  printWarn(tr.ssh.runnerHostKeyChanged);
   const ok = await confirm({
-    message: `Забыть старый ключ для ${token} и переподключиться?`,
+    message: tr.ssh.runnerForgetPrompt(token),
     default: false,
   });
   if (!ok) {
-    printInfo('Оставлено как есть.');
+    printInfo(tr.ssh.runnerKeptAsIs);
     return false;
   }
   const res = forgetHostKey(token);
@@ -149,7 +151,7 @@ async function offerForgetHostKey(target: ConnectionTarget): Promise<boolean> {
     printError(res.message);
     return false;
   }
-  printOk('Старый ключ удалён, переподключаюсь…');
+  printOk(tr.ssh.runnerKeyForgotten);
   return true;
 }
 
@@ -182,7 +184,7 @@ export async function runInteractive(
     printError(err);
     return 1;
   }
-  printSection('▶', `Подключение → ${server.name}`);
+  printSection('▶', tr.ssh.runnerConnecting(server.name));
   console.log(chalk.dim('  ' + targetSummary(server)) + '\n');
 
   const sshArgs = buildConnectArgs(server, opts);
@@ -197,8 +199,8 @@ export async function runInteractive(
       if (await offerForgetHostKey(server)) continue; // reconnect once
     }
 
-    if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim('Сессия завершена.'));
-    else printError(`ssh завершился с кодом ${code}.`);
+    if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim(tr.ssh.runnerSessionDone));
+    else printError(tr.ssh.runnerSshExited(code));
     return code && code !== 130 ? code : 0;
   }
 }
@@ -256,20 +258,20 @@ function tunnelUpBox(tunnel: Tunnel, restored: boolean): string {
   const localUrl = `http://localhost:${tunnel.localPort}`;
   if (restored) {
     return (
-      '\n' + chalk.green('🔁 Туннель восстановлен') + chalk.dim(`  → ${targetSummary(tunnel)}`)
+      '\n' + chalk.green(tr.ssh.runnerTunnelRestored) + chalk.dim(`  → ${targetSummary(tunnel)}`)
     );
   }
-  const lines = [chalk.bold.green('🚇 Туннель поднят'), ''];
+  const lines = [chalk.bold.green(tr.ssh.runnerTunnelUp), ''];
   if (tunnel.type === 'local')
     lines.push(chalk.white((tunnel.description || tunnel.name) + ':  ') + accent(localUrl));
   else if (tunnel.type === 'dynamic')
     lines.push(chalk.white('SOCKS5 proxy:  ') + accent(`localhost:${tunnel.localPort}`));
   else
     lines.push(
-      chalk.white('Reverse-форвард активен') +
+      chalk.white(tr.ssh.runnerReverseActive) +
         chalk.dim(`  (server:${tunnel.remotePort} → ${tunnel.remoteHost}:${tunnel.localPort})`),
     );
-  lines.push(chalk.dim(`→ ${targetSummary(tunnel)}`), '', chalk.dim('Ctrl+C — закрыть туннель.'));
+  lines.push(chalk.dim(`→ ${targetSummary(tunnel)}`), '', chalk.dim(tr.ssh.runnerCloseHint));
   return '\n' + boxen(lines.join('\n'), { padding: 1, borderStyle: 'round', borderColor: 'green' });
 }
 
@@ -296,9 +298,9 @@ export async function runTunnel(
   const localUrl = `http://localhost:${tunnel.localPort}`;
   const sshArgs = buildTunnelArgs(tunnel);
   const autoReconnect = opts.autoReconnect ?? false;
-  printSection('▶', `Поднимаю туннель → ${tunnel.name}`);
+  printSection('▶', tr.ssh.runnerRaisingTunnel(tunnel.name));
   console.log(chalk.dim('  $ ') + chalk.cyan('ssh') + ' ' + chalk.gray(sshArgs.join(' ')));
-  if (autoReconnect) printInfo(chalk.dim('Авто-переподключение включено (Ctrl+C — закрыть).'));
+  if (autoReconnect) printInfo(chalk.dim(tr.ssh.runnerAutoReconnectHint));
 
   let opened = false;
   let raises = 0;
@@ -358,15 +360,12 @@ export async function runTunnel(
       if (!autoReconnect) break;
       const decision = decideReconnect(code, Date.now() - startedAt, attempt);
       if (!decision.reconnect) {
-        if (decision.reason === 'gave-up')
-          printWarn('Слишком много неудачных попыток подряд — перестаю переподключаться.');
+        if (decision.reason === 'gave-up') printWarn(tr.ssh.runnerTooManyRetries);
         break;
       }
       attempt = decision.nextAttempt;
       console.log('');
-      printWarn(
-        `Соединение прервано (код ${code}). Переподключение через ${Math.round(decision.delayMs / 1000)}с… (попытка ${attempt})`,
-      );
+      printWarn(tr.ssh.runnerReconnecting(code, Math.round(decision.delayMs / 1000), attempt));
       if (await interruptibleDelay(decision.delayMs, () => stop)) break;
     }
   } finally {
@@ -376,12 +375,10 @@ export async function runTunnel(
   const code = lastCode;
   const fast = Date.now() - lastStartedAt < 2500;
   console.log('');
-  if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim('Туннель закрыт.'));
-  else printError(`ssh завершился с кодом ${code}.`);
+  if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim(tr.ssh.runnerTunnelClosed));
+  else printError(tr.ssh.runnerSshExited(code));
   if (!autoReconnect && fast && code && code !== 130) {
-    printWarn(
-      `Похоже на ошибку подключения/форварда. Проверь SSH-доступ и что локальный порт ${tunnel.localPort} свободен.`,
-    );
+    printWarn(tr.ssh.runnerPossibleConnectError(tunnel.localPort));
   }
   return code && code !== 130 ? code : 0;
 }

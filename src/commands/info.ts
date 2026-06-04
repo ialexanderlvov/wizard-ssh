@@ -14,6 +14,7 @@ import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import { listKeys } from '../ssh/keys.js';
 import * as ui from '../ui/index.js';
+import { tr } from '../i18n/index.js';
 
 /** Secret count without unlocking: count the encrypted blobs in vault.json. */
 function vaultSecretCount(): number {
@@ -78,29 +79,36 @@ export function info(opts: { json?: boolean } = {}): void {
     return;
   }
   const s = settings.get();
-  const yes = (b: boolean): string => (b ? ui.chalk.green('да') : ui.chalk.dim('нет'));
+  const yes = (b: boolean): string =>
+    b ? ui.chalk.green(tr.common.yes) : ui.chalk.dim(tr.common.no);
   const row = (k: string, v: string): void => console.log(`  ${ui.chalk.dim(k.padEnd(16))} ${v}`);
 
   ui.printSection('ℹ️', `${d.app} ${d.version}`);
   row('Node', d.node);
-  row('Платформа', d.platform);
-  row('Данные', d.dataDir);
+  row(tr.info.rowPlatform, d.platform);
+  row(tr.info.rowData, d.dataDir);
   if (d.ssh) row('OpenSSH', d.ssh);
   row(
-    'Инструменты',
+    tr.info.rowTools,
     Object.entries(d.tools)
       .map(([n, ok]) => (ok ? ui.chalk.green(n) : ui.chalk.dim(n)))
       .join(' '),
   );
   row(
-    'Инвентарь',
-    `${d.counts.servers} серв · ${d.counts.tunnels} тун · ${d.counts.tempTunnels} врем · ${d.counts.keys} ключей · ${d.counts.sessions} фон`,
+    tr.info.rowInventory,
+    tr.info.inventory(
+      d.counts.servers,
+      d.counts.tunnels,
+      d.counts.tempTunnels,
+      d.counts.keys,
+      d.counts.sessions,
+    ),
   );
   row(
-    'Хранилище',
+    tr.info.rowVault,
     d.vault.exists
-      ? `${d.vault.secrets} секрет(ов) · Touch ID ${yes(d.vault.touchId)}`
-      : 'не создано',
+      ? tr.info.vaultSecrets(d.vault.secrets, yes(d.vault.touchId))
+      : tr.info.vaultNone,
   );
-  row('Авто-reconnect', yes(s.tunnelAutoReconnect));
+  row(tr.info.rowAutoReconnect, yes(s.tunnelAutoReconnect));
 }

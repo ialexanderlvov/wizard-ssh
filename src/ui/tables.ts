@@ -9,6 +9,7 @@ import { chalk, TYPE_BADGE } from './theme.js';
 import { targetSummary, forwardSummary } from './format.js';
 import { relativeTime } from '../utils/time.js';
 import { tilde } from '../utils/strings.js';
+import { tr } from '../i18n/index.js';
 
 const ROUND = {
   top: '─',
@@ -30,7 +31,7 @@ const ROUND = {
 
 export function renderEntityTable(items: Entity[]): string {
   const table = new Table({
-    head: ['#', 'Имя', 'Цель', 'Тип', 'Использован', 'Раз', 'Теги'].map((h) => chalk.cyan.bold(h)),
+    head: tr.ui.table.entityHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
@@ -38,7 +39,7 @@ export function renderEntityTable(items: Entity[]): string {
     const kind =
       e.kind === 'tunnel'
         ? (TYPE_BADGE[(e as Tunnel).type] ?? '') + ' ' + chalk.gray(forwardSummary(e as Tunnel))
-        : chalk.gray('shell');
+        : chalk.gray(tr.ui.table.shell);
     table.push([
       chalk.dim(String(i + 1)),
       chalk.bold.white(e.name) + (e.description ? '\n' + chalk.dim(e.description) : ''),
@@ -54,7 +55,7 @@ export function renderEntityTable(items: Entity[]): string {
 
 export function renderStatusTable(rows: FleetStatus[]): string {
   const table = new Table({
-    head: ['', 'Имя', 'Тип', 'Адрес', 'Состояние', 'Задержка'].map((h) => chalk.cyan.bold(h)),
+    head: tr.ui.table.statusHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
@@ -63,10 +64,10 @@ export function renderStatusTable(rows: FleetStatus[]): string {
     table.push([
       up ? chalk.green('●') : chalk.red('○'),
       chalk.bold.white(r.name),
-      r.kind === 'tunnel' ? chalk.gray('туннель') : chalk.gray('сервер'),
+      r.kind === 'tunnel' ? chalk.gray(tr.common.tunnel) : chalk.gray(tr.common.server),
       chalk.dim(`${r.result.host}:${r.result.port}`),
-      up ? chalk.green('доступен') : chalk.red('недоступен'),
-      up ? chalk.yellow(`${r.result.ms} мс`) : chalk.dim('—'),
+      up ? chalk.green(tr.ui.table.up) : chalk.red(tr.ui.table.down),
+      up ? chalk.yellow(tr.ui.table.ms(r.result.ms)) : chalk.dim(tr.common.dash),
     ]);
   }
   return table.toString();
@@ -74,9 +75,7 @@ export function renderStatusTable(rows: FleetStatus[]): string {
 
 export function renderKeysTable(keys: KeyInfo[]): string {
   const table = new Table({
-    head: ['#', 'Файл', 'Тип', 'Биты', 'Отпечаток', 'Комментарий', '.pub'].map((h) =>
-      chalk.cyan.bold(h),
-    ),
+    head: tr.ui.table.keysHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
@@ -85,10 +84,10 @@ export function renderKeysTable(keys: KeyInfo[]): string {
       chalk.dim(String(i + 1)),
       chalk.white(tilde(k.path)),
       chalk.magenta(k.type),
-      k.bits ? chalk.dim(String(k.bits)) : chalk.dim('—'),
-      k.fingerprint ? chalk.dim(k.fingerprint) : chalk.dim('—'),
-      k.comment ? chalk.dim(k.comment) : chalk.dim('—'),
-      k.hasPub ? chalk.green('есть') : chalk.red('нет'),
+      k.bits ? chalk.dim(String(k.bits)) : chalk.dim(tr.common.dash),
+      k.fingerprint ? chalk.dim(k.fingerprint) : chalk.dim(tr.common.dash),
+      k.comment ? chalk.dim(k.comment) : chalk.dim(tr.common.dash),
+      k.hasPub ? chalk.green(tr.common.present) : chalk.red(tr.common.absent),
     ]);
   });
   return table.toString();
@@ -96,14 +95,14 @@ export function renderKeysTable(keys: KeyInfo[]): string {
 
 export function renderSessionsTable(rows: TunnelSession[]): string {
   const table = new Table({
-    head: ['', 'Туннель', 'Проброс', 'Цель', 'PID', 'Запущен'].map((h) => chalk.cyan.bold(h)),
+    head: tr.ui.table.sessionsHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
   for (const s of rows) {
     table.push([
       chalk.green('●'),
-      chalk.bold.white(s.name) + (s.store === 'temp' ? chalk.dim(' (врем.)') : ''),
+      chalk.bold.white(s.name) + (s.store === 'temp' ? chalk.dim(tr.ui.table.temp) : ''),
       chalk.gray(s.forward),
       chalk.dim(s.target),
       chalk.yellow(String(s.pid)),
@@ -115,7 +114,7 @@ export function renderSessionsTable(rows: TunnelSession[]): string {
 
 export function renderConfigHostsTable(hosts: SshConfigHost[]): string {
   const table = new Table({
-    head: ['#', 'Alias', 'HostName', 'User', 'Port', 'IdentityFile'].map((h) => chalk.cyan.bold(h)),
+    head: tr.ui.table.configHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
@@ -123,10 +122,10 @@ export function renderConfigHostsTable(hosts: SshConfigHost[]): string {
     table.push([
       chalk.dim(String(i + 1)),
       chalk.magenta(h.alias),
-      h.hostName || chalk.dim('—'),
-      h.user || chalk.dim('—'),
-      h.port || chalk.dim('—'),
-      h.identityFile ? chalk.dim(h.identityFile) : chalk.dim('—'),
+      h.hostName || chalk.dim(tr.common.dash),
+      h.user || chalk.dim(tr.common.dash),
+      h.port || chalk.dim(tr.common.dash),
+      h.identityFile ? chalk.dim(h.identityFile) : chalk.dim(tr.common.dash),
     ]);
   });
   return table.toString();

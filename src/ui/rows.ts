@@ -6,6 +6,7 @@ import type { Entity, Server, SshConfigHost, Tunnel } from '../core/types.js';
 import { chalk } from './theme.js';
 import { relativeTime, ts } from '../utils/time.js';
 import { targetSummary, forwardSummary } from './format.js';
+import { tr } from '../i18n/index.js';
 import type { ListSort } from './list-prompt.js';
 
 const colWidth = (names: string[], max = 28): number =>
@@ -15,7 +16,7 @@ const pad = (s: string, w: number): string =>
   s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length);
 
 const kindOrForward = (e: Entity): string =>
-  e.kind === 'tunnel' ? forwardSummary(e as Tunnel) : 'shell';
+  e.kind === 'tunnel' ? forwardSummary(e as Tunnel) : tr.ui.table.shell;
 
 /** Build a renderer that column-aligns names across the given entities. */
 export function entityRowRenderer(items: readonly Entity[]): (e: Entity) => string {
@@ -31,14 +32,25 @@ export function entityRowRenderer(items: readonly Entity[]): (e: Entity) => stri
   };
 }
 
+// Labels are getters so a runtime language switch is reflected without rebuilding
+// the (module-scope) sort presets.
 export const ENTITY_SORTS: ReadonlyArray<ListSort<Entity>> = [
   {
-    label: 'недавние',
+    get label() {
+      return tr.ui.sort.recent;
+    },
     compare: (a, b) => ts(b.lastUsedAt) - ts(a.lastUsedAt) || a.name.localeCompare(b.name),
   },
-  { label: 'имя', compare: (a, b) => a.name.localeCompare(b.name) },
   {
-    label: 'подключения',
+    get label() {
+      return tr.ui.sort.name;
+    },
+    compare: (a, b) => a.name.localeCompare(b.name),
+  },
+  {
+    get label() {
+      return tr.ui.sort.uses;
+    },
     compare: (a, b) => (b.useCount || 0) - (a.useCount || 0) || a.name.localeCompare(b.name),
   },
 ];
@@ -58,9 +70,16 @@ export function configRowRenderer(items: readonly SshConfigHost[]): (h: SshConfi
 }
 
 export const CONFIG_SORTS: ReadonlyArray<ListSort<SshConfigHost>> = [
-  { label: 'имя', compare: (a, b) => a.alias.localeCompare(b.alias) },
   {
-    label: 'хост',
+    get label() {
+      return tr.ui.sort.name;
+    },
+    compare: (a, b) => a.alias.localeCompare(b.alias),
+  },
+  {
+    get label() {
+      return tr.ui.sort.host;
+    },
     compare: (a, b) => a.hostName.localeCompare(b.hostName) || a.alias.localeCompare(b.alias),
   },
 ];
@@ -85,7 +104,7 @@ export function connectRowRenderer(items: readonly ConnectItem[]): (i: ConnectIt
     const target =
       e.hostMode === 'sshconfig' ? chalk.magenta(targetSummary(e)) : chalk.cyan(targetSummary(e));
     const kind =
-      e.kind === 'tunnel' ? chalk.gray(forwardSummary(e as Tunnel)) : chalk.gray('shell');
+      e.kind === 'tunnel' ? chalk.gray(forwardSummary(e as Tunnel)) : chalk.gray(tr.ui.table.shell);
     return `${chalk.bold(pad(e.name, w))}  ${target}  ${chalk.dim('·')} ${kind}  ${chalk.dim('· ' + relativeTime(e.lastUsedAt))}`;
   };
 }

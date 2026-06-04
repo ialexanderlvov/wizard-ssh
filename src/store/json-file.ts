@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ensureDir } from '../core/paths.js';
+import { tr } from '../i18n/index.js';
 
 export interface ReadResult<T> {
   data: T;
@@ -26,7 +27,7 @@ export function readJson<T>(file: string, fallback: T): ReadResult<T> {
       fs.copyFileSync(file, backup);
       return { data: fallback, corruptBackup: backup };
     } catch {
-      return { data: fallback, corruptBackup: '(резервную копию создать не удалось)' };
+      return { data: fallback, corruptBackup: tr.vault.jsonfileBackupFailed };
     }
   }
 }
