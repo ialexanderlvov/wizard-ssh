@@ -472,6 +472,29 @@ describe('vault management flow', () => {
     await vaultFlow();
     expect(vault.isUnlocked()).toBe(false); // ended with lock
   });
+
+  it('with Touch ID on, unlock offers a choice — the passphrase still works', async () => {
+    touch.supported = true;
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('master', { enableTouchId: true }); // Touch ID enabled on the vault
+    vault.lock();
+    q.choose = ['passphrase']; // pick passphrase instead of Touch ID
+    q.secret = ['master'];
+    const { unlockVault } = await import('../src/commands/helpers.js');
+    expect(await unlockVault()).toBe(true);
+    expect(vault.isUnlocked()).toBe(true);
+  });
+
+  it('with Touch ID on, choosing Touch ID unlocks without a passphrase', async () => {
+    touch.supported = true;
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('master', { enableTouchId: true });
+    vault.lock();
+    q.choose = ['touchid']; // authenticate() + the stored key unlock it
+    const { unlockVault } = await import('../src/commands/helpers.js');
+    expect(await unlockVault()).toBe(true);
+    expect(vault.isUnlocked()).toBe(true);
+  });
 });
 
 describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
