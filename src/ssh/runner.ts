@@ -16,6 +16,7 @@ import { printSection, printInfo, printOk, printWarn, printError } from '../ui/m
 import { confirm, isInteractive } from '../ui/prompts.js';
 import { targetSummary } from '../ui/format.js';
 import { buildConnectArgs, buildTunnelArgs, type ConnectOptions } from './args.js';
+import { parseSshGOutput } from './gconfig.js';
 import { forgetHostKey, isHostKeyError, knownHostsToken } from './hostkey.js';
 
 export interface PreflightOptions {
@@ -114,25 +115,16 @@ function spawnPass(
 }
 
 /** Resolve a target to the host:port that ssh records in known_hosts (follows
- *  ~/.ssh/config via `ssh -G`). Kept local so the runner doesn't depend on the
- *  features module (which depends back on the runner). */
+ *  ~/.ssh/config via `ssh -G`). Uses the shared leaf parser (ssh/gconfig) so the
+ *  resolution stays identical to features' endpoint resolver. */
 function knownHostsTarget(t: ConnectionTarget): string {
-  let host = t.host;
-  let port = t.sshPort || 22;
   if (t.hostMode === 'sshconfig') {
-    host = t.sshHost;
-    port = 22;
     const res = capture('ssh', ['-G', t.sshHost]);
-    if (res.status === 0) {
-      for (const line of res.stdout.split('\n')) {
-        const [key, ...rest] = line.trim().split(/\s+/);
-        const value = rest.join(' ');
-        if (key === 'hostname' && value) host = value;
-        else if (key === 'port' && value) port = Number(value) || 22;
-      }
-    }
+    const { host, port } =
+      res.status === 0 ? parseSshGOutput(res.stdout, t.sshHost, 22) : { host: t.sshHost, port: 22 };
+    return knownHostsToken(host, port);
   }
-  return knownHostsToken(host, port);
+  return knownHostsToken(t.host, t.sshPort || 22);
 }
 
 /** After a host-key verification failure: offer to forget the stale key and

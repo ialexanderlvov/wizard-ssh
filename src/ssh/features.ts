@@ -6,6 +6,7 @@ import type { ConnectionTarget, Server } from '../core/types.js';
 import { capture, captureAsync, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { destination, targetOptions, buildRunArgs } from './args.js';
+import { parseSshGOutput } from './gconfig.js';
 import { runProgram, runSshInherit } from './runner.js';
 
 export interface Endpoint {
@@ -19,17 +20,9 @@ export function resolveEndpoint(t: ConnectionTarget): Endpoint {
     return { host: t.host, port: t.sshPort || 22 };
   }
   const res = capture('ssh', ['-G', t.sshHost]);
-  let host = t.sshHost;
-  let port = 22;
-  if (res.status === 0) {
-    for (const line of res.stdout.split('\n')) {
-      const [key, ...rest] = line.trim().split(/\s+/);
-      const value = rest.join(' ');
-      if (key === 'hostname' && value) host = value;
-      else if (key === 'port' && value) port = Number(value) || 22;
-    }
-  }
-  return { host, port };
+  return res.status === 0
+    ? parseSshGOutput(res.stdout, t.sshHost, 22)
+    : { host: t.sshHost, port: 22 };
 }
 
 export interface CheckResult {
@@ -81,17 +74,9 @@ export async function resolveEndpointAsync(t: ConnectionTarget): Promise<Endpoin
     return { host: t.host, port: t.sshPort || 22 };
   }
   const res = await captureAsync('ssh', ['-G', t.sshHost], 10_000);
-  let host = t.sshHost;
-  let port = 22;
-  if (res.status === 0) {
-    for (const line of res.stdout.split('\n')) {
-      const [key, ...rest] = line.trim().split(/\s+/);
-      const value = rest.join(' ');
-      if (key === 'hostname' && value) host = value;
-      else if (key === 'port' && value) port = Number(value) || 22;
-    }
-  }
-  return { host, port };
+  return res.status === 0
+    ? parseSshGOutput(res.stdout, t.sshHost, 22)
+    : { host: t.sshHost, port: 22 };
 }
 
 export interface FleetTarget {
