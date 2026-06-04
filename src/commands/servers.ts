@@ -14,17 +14,23 @@ import { askAnnotations, askServerConnection } from './wizard.js';
 import { handlePasswordSecret, pickEntity, resolveEntity, resolvePassword } from './helpers.js';
 
 /** Connect an interactive shell to a server. Returns the ssh exit code. */
-export async function connectServer(server: Server): Promise<number> {
+export async function connectServer(
+  server: Server,
+  opts: { tmux?: string | boolean } = {},
+): Promise<number> {
   console.log('\n' + detailBox(server));
   const password = await resolvePassword(server);
   servers.touch(server.id);
-  return runInteractive(server, password);
+  return runInteractive(server, password, opts);
 }
 
-export async function connectServerFlow(name?: string): Promise<number> {
+export async function connectServerFlow(
+  name?: string,
+  opts: { tmux?: string | boolean } = {},
+): Promise<number> {
   const server = await resolveEntity(servers, name, '🖥 Выберите сервер');
   if (!server) return 0;
-  return connectServer(server);
+  return connectServer(server, opts);
 }
 
 export async function addServer(seed: Partial<Server> = {}): Promise<Server | null> {

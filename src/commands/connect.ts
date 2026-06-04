@@ -57,11 +57,14 @@ export async function quickConnect(): Promise<number> {
 }
 
 /** Resolve a name across all lists, then connect (used by `wssh connect <name>`). */
-export async function quickConnectByName(name?: string): Promise<number> {
+export async function quickConnectByName(
+  name?: string,
+  opts: { tmux?: string | boolean } = {},
+): Promise<number> {
   if (!name) return quickConnect();
 
   const server = servers.findByName(name);
-  if (server) return connectServer(server);
+  if (server) return connectServer(server, opts);
   const tunnel = tunnels.findByName(name);
   if (tunnel) return connectTunnel(tunnel);
 
