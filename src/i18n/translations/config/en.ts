@@ -1,0 +1,43 @@
+import type { Dict } from './ru.js';
+
+const en: Dict = {
+  noHosts: 'No hosts in ~/.ssh/config.',
+  pickHostEnsure: 'Pick a host',
+  proxyKeep: (current) => `Keep: ${current}`,
+  proxyNone: 'No jump host',
+  proxyManual: 'Enter manually (comma-separated chain)',
+  proxyQuestion: '🛬 ProxyJump (bastion, optional)',
+  proxyManualPrompt: 'ProxyJump (alias or user@host:port, comma-separated)',
+  hostNameQuestion: '🖥 HostName (IP/domain)',
+  hostNameInvalid: 'Enter a valid IP or domain',
+  userQuestion: '👤 User',
+  portQuestion: '🔌 Port (empty = 22)',
+  portInvalid: 'Port must be a number 1..65535',
+  identityFileQuestion: '🗝 IdentityFile (path, optional)',
+  addEnsure: 'Adding to ~/.ssh/config',
+  addSection: 'New host in ~/.ssh/config',
+  aliasQuestion: '🔗 Host (alias)',
+  aliasInvalidChars: 'Letters, digits, . _ - only',
+  aliasExists: 'This alias already exists',
+  hostAdded: (alias) => `Host ${alias} added.`,
+  hostUpdated: (alias) => `Host ${alias} updated.`,
+  backupInfo: (path) => `Backup: ${path}`,
+  editEnsure: 'Editing ~/.ssh/config',
+  pickHostEdit: '✏️ Pick a host',
+  hostNotFound: (alias) => `Host "${alias}" not found.`,
+  editSection: (alias) => `Host ${alias}`,
+  editOk: (alias) => `Host ${alias} updated.`,
+  includeMatchWarn:
+    'Original definition is in Include/Match — an overriding block was added to the main ~/.ssh/config.',
+  removeEnsure: 'Removing from ~/.ssh/config',
+  pickHostRemove: '🗑 Pick a host',
+  includeMatchRemoveWarn: (alias) =>
+    `Host ${alias} is defined in an Include/Match or multi-alias block — auto-removal is not supported.`,
+  removeConfirm: (alias) => `Remove ${alias} from ~/.ssh/config?`,
+  removeFailed: 'Could not remove.',
+  removeOk: (alias) => `Host ${alias} removed.`,
+  listSection: (n) => `~/.ssh/config (${n})`,
+  pickHostConnect: '🔌 Pick a host to connect to',
+};
+
+export default en;

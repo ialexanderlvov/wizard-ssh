@@ -35,6 +35,9 @@ importers:
       gradient-string:
         specifier: ^3.0.0
         version: 3.0.0
+      i18n-typed-store:
+        specifier: ^0.4.0
+        version: 0.4.0
     devDependencies:
       '@commitlint/cli':
         specifier: ^19.6.1
@@ -1680,6 +1683,9 @@ packages:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  i18n-typed-store@0.4.0:
+    resolution: {integrity: sha512-bL7HJB6RFcLrfJwkchvzSahV9F89mmX2254fcnnl23+oAbcldELaZJapy//4g/PJlAUrCSQOOj+0hpZBk9n8DQ==}
 
   iconv-lite@0.7.2:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
@@ -3847,6 +3853,8 @@ snapshots:
   human-signals@5.0.0: {}
 
   husky@9.1.7: {}
+
+  i18n-typed-store@0.4.0: {}
 
   iconv-lite@0.7.2:
     dependencies:
