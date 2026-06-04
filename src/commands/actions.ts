@@ -7,7 +7,8 @@ import { tunnels } from '../store/tunnels.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
 import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
-import { forgetHostKey } from '../ssh/hostkey.js';
+import { forgetHostKey, listKnownHosts } from '../ssh/hostkey.js';
+import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
 import * as ui from '../ui/index.js';
 import { renderStatusTable } from '../ui/tables.js';
@@ -118,23 +119,69 @@ export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
 
 // ---------- known_hosts ----------
 
-/** Forget a host's saved key (after a legitimate server rebuild). */
-export async function forgetHostKeyFlow(name?: string): Promise<number> {
-  let host = '';
-  const server = name ? servers.findByName(name) : null;
-  if (server) {
-    host = resolveEndpoint(server).host;
-  } else if (name) {
-    host = name; // treat a non-matching argument as a literal host
-  } else {
-    const picked = await resolveServerLike(undefined, '🧹 У какого сервера забыть host-key?');
-    if (!picked) return 0;
-    host = resolveEndpoint(picked).host;
-  }
+function applyForget(host: string): number {
   const res = forgetHostKey(host);
   if (res.ok) ui.printOk(res.message);
   else ui.printError(res.message);
   return res.ok ? 0 : 1;
+}
+
+/** List the readable entries currently in ~/.ssh/known_hosts. */
+export function knownHostsListFlow(opts: { json?: boolean } = {}): void {
+  const entries = listKnownHosts();
+  if (opts.json) {
+    console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
+  if (!entries.length) {
+    ui.printWarn('В ~/.ssh/known_hosts нет читаемых записей (или включён HashKnownHosts).');
+    return;
+  }
+  ui.printSection('🧾', `known_hosts (${entries.length})`);
+  for (const e of entries)
+    console.log(`  ${ui.chalk.bold(e.host)}  ${ui.chalk.dim(e.keyTypes.join(', '))}`);
+}
+
+/** Forget a host's saved key (`ssh-keygen -R`). With an argument: a server name
+ *  resolves to its host, otherwise it's treated as a literal IP/host. Without one:
+ *  pick from the actual known_hosts entries, or type an IP/host by hand. */
+export async function forgetHostKeyFlow(name?: string): Promise<number> {
+  if (name) {
+    const server = servers.findByName(name);
+    return applyForget(server ? resolveEndpoint(server).host : name);
+  }
+
+  ui.ensureInteractive('known_hosts');
+  const entries = listKnownHosts();
+  type Item = { kind: 'manual' } | { kind: 'entry'; entry: KnownHost };
+  const items: Item[] = [
+    { kind: 'manual' },
+    ...entries.map((entry) => ({ kind: 'entry' as const, entry })),
+  ];
+  const picked = await ui.pickFromList<Item>({
+    message: '🧹 Запись known_hosts для удаления (ssh-keygen -R)',
+    items,
+    render: (it) =>
+      it.kind === 'manual'
+        ? ui.chalk.green('✏️ Ввести IP/хост вручную')
+        : `${ui.chalk.bold(it.entry.host)}  ${ui.chalk.dim(it.entry.keyTypes.join(', '))}`,
+    search: (it) => (it.kind === 'manual' ? 'ручную manual ip host ввести' : it.entry.host),
+    pageSize: 14,
+  });
+  if (picked === ui.BACK) return 0;
+
+  let host: string;
+  if (picked.kind === 'manual') {
+    host = (
+      await ui.text({
+        message: 'IP или хост (например 10.0.0.5 или [example.com]:2222)',
+        validate: (v) => v.trim().length > 0 || 'Не может быть пустым',
+      })
+    ).trim();
+  } else {
+    host = picked.entry.host;
+  }
+  return host ? applyForget(host) : 0;
 }
 
 // ---------- tag groups ----------

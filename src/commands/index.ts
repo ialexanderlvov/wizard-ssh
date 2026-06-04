@@ -322,8 +322,15 @@ export function registerCommands(program: Command): void {
   // ---- known_hosts ----
   program
     .command('forget-host [name]')
-    .description('забыть host-key в known_hosts (ssh-keygen -R)')
-    .action(async (n?: string) => {
+    .alias('known-hosts')
+    .description('known_hosts: удалить запись (ssh-keygen -R) или показать (--list)')
+    .option('--list', 'показать записи known_hosts')
+    .option('--json', 'вывести JSON (с --list)')
+    .action(async (n: string | undefined, o: { list?: boolean; json?: boolean }) => {
+      if (o.list) {
+        actions.knownHostsListFlow({ json: o.json });
+        return;
+      }
       const code = await actions.forgetHostKeyFlow(n);
       if (code) process.exitCode = code;
     });
