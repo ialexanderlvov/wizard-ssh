@@ -132,3 +132,117 @@ describe('ssh argv is guarded against option-injection', () => {
     expect(spec).toEqual(['-L', '8080:[::1]:443']);
   });
 });
+
+describe('tmux session name cannot inject into the remote shell', () => {
+  const target = {
+    hostMode: 'sshconfig',
+    sshHost: 'box',
+    host: '',
+    user: '',
+    sshPort: 22,
+    auth: 'agent',
+    keyPath: null,
+  };
+
+  it.each(['$(touch /tmp/pwn); x', '; id', '`id`', 'a b', '-X', 'a&&b', 'x\nHost evil'])(
+    'buildConnectArgs throws on a hostile tmux name: %j',
+    async (name) => {
+      const { buildConnectArgs } = await import('../src/ssh/args.js');
+      expect(() => buildConnectArgs(target as never, { tmux: name })).toThrow();
+    },
+  );
+
+  it('accepts a clean tmux name and ends options before the destination', async () => {
+    const { buildConnectArgs } = await import('../src/ssh/args.js');
+    const args = buildConnectArgs(target as never, { tmux: 'my-sess_1.2' });
+    expect(args).toContain('my-sess_1.2');
+    expect(args.indexOf('--')).toBeLessThan(args.indexOf('box'));
+  });
+
+  it('bare --tmux (true) falls back to the safe default name', async () => {
+    const { buildConnectArgs } = await import('../src/ssh/args.js');
+    const args = buildConnectArgs(target as never, { tmux: true });
+    expect(args).toContain('wssh');
+  });
+});
+
+describe('password auth does not let SSHPASS leak into ssh helper processes', () => {
+  it('targetOptions disables ProxyCommand/ProxyJump/PermitLocalCommand for password auth', async () => {
+    const { targetOptions } = await import('../src/ssh/args.js');
+    const args = targetOptions({
+      hostMode: 'manual',
+      host: '1.2.3.4',
+      user: 'root',
+      sshPort: 22,
+      auth: 'password',
+      keyPath: null,
+    } as never);
+    expect(args).toContain('ProxyCommand=none');
+    expect(args).toContain('ProxyJump=none');
+    expect(args).toContain('PermitLocalCommand=no');
+  });
+
+  it('key auth keeps proxying available (no none-overrides)', async () => {
+    const { targetOptions } = await import('../src/ssh/args.js');
+    const args = targetOptions({
+      hostMode: 'manual',
+      host: '1.2.3.4',
+      user: 'root',
+      sshPort: 22,
+      auth: 'key',
+      keyPath: '~/.ssh/id_ed25519',
+    } as never);
+    expect(args).not.toContain('ProxyJump=none');
+  });
+});
+
+describe('vault KDF params are bounded against hostile/broken values', () => {
+  it('isValidKdf accepts the app default and rejects dangerous shapes', async () => {
+    const { defaultKdf, isValidKdf } = await import('../src/vault/crypto.js');
+    expect(isValidKdf(defaultKdf())).toBe(true);
+    const base = { salt: 'AAAA', N: 131072, r: 8, p: 1, keylen: 32 };
+    expect(isValidKdf({ ...base, keylen: undefined })).toBe(false); // missing keylen → deriveKey crash
+    expect(isValidKdf({ ...base, r: undefined })).toBe(false);
+    expect(isValidKdf({ ...base, N: 131073 })).toBe(false); // non-power-of-two → scrypt throws / lockout
+    expect(isValidKdf({ ...base, N: 1 << 24 })).toBe(false); // huge cost → DoS/OOM
+    expect(isValidKdf({ ...base, keylen: 16 })).toBe(false); // not an AES-256 key
+    expect(isValidKdf(null)).toBe(false);
+  });
+
+  it('isVaultFileShape rejects a wrong version or a hostile kdf', async () => {
+    const { isVaultFileShape } = await import('../src/vault/vault.js');
+    const check = { iv: 'a', tag: 'b', data: 'c' };
+    const goodKdf = { salt: 'AAAA', N: 131072, r: 8, p: 1, keylen: 32 };
+    expect(isVaultFileShape({ version: 1, kdf: goodKdf, check, secrets: {}, touchId: false })).toBe(
+      true,
+    );
+    expect(isVaultFileShape({ version: 2, kdf: goodKdf, check, secrets: {} })).toBe(false);
+    expect(
+      isVaultFileShape({ version: 1, kdf: { ...goodKdf, N: 1 << 24 }, check, secrets: {} }),
+    ).toBe(false);
+  });
+
+  it('import skips a bundled vault with hostile KDF instead of writing it', async () => {
+    const { FILES } = await import('../src/core/paths.js');
+    const { importData } = await import('../src/commands/import-export.js');
+    const bundle = {
+      app: 'wizard-ssh',
+      version: 1,
+      exportedAt: '2020-01-01T00:00:00.000Z',
+      servers: [],
+      tunnels: [],
+      settings: {},
+      vault: {
+        version: 1,
+        kdf: { salt: 'AAAA', N: 131073, r: 8, p: 1, keylen: 32 }, // non-power-of-two → lockout
+        check: { iv: 'a', tag: 'b', data: 'c' },
+        secrets: {},
+        touchId: false,
+      },
+    };
+    const file = path.join(os.homedir(), 'evil-bundle.json');
+    fs.writeFileSync(file, JSON.stringify(bundle));
+    await importData(file, { replace: false });
+    expect(fs.existsSync(FILES.vault)).toBe(false);
+  });
+});
