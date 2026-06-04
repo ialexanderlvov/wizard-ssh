@@ -327,6 +327,11 @@ export async function runTunnel(
             const restored = raises > 0;
             console.log(tunnelUpBox(tunnel, restored));
             raises++;
+            // A confirmed-healthy run re-arms host-key recovery: a SECOND
+            // legitimate key rotation later in this long-lived tunnel should be
+            // offered the interactive forget again, not silently burn the
+            // short-retry budget reconnecting against a stale key.
+            triedForget = false;
             if (tunnel.type === 'local' && tunnel.openBrowser && !opened) {
               opened = true;
               openInBrowser(localUrl);
