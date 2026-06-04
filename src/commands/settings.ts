@@ -76,6 +76,13 @@ async function editSetting(key: string): Promise<void> {
         default: s.openBrowser,
       }),
     });
+  } else if (key === 'tunnelAutoReconnect') {
+    settings.update({
+      tunnelAutoReconnect: await ui.confirm({
+        message: 'Авто-переподключение туннелей при обрыве (до Ctrl+C)?',
+        default: s.tunnelAutoReconnect,
+      }),
+    });
   } else if (key === 'defaultSort') {
     settings.update({
       defaultSort: await ui.choose<SortKey>({
@@ -117,6 +124,10 @@ export async function settingsFlow(): Promise<void> {
       {
         value: 'openBrowser',
         label: `Открывать браузер: ${ui.chalk.cyan(s.openBrowser ? 'да' : 'нет')}`,
+      },
+      {
+        value: 'tunnelAutoReconnect',
+        label: `Авто-reconnect туннелей: ${ui.chalk.cyan(s.tunnelAutoReconnect ? 'да' : 'нет')}`,
       },
       {
         value: 'defaultSort',

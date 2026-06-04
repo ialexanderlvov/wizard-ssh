@@ -3,25 +3,140 @@
 import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
 import type { EntityCollection } from '../store/collection.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
+import { sessions } from '../store/sessions.store.js';
+import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import * as sshConfig from '../ssh-config/index.js';
-import { runTunnel } from '../ssh/runner.js';
+import { runTunnel, startTunnelDetached, preflight } from '../ssh/runner.js';
+import { isWindows } from '../utils/platform.js';
 import * as ui from '../ui/index.js';
-import { detailBox, forwardSummary } from '../ui/format.js';
-import { renderEntityTable } from '../ui/tables.js';
+import { detailBox, forwardSummary, targetSummary } from '../ui/format.js';
+import { renderEntityTable, renderSessionsTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
-import { parseTags, slugify } from '../utils/strings.js';
+import { parseTags, slugify, tilde } from '../utils/strings.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
 import { handlePasswordSecret, resolveEntity, resolvePassword } from './helpers.js';
 
 /** Tunnels live in one of two collections: the main list or the temporary one. */
 type TunnelStore = EntityCollection<Tunnel>;
 
+const storeKind = (store: TunnelStore): 'main' | 'temp' =>
+  store === tempTunnels ? 'temp' : 'main';
+
 export async function connectTunnel(tunnel: Tunnel, store: TunnelStore = tunnels): Promise<number> {
   console.log('\n' + detailBox(tunnel));
   const password = await resolvePassword(tunnel);
   store.touch(tunnel.id);
-  return runTunnel(tunnel, password);
+  return runTunnel(tunnel, password, { autoReconnect: settings.get().tunnelAutoReconnect });
+}
+
+// ---------- background sessions ----------
+
+/** Start a tunnel detached in the background and register the session. Only
+ *  agent/key tunnels qualify (password tunnels need a foreground sshpass). */
+export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels): Promise<number> {
+  const tunnel = await resolveEntity(store, name, '🚇 Какой туннель поднять в фоне?');
+  if (!tunnel) return 0;
+
+  if (tunnel.auth === 'password') {
+    ui.printError(
+      'Фоновый режим не поддерживает парольную авторизацию (нужен интерактивный sshpass). ' +
+        'Используйте ключ/agent или поднимите туннель на переднем плане.',
+    );
+    return 1;
+  }
+  const existing = sessions.find(tunnel.id);
+  if (existing) {
+    ui.printWarn(`«${tunnel.name}» уже запущен в фоне (pid ${existing.pid}).`);
+    return 0;
+  }
+  const err = preflight(tunnel, {
+    forwardPorts: { local: tunnel.localPort, remote: tunnel.remotePort, type: tunnel.type },
+  });
+  if (err) {
+    ui.printError(err);
+    return 1;
+  }
+  if (isWindows) ui.printWarn('Фоновые туннели на Windows работают нестабильно.');
+
+  const { pid, logFile } = startTunnelDetached(tunnel);
+  if (pid <= 0) {
+    ui.printError('Не удалось запустить фоновый процесс.');
+    return 1;
+  }
+  store.touch(tunnel.id);
+  sessions.add({
+    tunnelId: tunnel.id,
+    name: tunnel.name,
+    pid,
+    store: storeKind(store),
+    forward: forwardSummary(tunnel),
+    target: targetSummary(tunnel),
+    logFile,
+  });
+  ui.printOk(`Туннель «${tunnel.name}» поднят в фоне (pid ${pid}).`);
+  ui.printInfo(`Лог: ${tilde(logFile)} · остановить: wssh tunnel down ${tunnel.name}`);
+  return 0;
+}
+
+export function listSessions(opts: { json?: boolean } = {}): void {
+  const live = sessions.list();
+  if (opts.json) {
+    console.log(JSON.stringify(live, null, 2));
+    return;
+  }
+  if (!live.length) {
+    ui.printWarn('Нет фоновых туннелей. Поднять: wssh tunnel start <имя>');
+    return;
+  }
+  ui.printSection('🟢', `Фоновые туннели (${live.length})`);
+  console.log(renderSessionsTable(live));
+}
+
+/** Stop a background tunnel (by name) or all of them. */
+export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}): Promise<number> {
+  const live = sessions.list();
+  if (!live.length) {
+    ui.printWarn('Нет фоновых туннелей.');
+    return 0;
+  }
+  let toStop = live;
+  if (!opts.all) {
+    const target = name
+      ? live.find((s) => s.name.toLowerCase() === name.toLowerCase())
+      : await (async () => {
+          ui.ensureInteractive('Остановка туннеля');
+          const picked = await ui.pickFromList({
+            message: '🛑 Какой фоновый туннель остановить?',
+            items: live,
+            render: (s) => `${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.forward)}  pid ${s.pid}`,
+            search: (s) => s.name,
+            pageSize: 14,
+          });
+          return picked === ui.BACK ? null : picked;
+        })();
+    if (!target) {
+      if (name) ui.printError(`Фоновый туннель «${name}» не найден.`);
+      return name ? 1 : 0;
+    }
+    toStop = [target];
+  } else if (!(await ui.confirm({ message: `Остановить все (${live.length})?`, default: false }))) {
+    ui.printInfo('Отменено.');
+    return 0;
+  }
+
+  let stopped = 0;
+  for (const s of toStop) {
+    try {
+      process.kill(s.pid, 'SIGTERM');
+      stopped++;
+    } catch {
+      /* already gone */
+    }
+    sessions.remove(s.tunnelId);
+  }
+  ui.printOk(`Остановлено: ${stopped}.`);
+  return 0;
 }
 
 export async function connectTunnelFlow(

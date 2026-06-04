@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultRemoteHost: '127.0.0.1',
   openBrowser: true,
   defaultSort: 'recent',
+  tunnelAutoReconnect: true,
   vault: {
     enabled: false,
     touchId: false,

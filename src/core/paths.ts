@@ -21,8 +21,12 @@ export const FILES = {
   tempTunnels: path.join(DATA_DIR, 'temp-tunnels.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
   vault: path.join(DATA_DIR, 'vault.json'),
+  /** registry of background tunnel sessions (PID + log file per running tunnel) */
+  sessions: path.join(DATA_DIR, 'sessions.json'),
   binDir: path.join(DATA_DIR, 'bin'),
   backupsDir: path.join(DATA_DIR, 'backups'),
+  /** per-session stdout/stderr logs for background tunnels */
+  logsDir: path.join(DATA_DIR, 'logs'),
 } as const;
 
 /** Legacy data dir from the pre-rewrite version (auto-migrated once). */

@@ -73,6 +73,8 @@ export interface Settings {
   defaultRemoteHost: string;
   openBrowser: boolean;
   defaultSort: SortKey;
+  /** auto-restart a dropped tunnel (autossh-style) with backoff, until Ctrl+C */
+  tunnelAutoReconnect: boolean;
   vault: VaultSettings;
 }
 
