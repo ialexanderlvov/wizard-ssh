@@ -49,6 +49,12 @@ const en: Dict = {
   transferSection: (tool, direction, target) => `${tool} ${direction} → ${target}`,
   transferOk: 'Done.',
   transferFailed: (tool, code) => `${tool} exited with code ${code}.`,
+  backupSection: 'Backup ~/.ssh',
+  backupNoSshDir: (dir) => `${dir} not found — nothing to back up.`,
+  backupTarMissing: 'The tar utility was not found — no archive created.',
+  backupFailed: (err) => `Could not create the archive. ${err}`.trim(),
+  backupDone: (path, size) => `Backup created: ${path} (${size}).`,
+  backupKeysNote: 'The archive contains private keys and is owner-only (0600).',
 };
 
 export default en;

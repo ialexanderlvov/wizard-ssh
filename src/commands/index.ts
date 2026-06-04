@@ -20,6 +20,7 @@ import { quickConnectByName } from './connect.js';
 import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
+import { backupSshFlow } from './backup.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
@@ -421,6 +422,13 @@ export function registerCommands(program: Command): void {
     .action((f: string, o: { replace?: boolean }) => importData(f, o));
 
   // ---- misc ----
+  program
+    .command('backup [dir]')
+    .description(tr.cmd.backupDesc)
+    .action((dir?: string) => {
+      const code = backupSshFlow(dir);
+      if (code) process.exitCode = code;
+    });
   program
     .command('path')
     .description(tr.cmd.pathDesc)

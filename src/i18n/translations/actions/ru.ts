@@ -49,6 +49,12 @@ const ru = {
     `${tool} ${direction} → ${target}`,
   transferOk: 'Готово.',
   transferFailed: (tool: string, code: number) => `${tool} завершился с кодом ${code}.`,
+  backupSection: 'Бэкап ~/.ssh',
+  backupNoSshDir: (dir: string) => `Каталог ${dir} не найден — бэкапить нечего.`,
+  backupTarMissing: 'Утилита tar не найдена — архив не создан.',
+  backupFailed: (err: string) => `Не удалось создать архив. ${err}`.trim(),
+  backupDone: (path: string, size: string) => `Бэкап создан: ${path} (${size}).`,
+  backupKeysNote: 'Архив содержит приватные ключи и доступен только владельцу (0600).',
 };
 
 export default ru;

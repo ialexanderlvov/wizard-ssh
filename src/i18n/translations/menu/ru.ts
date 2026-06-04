@@ -21,6 +21,7 @@ const ru = {
     vault: 'Хранилище паролей',
     settings: 'Настройки',
     io: 'Экспорт / импорт',
+    backup: 'Бэкап ~/.ssh',
     exit: 'Выход',
   },
   servers: {
