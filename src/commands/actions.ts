@@ -148,7 +148,18 @@ export function knownHostsListFlow(opts: { json?: boolean } = {}): void {
 export async function forgetHostKeyFlow(name?: string): Promise<number> {
   if (name) {
     const server = servers.findByName(name);
-    return applyForget(server ? resolveEndpoint(server).host : name);
+    const token = server ? resolveEndpoint(server).host : name;
+    // Destructive: drops the pinned key, disabling MITM protection for this host
+    // until it is trusted again. Confirm first (auto-yes under --yes for scripts).
+    const ok = await ui.confirm({
+      message: `Забыть ключ хоста ${token}? Защита от MITM отключится до повторного доверия.`,
+      default: false,
+    });
+    if (!ok) {
+      ui.printInfo('Отменено.');
+      return 0;
+    }
+    return applyForget(token);
   }
 
   ui.ensureInteractive('known_hosts');

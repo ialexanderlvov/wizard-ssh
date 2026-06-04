@@ -127,6 +127,22 @@ export function collectChecks(): Check[] {
     });
   }
 
+  // corruption backups: readJson renames any unparseable file to
+  // `<name>.corrupt-<ts>` and starts clean — surface those so a silently
+  // recovered (and otherwise invisible) data loss doesn't go unnoticed.
+  try {
+    const corrupt = fs.readdirSync(DATA_DIR).filter((f) => f.includes('.corrupt-'));
+    if (corrupt.length) {
+      checks.push({
+        label: 'повреждённые данные',
+        status: 'warn',
+        detail: `найдены резервные копии: ${corrupt.join(', ')} — проверьте и удалите вручную`,
+      });
+    }
+  } catch {
+    /* no data dir yet */
+  }
+
   // inventory
   checks.push({
     label: 'инвентарь',

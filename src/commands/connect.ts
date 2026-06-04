@@ -31,10 +31,13 @@ function allConnectItems(): ConnectItem[] {
   ];
 }
 
-async function dispatch(i: ConnectItem): Promise<number> {
-  if (i.kind === 'config') return connectServer(servers.findById(i.host.alias) as Server);
+type ConnectOpts = { tmux?: string | boolean };
+
+async function dispatch(i: ConnectItem, opts: ConnectOpts = {}): Promise<number> {
+  if (i.kind === 'config') return connectServer(servers.findById(i.host.alias) as Server, opts);
   const e = i.entity;
-  return e.kind === 'tunnel' ? connectTunnel(e as Tunnel) : connectServer(e as Server);
+  // tmux only applies to an interactive shell (server), not a tunnel.
+  return e.kind === 'tunnel' ? connectTunnel(e as Tunnel) : connectServer(e as Server, opts);
 }
 
 /** Interactive picker across everything, then connect. */
@@ -77,7 +80,7 @@ export async function quickConnectByName(
     ui.printError(`«${name}» не найдено среди серверов и туннелей.`);
     return 1;
   }
-  if (hits.length === 1) return dispatch(hits[0]!);
+  if (hits.length === 1) return dispatch(hits[0]!, opts);
 
   ui.ensureInteractive('Выбор подключения');
   const res = await ui.pickFromList<ConnectItem>({
@@ -87,5 +90,5 @@ export async function quickConnectByName(
     search: ui.connectSearch,
     sorts: QC_SORTS,
   });
-  return res === ui.BACK ? 0 : dispatch(res);
+  return res === ui.BACK ? 0 : dispatch(res, opts);
 }
