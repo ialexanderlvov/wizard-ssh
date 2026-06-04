@@ -5,6 +5,7 @@ import net from 'node:net';
 import type { ConnectionTarget, Server } from '../core/types.js';
 import { capture, captureAsync, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
+import { shJoin } from '../utils/shell.js';
 import { destination, targetOptions, buildRunArgs } from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { runProgram, runSshInherit } from './runner.js';
@@ -192,7 +193,9 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
 /** rsync over SSH. The SSH transport (port/key/auth) is passed via `-e`, so
  *  config aliases, custom ports and password auth all work the same as scp. */
 function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
-  const sshCmd = ['ssh', ...targetOptions(t)].join(' ');
+  // rsync re-splits the -e transport string, so quote each token — an unquoted
+  // key path could word-split or inject ssh options (ProxyCommand → RCE).
+  const sshCmd = shJoin(['ssh', ...targetOptions(t)]);
   const args: string[] = ['-e', sshCmd, '-h']; // -h: human-readable sizes
   if (opts.archive ?? true) args.push('-a');
   else if (opts.recursive) args.push('-r');

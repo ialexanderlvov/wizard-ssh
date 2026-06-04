@@ -4,6 +4,7 @@
 import type { ConnectionTarget, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
+import { shJoin } from '../utils/shell.js';
 import { isValidTmuxSession } from '../utils/validators.js';
 import { tr } from '../i18n/index.js';
 
@@ -83,7 +84,9 @@ export interface ConnectOptions {
  *  options (port, identity, robustness) ride along via `--ssh`; the destination
  *  is the ~/.ssh/config alias or user@host. Password auth is unsupported. */
 export function buildMoshArgs(t: ConnectionTarget): string[] {
-  const sshCmd = ['ssh', ...targetOptions(t)].join(' ');
+  // mosh re-splits (and may shell-evaluate) the --ssh value, so quote each token
+  // — an unquoted key path could word-split or inject ssh options (ProxyCommand).
+  const sshCmd = shJoin(['ssh', ...targetOptions(t)]);
   return ['--ssh', sshCmd, destination(t)];
 }
 
