@@ -6,9 +6,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SSH_CONFIG_FILE, SSH_DIR, FILES, ensureDir } from '../core/paths.js';
 import { WizardError } from '../core/errors.js';
+import { hasUnsafeChars } from '../utils/validators.js';
 import type { SshConfigEntry } from './types.js';
 import { blocksFromLines } from './parser.js';
 import { parseWsshComment, serializeWssh } from './wssh.js';
+
+/** Last-resort defense against ssh_config directive injection: a CR/LF (or any
+ *  control char) in an alias/key/value would be written as extra physical lines,
+ *  smuggling arbitrary directives (ProxyCommand → RCE) into ~/.ssh/config. Every
+ *  write funnels through formatBlock, so guarding here closes ALL callers
+ *  (create/update/replaceAll/import/migrate), even ones that skipped validation. */
+function assertConfigSafe(label: string, value: string): void {
+  if (hasUnsafeChars(value))
+    throw new WizardError(`Недопустимый символ (перевод строки/управляющий) в ${label}.`);
+}
 
 export function backupConfig(): string | null {
   if (!fs.existsSync(SSH_CONFIG_FILE)) return null;
@@ -19,11 +30,24 @@ export function backupConfig(): string | null {
   return dest;
 }
 
+/** Remove permission bits looser than `max` (tighten-only — never grants access
+ *  nor clobbers a stricter mode the user chose). */
+function tightenPerms(target: string, max: number): void {
+  try {
+    const mode = fs.statSync(target).mode & 0o777;
+    if (mode & ~max) fs.chmodSync(target, mode & max);
+  } catch {
+    /* best-effort */
+  }
+}
+
 function ensureConfigFile(): void {
   ensureDir(SSH_DIR);
-  fs.chmodSync(SSH_DIR, 0o700);
+  tightenPerms(SSH_DIR, 0o700);
   if (!fs.existsSync(SSH_CONFIG_FILE)) {
     fs.writeFileSync(SSH_CONFIG_FILE, '', { mode: 0o600 });
+  } else {
+    tightenPerms(SSH_CONFIG_FILE, 0o600);
   }
 }
 
@@ -45,10 +69,13 @@ function writeLines(lines: string[]): void {
 
 export function formatBlock(entry: SshConfigEntry): string[] {
   const out: string[] = [];
+  assertConfigSafe('алиасе хоста', entry.alias);
   const meta = serializeWssh(entry.wssh);
   if (meta) out.push(meta); // `#wssh {...}` directly above the Host
   out.push(`Host ${entry.alias}`);
   for (const { key, value } of entry.params) {
+    assertConfigSafe(`параметре ${key.trim()}`, key);
+    assertConfigSafe(`значении ${key.trim()}`, value);
     if (key.trim() && value.trim()) out.push(`    ${key.trim()} ${value.trim()}`);
   }
   return out;
