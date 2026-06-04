@@ -7,6 +7,14 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.3.4](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.3...wizard-ssh-v1.3.4) (2026-06-04)
+
+
+### Bug Fixes
+
+* **ui:** back out of a list instantly on Esc ([5082941](https://github.com/ialexanderlvov/wizard-ssh/commit/5082941bba4d5d5e5dc37cfe1643383d61d62325))
+* **ui:** back out of a list instantly on Esc ([15ee729](https://github.com/ialexanderlvov/wizard-ssh/commit/15ee729d79be1dddc3359c0c4858c0db60bccb49))
+
 ## [1.3.3](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.2...wizard-ssh-v1.3.3) (2026-06-04)
 
 
