@@ -223,7 +223,6 @@ const actionsMenu = (): Promise<void> =>
       { label: 'Выполнить команду', value: 'run' },
       { label: 'Передача файлов', value: 'transfer' },
       { label: 'Группы по тегам', value: 'groups' },
-      { label: 'Забыть host-key (known_hosts)', value: 'forget' },
     ],
     async (a) => {
       if (a === 'status') await actions.statusFlow();
@@ -232,7 +231,6 @@ const actionsMenu = (): Promise<void> =>
       else if (a === 'run') await actions.runFlow(undefined, []);
       else if (a === 'transfer') await actions.transferFlow();
       else if (a === 'groups') actions.groupListFlow();
-      else if (a === 'forget') await actions.forgetHostKeyFlow();
     },
   );
 
@@ -254,6 +252,7 @@ export async function mainMenu(): Promise<void> {
         { label: 'Туннели ▸', value: 'tunnels' },
         { label: 'Действия ▸', value: 'actions' },
         { label: 'SSH-ключи ▸', value: 'keys' },
+        { label: 'Забыть host-key (known_hosts)', value: 'forget' },
         { label: 'Поиск по всему', value: 'search' },
         { label: 'Хранилище паролей', value: 'vault' },
         { label: 'Настройки', value: 'settings' },
@@ -281,7 +280,10 @@ export async function mainMenu(): Promise<void> {
       else if (action === 'tunnels') await tunnelsMenu();
       else if (action === 'actions') await actionsMenu();
       else if (action === 'keys') await keysCmd.keysMenu([ROOT]);
-      else if (action === 'search') {
+      else if (action === 'forget') {
+        await actions.forgetHostKeyFlow();
+        await ui.pause();
+      } else if (action === 'search') {
         await searchFlow();
         await ui.pause();
       } else if (action === 'vault') await vaultFlow();
