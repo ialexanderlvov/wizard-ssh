@@ -46,12 +46,19 @@ async function menuChoose(
   return res === ui.BACK ? ui.BACK : res.value;
 }
 
-/** A submenu loop: PromptAbort inside an action returns to this menu, not exit. */
+/** A submenu loop: PromptAbort inside an action returns to this menu, not exit.
+ *  An action handler may return `true` to mark itself as pure NAVIGATION — it ran
+ *  its own sub-view (a browse list or a nested menu) that already handled backing
+ *  out and left nothing one-shot to read. The loop then skips the trailing
+ *  "↩ Enter — назад" pause and drops straight back to this menu, so Esc out of a
+ *  sub-list lands here immediately instead of on an extra press-Enter screen.
+ *  One-shot actions (add/edit/status/…) return void and still pause so their
+ *  output is readable before the screen clears. */
 async function loop(
   title: string,
   crumbs: string[],
   items: MenuItem[],
-  run: (action: string) => Promise<void>,
+  run: (action: string) => Promise<boolean | void>,
 ): Promise<void> {
   for (;;) {
     ui.clearScreen();
@@ -64,13 +71,14 @@ async function loop(
     }
     if (action === ui.BACK) return;
     ui.clearScreen(); // wipe the menu before the action's own output
+    let navigated = false;
     try {
-      await run(action);
+      navigated = (await run(action)) === true;
     } catch (e) {
       if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
       else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
     }
-    await ui.pause();
+    if (!navigated) await ui.pause();
   }
 }
 
@@ -87,6 +95,7 @@ async function browseEntities(
     const items = list();
     if (!items.length) {
       ui.printWarn(tr.common.listEmpty);
+      await ui.pause(); // the caller skips its pause for this nav view — keep the note readable
       return;
     }
     const picked = await ui.pickFromList<Entity>({
@@ -116,6 +125,7 @@ async function browseEntities(
     try {
       if (act === 'connect') {
         await connect(picked);
+        await ui.pause(); // let the session result be read before leaving the browser
         return; // a connect blocks until done; leave the browser afterwards
       }
       if (act === 'edit') await edit(picked.name);
@@ -139,7 +149,7 @@ const serversMenu = (): Promise<void> =>
     async (a) => {
       if (a === 'add') await serverCmd.addServer();
       else if (a === 'duplicate') await serverCmd.duplicateServerFlow();
-      else if (a === 'list')
+      else if (a === 'list') {
         await browseEntities(
           [root(), tr.menu.servers.title],
           () => servers.all(),
@@ -147,6 +157,8 @@ const serversMenu = (): Promise<void> =>
           (name) => serverCmd.editServer(name),
           (name) => serverCmd.removeServerFlow(name),
         );
+        return true; // navigation: Esc out of the list returns here, no pause
+      }
     },
   );
 
@@ -166,9 +178,13 @@ const tunnelsMenu = (): Promise<void> =>
       if (a === 'add') await tunnelCmd.addTunnel();
       else if (a === 'clone') await tunnelCmd.cloneTunnelFlow();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
-      else if (a === 'bg') await backgroundTunnelsMenu();
-      else if (a === 'temp') await tempTunnelsMenu();
-      else if (a === 'list')
+      else if (a === 'bg') {
+        await backgroundTunnelsMenu();
+        return true; // navigation: returns straight back to this menu
+      } else if (a === 'temp') {
+        await tempTunnelsMenu();
+        return true; // navigation
+      } else if (a === 'list') {
         await browseEntities(
           [root(), tr.menu.tunnels.title],
           () => tunnels.all(),
@@ -176,6 +192,8 @@ const tunnelsMenu = (): Promise<void> =>
           (name) => tunnelCmd.editTunnel(name),
           (name) => tunnelCmd.removeTunnelFlow(name),
         );
+        return true; // navigation
+      }
     },
   );
 
@@ -189,7 +207,7 @@ const tempTunnelsMenu = (): Promise<void> =>
     ],
     async (a) => {
       if (a === 'create') await tunnelCmd.raiseTemporaryTunnel();
-      else if (a === 'list')
+      else if (a === 'list') {
         await browseEntities(
           [root(), tr.menu.tunnels.title, tr.menu.temp.crumb],
           () => tempTunnels.all(),
@@ -197,6 +215,8 @@ const tempTunnelsMenu = (): Promise<void> =>
           (name) => tunnelCmd.editTunnel(name, tempTunnels),
           (name) => tunnelCmd.removeTunnelFlow(name, tempTunnels),
         );
+        return true; // navigation
+      }
     },
   );
 
