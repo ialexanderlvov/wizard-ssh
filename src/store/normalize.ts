@@ -39,11 +39,21 @@ const HOST_MODES: readonly HostMode[] = ['manual', 'sshconfig'];
 const AUTHS: readonly AuthMethod[] = ['agent', 'key', 'password'];
 const FORWARDS: readonly ForwardType[] = ['local', 'remote', 'dynamic'];
 
+// A stored id is interpolated into a filesystem path (the detached-tunnel log
+// file, src/ssh/runner.ts), so an imported/hand-edited record must not be able
+// to smuggle path traversal (`../`) or separators through it. Accept only a safe
+// token verbatim; anything else (incl. an empty id) gets a fresh one. newId()
+// (randomUUID) and any legacy alphanumeric id always pass, so this never churns
+// a well-formed id.
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 export function normalizeBase(raw: Raw): BaseEntity {
   const created = safeIso(raw.createdAt, nowIso());
+  const rawId = str(raw.id);
   return {
-    id: str(raw.id) || newId(),
-    name: str(raw.name).trim(),
+    id: SAFE_ID.test(rawId) ? rawId : newId(),
+    // name is printed by the renderers too — strip control/escape bytes (see desc).
+    name: stripControl(str(raw.name)).trim(),
     // desc/tags are free text printed by the renderers — strip control/escape
     // bytes so an imported/hand-edited record can't emit terminal escapes.
     description: stripControl(str(raw.description)),
@@ -58,12 +68,16 @@ export function normalizeBase(raw: Raw): BaseEntity {
 export function normalizeConnection(raw: Raw): ConnectionTarget {
   return {
     hostMode: oneOf(raw.hostMode, HOST_MODES, 'manual'),
-    sshHost: str(raw.sshHost),
-    host: str(raw.host),
-    user: str(raw.user),
+    // host/user/keyPath/sshHost are printed by the list & detail renderers; strip
+    // control/escape bytes so a hand-edited/imported record can't emit terminal
+    // escapes (mirrors desc/tags in normalizeBase). The argv/forward-spec paths
+    // are guarded separately (buildConnectArgs / normalizeTunnel.remoteHost).
+    sshHost: stripControl(str(raw.sshHost)),
+    host: stripControl(str(raw.host)),
+    user: stripControl(str(raw.user)),
     sshPort: num(raw.sshPort, 22),
     auth: oneOf(raw.auth, AUTHS, 'agent'),
-    keyPath: raw.keyPath ? str(raw.keyPath) : null,
+    keyPath: raw.keyPath ? stripControl(str(raw.keyPath)) : null,
     secretId: raw.secretId ? str(raw.secretId) : null,
   };
 }
