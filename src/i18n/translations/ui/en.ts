@@ -8,6 +8,8 @@ const en: Dict = {
     sshPort: 'SSH port    ',
     auth: 'Auth        ',
     source: 'Source      ',
+    jump: 'Jump        ',
+    jumpYou: 'you',
     forward: 'Forward     ',
     open: 'Open        ',
     tags: 'Tags        ',

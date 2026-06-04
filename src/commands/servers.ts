@@ -4,7 +4,8 @@
 import type { Server, SortKey } from '../core/types.js';
 import { servers } from '../store/servers.store.js';
 import { vault } from '../vault/vault.js';
-import { runInteractive } from '../ssh/runner.js';
+import { runInteractive, runMosh } from '../ssh/runner.js';
+import { commandExists } from '../utils/exec.js';
 import * as ui from '../ui/index.js';
 import { detailBox, targetSummary } from '../ui/format.js';
 import { renderEntityTable } from '../ui/tables.js';
@@ -21,12 +22,22 @@ import {
 } from './helpers.js';
 import { tr } from '../i18n/index.js';
 
-/** Connect an interactive shell to a server. Returns the ssh exit code. */
+/** Connect an interactive shell to a server. Returns the ssh exit code. With
+ *  `opts.mosh`, launch via mosh instead (UDP, survives roaming) — except for
+ *  password auth (mosh can't drive sshpass), where we warn and fall back to ssh. */
 export async function connectServer(
   server: Server,
-  opts: { tmux?: string | boolean } = {},
+  opts: { tmux?: string | boolean; mosh?: boolean } = {},
 ): Promise<number> {
   console.log('\n' + detailBox(server));
+  if (opts.mosh) {
+    if (server.auth === 'password') ui.printWarn(tr.servers.moshNoPassword);
+    else if (!commandExists('mosh')) ui.printWarn(tr.servers.moshUnavailable);
+    else {
+      servers.touch(server.id);
+      return runMosh(server);
+    }
+  }
   const password = await resolvePassword(server);
   servers.touch(server.id);
   return runInteractive(server, password, opts);
@@ -34,7 +45,7 @@ export async function connectServer(
 
 export async function connectServerFlow(
   name?: string,
-  opts: { tmux?: string | boolean } = {},
+  opts: { tmux?: string | boolean; mosh?: boolean } = {},
 ): Promise<number> {
   const server = await resolveEntity(servers, name, tr.servers.selectServer);
   if (!server) return 0;

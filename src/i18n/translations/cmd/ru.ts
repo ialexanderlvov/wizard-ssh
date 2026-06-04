@@ -10,6 +10,7 @@ const ru = {
   optOutputJsonWithList: 'вывести JSON (с --list)',
   optReverseOrder: 'обратный порядок',
   optTmux: 'открыть/переподключиться к tmux-сессии на сервере',
+  optMosh: 'подключиться через mosh (UDP, для нестабильных каналов)',
   optSshUser: 'SSH-пользователь',
   optSshPort: 'SSH-порт',
   optAuthMethod: 'способ авторизации',
@@ -96,6 +97,7 @@ const ru = {
 
   // diagnostics / info
   doctorDesc: 'диагностика окружения (бинари, права, конфиг)',
+  doctorOptListStale: 'показать только проблемные SSH-ключи',
   infoDesc: 'сводка окружения, путей и инвентаря',
 
   // vault / settings / io

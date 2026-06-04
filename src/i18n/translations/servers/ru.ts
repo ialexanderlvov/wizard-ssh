@@ -42,6 +42,10 @@ const ru = {
   listSection: (count: number, sort: string, dir: string) =>
     `Серверы (${count}) · сортировка: ${sort}${dir}`,
 
+  // mosh
+  moshNoPassword: 'mosh не поддерживает парольную авторизацию — подключаюсь по ssh.',
+  moshUnavailable: 'mosh не найден — подключаюсь по ssh.',
+
   // duplicate
   pickServerDuplicate: '🧬 Какой сервер дублировать',
   duplicateNotManageable: 'Этот хост (multi-alias / Match / Include) нельзя дублировать.',

@@ -11,6 +11,7 @@ const en: Dict = {
   optOutputJsonWithList: 'output JSON (with --list)',
   optReverseOrder: 'reverse order',
   optTmux: 'open/reattach to a tmux session on the server',
+  optMosh: 'connect via mosh (UDP, for flaky links)',
   optSshUser: 'SSH user',
   optSshPort: 'SSH port',
   optAuthMethod: 'auth method',
@@ -97,6 +98,7 @@ const en: Dict = {
 
   // diagnostics / info
   doctorDesc: 'diagnose environment (binaries, permissions, config)',
+  doctorOptListStale: 'list only flagged SSH keys',
   infoDesc: 'environment, paths and inventory summary',
 
   // vault / settings / io

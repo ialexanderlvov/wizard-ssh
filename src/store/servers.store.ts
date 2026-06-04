@@ -58,6 +58,7 @@ function toServer(h: SshConfigHost): Server {
     keyPath: h.identityFile || null,
     secretId: meta.secretId ?? null,
     manageable: h.manageable,
+    proxyJump: h.proxyJump || undefined,
   };
 }
 

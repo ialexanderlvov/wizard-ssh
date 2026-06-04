@@ -1,7 +1,7 @@
 /** Human-readable summaries of servers, tunnels and config hosts. */
 
 import boxen from 'boxen';
-import type { ConnectionTarget, Entity, SshConfigHost, Tunnel } from '../core/types.js';
+import type { ConnectionTarget, Entity, Server, SshConfigHost, Tunnel } from '../core/types.js';
 import { chalk, accent, TYPE_BADGE } from './theme.js';
 import { relativeTime, absoluteTime } from '../utils/time.js';
 import { tilde } from '../utils/strings.js';
@@ -78,6 +78,23 @@ export function detailBox(e: Entity): string {
     );
     if (e.kind === 'server' && e.hostMode === 'sshconfig')
       rows.push(chalk.dim(d.source) + chalk.magenta(d.configArrow + e.sshHost));
+  }
+
+  // ProxyJump chain (bastion route) — "you → bastion → … → target".
+  if (e.kind === 'server' && (e as Server).proxyJump) {
+    const hops = (e as Server)
+      .proxyJump!.split(',')
+      .map((h) => h.trim())
+      .filter(Boolean);
+    if (hops.length) {
+      const target = e.host || e.sshHost;
+      const chain = [
+        chalk.dim(d.jumpYou),
+        ...hops.map((h) => chalk.cyan(h)),
+        chalk.white(target),
+      ].join(chalk.dim(' → '));
+      rows.push(chalk.dim(d.jump) + chain);
+    }
   }
 
   if (e.kind === 'tunnel') {

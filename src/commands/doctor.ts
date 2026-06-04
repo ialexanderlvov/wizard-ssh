@@ -4,6 +4,7 @@
 
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { DATA_DIR, FILES, SSH_DIR, SSH_CONFIG_FILE } from '../core/paths.js';
 import { capture, commandExists } from '../utils/exec.js';
 import { isMac, isWindows } from '../utils/platform.js';
@@ -11,9 +12,38 @@ import { listHosts } from '../ssh-config/index.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
-import { listKeys } from '../ssh/keys.js';
+import { listKeys, auditKeys, type KeyAudit, type KeyIssue } from '../ssh/keys.js';
+import { expandHome, tilde } from '../utils/strings.js';
 import * as ui from '../ui/index.js';
 import { tr } from '../i18n/index.js';
+
+/** Localized label per key-issue tag (getters so the locale is read at render). */
+const KEY_ISSUE_LABEL: Record<KeyIssue, () => string> = {
+  'weak-rsa': () => tr.doctor.keyIssueWeakRsa,
+  unencrypted: () => tr.doctor.keyIssueUnencrypted,
+  'no-pub': () => tr.doctor.keyIssueNoPub,
+  orphan: () => tr.doctor.keyIssueOrphan,
+};
+
+function safe<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+/** Audit ~/.ssh keys, marking as orphan any not referenced by a server/tunnel. */
+export function collectKeyAudit(): KeyAudit[] {
+  const referenced = new Set<string>();
+  const add = (kp: string | null): void => {
+    if (kp) referenced.add(path.resolve(expandHome(kp)));
+  };
+  for (const s of safe(() => servers.all(), [])) add(s.keyPath);
+  for (const t of safe(() => tunnels.all(), [])) add(t.keyPath);
+  for (const t of safe(() => tempTunnels.all(), [])) add(t.keyPath);
+  return safe(() => auditKeys(referenced), []);
+}
 
 type Status = 'ok' | 'warn' | 'fail';
 interface Check {
@@ -43,7 +73,7 @@ function mode(p: string): string | null {
   }
 }
 
-export function collectChecks(): Check[] {
+export function collectChecks(keyAudit: KeyAudit[] = collectKeyAudit()): Check[] {
   const checks: Check[] = [];
   const bin = (name: string, required: boolean, why: string): void => {
     const ok = commandExists(name);
@@ -145,6 +175,21 @@ export function collectChecks(): Check[] {
     /* no data dir yet */
   }
 
+  // ssh key hygiene — only when there are keys to talk about
+  if (keyAudit.length) {
+    const flagged = keyAudit.filter((k) => k.issues.length);
+    const insecure = keyAudit.some(
+      (k) => k.issues.includes('weak-rsa') || k.issues.includes('unencrypted'),
+    );
+    checks.push({
+      label: tr.doctor.keysLabel,
+      status: insecure ? 'warn' : 'ok',
+      detail: flagged.length
+        ? tr.doctor.keysIssues(flagged.length, keyAudit.length)
+        : tr.doctor.keysOk(keyAudit.length),
+    });
+  }
+
   // inventory
   checks.push({
     label: tr.doctor.inventoryLabel,
@@ -168,11 +213,36 @@ function safeCount(fn: () => number): number {
   }
 }
 
-export function doctor(opts: { json?: boolean } = {}): number {
-  const checks = collectChecks();
+export function doctor(opts: { json?: boolean; listStaleKeys?: boolean } = {}): number {
+  const keyAudit = collectKeyAudit();
+
+  // `--list-stale-keys`: a focused, scriptable view of only the flagged keys.
+  if (opts.listStaleKeys) {
+    const flagged = keyAudit.filter((k) => k.issues.length);
+    if (opts.json) {
+      console.log(JSON.stringify(flagged, null, 2));
+      return 0;
+    }
+    if (!flagged.length) {
+      ui.printOk(tr.doctor.noStaleKeys);
+      return 0;
+    }
+    ui.printSection('🔑', tr.doctor.staleKeysSection(flagged.length));
+    for (const k of flagged) {
+      const labels = k.issues.map((i) => KEY_ISSUE_LABEL[i]()).join(', ');
+      console.log(
+        `  ${ui.chalk.yellow('⚠')} ${ui.chalk.bold(tilde(k.path))}  ${ui.chalk.dim(labels)}`,
+      );
+    }
+    return 0;
+  }
+
+  const checks = collectChecks(keyAudit);
   const failed = checks.some((c) => c.status === 'fail');
   if (opts.json) {
-    console.log(JSON.stringify({ ok: !failed, platform: os.platform(), checks }, null, 2));
+    console.log(
+      JSON.stringify({ ok: !failed, platform: os.platform(), checks, keys: keyAudit }, null, 2),
+    );
     return failed ? 2 : 0;
   }
   ui.printSection('🩺', tr.doctor.sectionTitle);

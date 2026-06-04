@@ -44,6 +44,18 @@ const ru = {
   sectionTitle: 'Диагностика wssh',
   hasCritical: 'Есть критические проблемы (✖). Их стоит починить.',
   allOk: 'Всё в порядке.',
+
+  // ssh keys audit
+  keysLabel: 'ключи',
+  keysOk: (total: number) => `${total} шт · проблем нет`,
+  keysIssues: (flagged: number, total: number) => `проблемных: ${flagged} из ${total}`,
+  keyIssueWeakRsa: 'RSA <2048',
+  keyIssueUnencrypted: 'без пассфразы',
+  keyIssueNoPub: 'нет .pub',
+  keyIssueOrphan: 'не используется',
+  staleKeysSection: (count: number) => `Проблемные ключи (${count})`,
+  staleKeyLine: (file: string, issues: string) => `${file} — ${issues}`,
+  noStaleKeys: 'Проблемных ключей не найдено.',
 };
 
 export default ru;

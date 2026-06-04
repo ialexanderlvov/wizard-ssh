@@ -32,7 +32,7 @@ function allConnectItems(): ConnectItem[] {
   ];
 }
 
-type ConnectOpts = { tmux?: string | boolean };
+type ConnectOpts = { tmux?: string | boolean; mosh?: boolean };
 
 async function dispatch(i: ConnectItem, opts: ConnectOpts = {}): Promise<number> {
   if (i.kind === 'config') return connectServer(servers.findById(i.host.alias) as Server, opts);
@@ -61,10 +61,7 @@ export async function quickConnect(): Promise<number> {
 }
 
 /** Resolve a name across all lists, then connect (used by `wssh connect <name>`). */
-export async function quickConnectByName(
-  name?: string,
-  opts: { tmux?: string | boolean } = {},
-): Promise<number> {
+export async function quickConnectByName(name?: string, opts: ConnectOpts = {}): Promise<number> {
   if (!name) return quickConnect();
 
   const server = servers.findByName(name);

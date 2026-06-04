@@ -53,6 +53,10 @@ const ru = {
   // args
   argsBadTmuxSession:
     'Недопустимое имя tmux-сессии: разрешены латиница, цифры, точка, дефис и подчёркивание (до 64 символов).',
+
+  // mosh
+  moshConnecting: (name: string) => `Подключаюсь по mosh к «${name}»…`,
+  moshNotFound: 'mosh не найден в PATH. Установите mosh, чтобы пользоваться этим режимом.',
 };
 
 export default ru;

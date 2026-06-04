@@ -53,6 +53,10 @@ const en: Dict = {
   // args
   argsBadTmuxSession:
     'Invalid tmux session name: only letters, digits, dot, hyphen and underscore are allowed (up to 64 characters).',
+
+  // mosh
+  moshConnecting: (name) => `Connecting via mosh to “${name}”…`,
+  moshNotFound: 'mosh not found in PATH. Install mosh to use this mode.',
 };
 
 export default en;

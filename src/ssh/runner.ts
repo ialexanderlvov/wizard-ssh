@@ -16,7 +16,7 @@ import { printSection, printInfo, printOk, printWarn, printError } from '../ui/m
 import { confirm, isInteractive } from '../ui/prompts.js';
 import { targetSummary } from '../ui/format.js';
 import { tr } from '../i18n/index.js';
-import { buildConnectArgs, buildTunnelArgs, type ConnectOptions } from './args.js';
+import { buildConnectArgs, buildMoshArgs, buildTunnelArgs, type ConnectOptions } from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { forgetHostKey, isHostKeyError, knownHostsToken } from './hostkey.js';
 
@@ -203,6 +203,28 @@ export async function runInteractive(
     else printError(tr.ssh.runnerSshExited(code));
     return code && code !== 130 ? code : 0;
   }
+}
+
+/** Connect via mosh (UDP, survives roaming/flaky links and sleep). mosh wraps
+ *  ssh for the handshake. Password auth is unsupported by mosh — callers must
+ *  route those to {@link runInteractive}. Resolves with the exit code. */
+export async function runMosh(server: Server): Promise<number> {
+  if (!commandExists('mosh')) {
+    printError(tr.ssh.moshNotFound);
+    return 1;
+  }
+  const err = preflight(server);
+  if (err) {
+    printError(err);
+    return 1;
+  }
+  printSection('▶', tr.ssh.moshConnecting(server.name));
+  console.log(chalk.dim('  ' + targetSummary(server)) + '\n');
+  const { code } = await spawnPass('mosh', buildMoshArgs(server), undefined);
+  console.log('');
+  if (code === 0 || code === 130) printInfo(chalk.dim(tr.ssh.runnerSessionDone));
+  else printError(tr.ssh.runnerSshExited(code));
+  return code && code !== 130 ? code : 0;
 }
 
 export interface ReconnectDecision {

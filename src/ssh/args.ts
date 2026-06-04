@@ -75,6 +75,16 @@ export function forwardFlags(t: Tunnel): string[] {
 export interface ConnectOptions {
   /** attach/create a tmux session on the remote (true → "wssh", string → name) */
   tmux?: string | boolean;
+  /** launch via mosh instead of ssh (interactive server shells only) */
+  mosh?: boolean;
+}
+
+/** Build the `mosh` argv from a target. mosh wraps ssh for the handshake, so ssh
+ *  options (port, identity, robustness) ride along via `--ssh`; the destination
+ *  is the ~/.ssh/config alias or user@host. Password auth is unsupported. */
+export function buildMoshArgs(t: ConnectionTarget): string[] {
+  const sshCmd = ['ssh', ...targetOptions(t)].join(' ');
+  return ['--ssh', sshCmd, destination(t)];
 }
 
 // A literal `--` ends ssh option parsing, so a destination/alias that begins

@@ -46,6 +46,8 @@ export interface Server extends BaseEntity, ConnectionTarget {
   kind: 'server';
   /** false for multi-alias / Match / Include hosts: connectable but not editable */
   manageable: boolean;
+  /** ProxyJump directive from ~/.ssh/config (comma-separated hops), if any */
+  proxyJump?: string;
 }
 
 /** A saved port-forward. */
