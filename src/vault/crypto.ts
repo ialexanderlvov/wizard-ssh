@@ -47,9 +47,14 @@ export function isValidKdf(kdf: unknown): kdf is KdfParams {
   if (!fields.every((n) => typeof n === 'number' && Number.isInteger(n) && n > 0)) return false;
   if ((k.N & (k.N - 1)) !== 0 || k.N < 1 << 14 || k.N > 1 << 21) return false; // power of two, 2^14..2^21
   if (k.r < 1 || k.r > 16) return false;
-  if (k.p < 1 || k.p > 16) return false;
+  if (k.p < 1 || k.p > 4) return false; // p>4 buys nothing on one machine
   if (k.keylen !== 32) return false; // AES-256-GCM key length
-  if (128 * k.N * k.r > 1 << 30) return false; // cap real scrypt memory at ~1 GiB
+  if (128 * k.N * k.r > 1 << 30) return false; // cap real scrypt MEMORY at ~1 GiB
+  // scrypt CPU work is O(N*r*p); the memory cap omits p, so a large p (within the
+  // r/N bounds) could still freeze the single-threaded unlock for tens of seconds
+  // (a DoS via an imported/hand-edited vault.json). Bound the work product to a
+  // few × the default (default N*r*p = 2^17*8*1 = 2^20 ≈ 1M).
+  if (k.N * k.r * k.p > 1 << 23) return false; // ≈ 8M, ~8× the default cost
   return true;
 }
 
