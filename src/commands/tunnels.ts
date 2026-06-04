@@ -15,7 +15,13 @@ import { renderEntityTable, renderSessionsTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
 import { parseTags, slugify, tilde } from '../utils/strings.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
-import { handlePasswordSecret, resolveEntity, resolvePassword } from './helpers.js';
+import {
+  commitSecretChange,
+  handlePasswordSecret,
+  resolveEntity,
+  resolvePassword,
+  rollbackSecretChange,
+} from './helpers.js';
 
 /** Tunnels live in one of two collections: the main list or the temporary one. */
 type TunnelStore = EntityCollection<Tunnel>;
@@ -196,14 +202,19 @@ export async function raiseTemporaryTunnel(): Promise<number> {
   ui.printSection('🚇', 'Временный туннель (на любой хост)');
   const target = await askConnectionTarget({});
   const secretId = await handlePasswordSecret(target, null);
-  const fwd = await askForward({});
-  const suggested = slugify(
-    `${target.hostMode === 'sshconfig' ? target.sshHost : target.host}-${fwd.localPort}`,
-  );
-  const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
-  const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-  ui.printOk(`Временный туннель «${tunnel.name}» сохранён (отдельный список).`);
-  return connectTunnel(tunnel, tempTunnels);
+  try {
+    const fwd = await askForward({});
+    const suggested = slugify(
+      `${target.hostMode === 'sshconfig' ? target.sshHost : target.host}-${fwd.localPort}`,
+    );
+    const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
+    const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
+    ui.printOk(`Временный туннель «${tunnel.name}» сохранён (отдельный список).`);
+    return connectTunnel(tunnel, tempTunnels);
+  } catch (e) {
+    rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
+    throw e;
+  }
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
@@ -211,15 +222,20 @@ export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | nu
   ui.printSection('➕', 'Новый туннель');
   const target = await askConnectionTarget(seed);
   const secretId = await handlePasswordSecret(target, null);
-  const fwd = await askForward(seed);
-  const suggested = slugify(
-    seed.name || (target.hostMode === 'sshconfig' ? target.sshHost : target.host),
-  );
-  const meta = await askMeta(seed, (n) => tunnels.nameExists(n), suggested);
-  const tunnel = tunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-  ui.printOk(`Туннель «${tunnel.name}» сохранён.`);
-  console.log(detailBox(tunnel));
-  return tunnel;
+  try {
+    const fwd = await askForward(seed);
+    const suggested = slugify(
+      seed.name || (target.hostMode === 'sshconfig' ? target.sshHost : target.host),
+    );
+    const meta = await askMeta(seed, (n) => tunnels.nameExists(n), suggested);
+    const tunnel = tunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
+    ui.printOk(`Туннель «${tunnel.name}» сохранён.`);
+    console.log(detailBox(tunnel));
+    return tunnel;
+  } catch (e) {
+    rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
+    throw e;
+  }
 }
 
 export async function editTunnel(name?: string, store: TunnelStore = tunnels): Promise<void> {
@@ -228,6 +244,7 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
   if (!tunnel) return;
 
   let working: Tunnel = { ...tunnel };
+  const originalSecretId = tunnel.secretId;
   let dirty = false;
 
   for (;;) {
@@ -254,6 +271,7 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
     if (field === '__save__') {
       if (dirty) {
         store.update(tunnel.id, working);
+        commitSecretChange(originalSecretId, working.secretId); // drop the replaced blob
         ui.printOk('Изменения сохранены.');
       } else ui.printInfo('Изменений не было.');
       return;
@@ -261,6 +279,7 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
     if (field === '__cancel__') {
       if (dirty && !(await ui.confirm({ message: 'Выйти без сохранения?', default: false })))
         continue;
+      rollbackSecretChange(originalSecretId, working.secretId); // discard any pending blob
       ui.printInfo('Отменено.');
       return;
     }
@@ -288,7 +307,11 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
       dirty = true;
     } else if (field === 'connection') {
       const target = await askConnectionTarget(working);
-      const secretId = await handlePasswordSecret(target, working.secretId);
+      const prevPending = working.secretId;
+      const secretId = await handlePasswordSecret(target, prevPending);
+      // drop a superseded *pending* blob from an earlier edit this session.
+      if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
+        rollbackSecretChange(originalSecretId, prevPending);
       working = { ...working, ...target, secretId };
       dirty = true;
     } else if (field === 'forward') {

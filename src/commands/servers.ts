@@ -11,7 +11,14 @@ import { renderEntityTable } from '../ui/tables.js';
 import { isValidSshAlias } from '../utils/validators.js';
 import { parseTags } from '../utils/strings.js';
 import { askAnnotations, askServerConnection } from './wizard.js';
-import { handlePasswordSecret, pickEntity, resolveEntity, resolvePassword } from './helpers.js';
+import {
+  commitSecretChange,
+  handlePasswordSecret,
+  pickEntity,
+  resolveEntity,
+  resolvePassword,
+  rollbackSecretChange,
+} from './helpers.js';
 
 /** Connect an interactive shell to a server. Returns the ssh exit code. */
 export async function connectServer(
@@ -50,11 +57,16 @@ export async function addServer(seed: Partial<Server> = {}): Promise<Server | nu
   ).trim();
   const target = await askServerConnection(seed);
   const secretId = await handlePasswordSecret(target, null);
-  const ann = await askAnnotations(seed);
-  const server = servers.create({ name: alias, ...target, secretId, ...ann, kind: 'server' });
-  ui.printOk(`Сервер «${server.name}» сохранён в ~/.ssh/config.`);
-  console.log(detailBox(server));
-  return server;
+  try {
+    const ann = await askAnnotations(seed);
+    const server = servers.create({ name: alias, ...target, secretId, ...ann, kind: 'server' });
+    ui.printOk(`Сервер «${server.name}» сохранён в ~/.ssh/config.`);
+    console.log(detailBox(server));
+    return server;
+  } catch (e) {
+    rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
+    throw e;
+  }
 }
 
 export async function editServer(name?: string): Promise<void> {
@@ -69,6 +81,7 @@ export async function editServer(name?: string): Promise<void> {
   }
 
   let working: Server = { ...server };
+  const originalSecretId = server.secretId;
   let dirty = false;
 
   for (;;) {
@@ -90,6 +103,7 @@ export async function editServer(name?: string): Promise<void> {
     if (field === '__save__') {
       if (dirty) {
         servers.update(server.id, working);
+        commitSecretChange(originalSecretId, working.secretId); // drop the replaced blob
         ui.printOk('Изменения сохранены в ~/.ssh/config.');
       } else ui.printInfo('Изменений не было.');
       return;
@@ -97,6 +111,7 @@ export async function editServer(name?: string): Promise<void> {
     if (field === '__cancel__') {
       if (dirty && !(await ui.confirm({ message: 'Выйти без сохранения?', default: false })))
         continue;
+      rollbackSecretChange(originalSecretId, working.secretId); // discard any pending blob
       ui.printInfo('Отменено.');
       return;
     }
@@ -124,7 +139,12 @@ export async function editServer(name?: string): Promise<void> {
       dirty = true;
     } else if (field === 'connection') {
       const target = await askServerConnection(working);
-      const secretId = await handlePasswordSecret(target, working.secretId);
+      const prevPending = working.secretId;
+      const secretId = await handlePasswordSecret(target, prevPending);
+      // a repeated connection edit may have minted a blob earlier this session;
+      // drop that superseded *pending* one (never the committed original).
+      if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
+        rollbackSecretChange(originalSecretId, prevPending);
       working = { ...working, ...target, secretId };
       dirty = true;
     }

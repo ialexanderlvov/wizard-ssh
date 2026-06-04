@@ -30,7 +30,14 @@ export function resolveVaultPassphrase(): string | null {
   }
 
   const cmd = process.env.WSSH_VAULT_PASSPHRASE_CMD;
-  if (cmd) {
+  // Executed via `sh -c`, so a hijacked environment would run arbitrary shell
+  // code. Honor it ONLY in a truly non-interactive run (its documented purpose),
+  // never silently mid-session in an interactive terminal, and warn when it does
+  // fire so a poisoned env is detectable.
+  if (cmd && !ui.isInteractive()) {
+    ui.printWarn(
+      'Парольная фраза получена из WSSH_VAULT_PASSPHRASE_CMD (sh -c). Доверяйте окружению.',
+    );
     const res = capture('sh', ['-c', cmd]);
     if (res.status === 0) {
       const v = res.stdout.replace(/\r?\n$/, '');
@@ -116,23 +123,23 @@ export async function resolvePassword(t: ConnectionTarget): Promise<string | und
 }
 
 /** After building a target, decide whether to persist its password in the vault.
- *  Returns the secretId to store on the entity (or null). */
+ *  Returns the secretId to store on the entity (or null).
+ *
+ *  IMPORTANT: this never mutates the *previous* secret. A fresh blob is minted
+ *  for a newly entered password and the old one is left intact, so the caller
+ *  can reconcile only when the edit/add actually persists — via
+ *  {@link commitSecretChange} on save or {@link rollbackSecretChange} on cancel.
+ *  That way aborting an edit can never leave a dangling secretId nor an orphan. */
 export async function handlePasswordSecret(
   target: ConnectionTarget,
   prevSecretId: string | null,
 ): Promise<string | null> {
-  if (target.auth !== 'password') {
-    if (prevSecretId) vault.removeSecret(prevSecretId);
-    return null;
-  }
+  if (target.auth !== 'password') return null;
   const save = await ui.confirm({
     message: '💾 Сохранить пароль в зашифрованном хранилище?',
     default: Boolean(prevSecretId),
   });
-  if (!save) {
-    if (prevSecretId) vault.removeSecret(prevSecretId);
-    return null;
-  }
+  if (!save) return null;
   if (!(await ensureVaultSetup())) return prevSecretId;
   if (!(await unlockVault())) {
     ui.printWarn('Хранилище не разблокировано — пароль не сохранён.');
@@ -142,9 +149,27 @@ export async function handlePasswordSecret(
     message: '🔒 Пароль SSH (будет зашифрован)',
     validate: (v) => v.length > 0 || 'Не может быть пустым',
   });
-  const id = vault.setSecret(pw, prevSecretId ?? undefined);
+  const id = vault.setSecret(pw); // a fresh blob; the previous one lives until commit
   ui.printOk('Пароль сохранён в хранилище.');
   return id;
+}
+
+/** Apply a pending secret change once an edit/add COMMITS: drop the superseded
+ *  original blob now that the entity references a new (or no) secret. */
+export function commitSecretChange(
+  originalSecretId: string | null,
+  newSecretId: string | null,
+): void {
+  if (originalSecretId && originalSecretId !== newSecretId) vault.removeSecret(originalSecretId);
+}
+
+/** Roll back a pending secret when an edit/add is CANCELLED or aborted: drop the
+ *  freshly minted blob that won't be referenced, leaving the original intact. */
+export function rollbackSecretChange(
+  originalSecretId: string | null,
+  pendingSecretId: string | null,
+): void {
+  if (pendingSecretId && pendingSecretId !== originalSecretId) vault.removeSecret(pendingSecretId);
 }
 
 // ---------- entity selection ----------

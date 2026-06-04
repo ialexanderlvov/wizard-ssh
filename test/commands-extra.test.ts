@@ -206,12 +206,12 @@ describe('connect branches', () => {
 });
 
 describe('helpers branches', () => {
-  it('handlePasswordSecret removes a stored secret when auth leaves password', async () => {
+  it('handlePasswordSecret defers clearing a secret to commit when auth leaves password', async () => {
     // build a vault + secret
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('m');
     const id = vault.setSecret('pw');
-    const { handlePasswordSecret } = await import('../src/commands/helpers.js');
+    const { handlePasswordSecret, commitSecretChange } = await import('../src/commands/helpers.js');
     const out = await handlePasswordSecret(
       {
         hostMode: 'manual',
@@ -226,15 +226,19 @@ describe('helpers branches', () => {
       id,
     );
     expect(out).toBeNull();
+    // The old blob is NOT removed yet — doing so before the edit commits would
+    // dangle the secretId on cancel. Removal happens only at commit time.
+    expect(vault.hasSecret(id)).toBe(true);
+    commitSecretChange(id, out);
     expect(vault.hasSecret(id)).toBe(false);
   });
 
-  it('handlePasswordSecret with save=false drops the previous secret', async () => {
+  it('handlePasswordSecret with save=false defers dropping the previous secret to commit', async () => {
     const { vault } = await import('../src/vault/vault.js');
     vault.setup('m');
     const id = vault.setSecret('pw');
     q.confirm = [false]; // do not save
-    const { handlePasswordSecret } = await import('../src/commands/helpers.js');
+    const { handlePasswordSecret, commitSecretChange } = await import('../src/commands/helpers.js');
     const out = await handlePasswordSecret(
       {
         hostMode: 'manual',
@@ -249,6 +253,20 @@ describe('helpers branches', () => {
       id,
     );
     expect(out).toBeNull();
+    expect(vault.hasSecret(id)).toBe(true); // preserved until commit
+    commitSecretChange(id, out);
+    expect(vault.hasSecret(id)).toBe(false);
+  });
+
+  it('rollbackSecretChange discards a pending blob but keeps the original (cancel safety)', async () => {
+    const { vault } = await import('../src/vault/vault.js');
+    vault.setup('m');
+    const original = vault.setSecret('old');
+    const pending = vault.setSecret('new');
+    const { rollbackSecretChange } = await import('../src/commands/helpers.js');
+    rollbackSecretChange(original, pending);
+    expect(vault.hasSecret(pending)).toBe(false); // pending blob discarded
+    expect(vault.hasSecret(original)).toBe(true); // original left intact
   });
 
   it('resolvePassword falls back to a prompt when the saved secret is gone', async () => {
