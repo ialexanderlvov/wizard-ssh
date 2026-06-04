@@ -111,6 +111,8 @@ const ru = {
   pathDesc: 'путь к директории с данными',
   menuDesc: 'открыть интерактивное меню',
   backupDesc: 'бэкап всего ~/.ssh в архив (вкл. приватные ключи)',
+  completionDesc: 'скрипт автодополнения для шелла (bash|zsh|fish)',
+  completionBadShell: (shells: string) => `Поддерживаются только: ${shells}.`,
 
   // parseSort error
   sortInvalid: (keys: string) => `--sort должно быть одним из: ${keys}`,

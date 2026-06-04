@@ -21,6 +21,7 @@ import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
 import { backupSshFlow } from './backup.js';
+import { completeFromProgram, completionScript, type Shell } from './completion.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
@@ -440,6 +441,31 @@ export function registerCommands(program: Command): void {
       const { mainMenu } = await import('./menu.js');
       ui.printBanner();
       await mainMenu();
+    });
+
+  // ---- shell completion ----
+  const SHELLS: Shell[] = ['bash', 'zsh', 'fish'];
+  program
+    .command('completion <shell>')
+    .description(tr.cmd.completionDesc)
+    .action((shell: string) => {
+      const s = shell.toLowerCase() as Shell;
+      if (!SHELLS.includes(s)) throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
+      console.log(completionScript(s));
+    });
+  // Hidden helper the completion scripts call on <TAB>: prints candidates, one per
+  // line. It must NEVER throw or print noise to stdout (it would corrupt the shell
+  // completion), so everything is swallowed.
+  program
+    .command('complete [words...]', { hidden: true })
+    .allowUnknownOption()
+    .action((words: string[] | undefined) => {
+      try {
+        const out = completeFromProgram(program, words ?? []);
+        if (out.length) console.log(out.join('\n'));
+      } catch {
+        /* completion is best-effort — never break the user's shell */
+      }
     });
 
   program.addHelpText('after', tr.cmd.helpExamples);

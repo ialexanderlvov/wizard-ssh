@@ -112,6 +112,8 @@ const en: Dict = {
   pathDesc: 'path to data directory',
   menuDesc: 'open interactive menu',
   backupDesc: 'back up all of ~/.ssh to an archive (incl. private keys)',
+  completionDesc: 'shell completion script (bash|zsh|fish)',
+  completionBadShell: (shells) => `Supported shells: ${shells}.`,
 
   // parseSort error
   sortInvalid: (keys) => `--sort must be one of: ${keys}`,
