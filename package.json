@@ -1,8 +1,17 @@
 {
   "name": "wizard-ssh",
   "version": "1.0.0",
-  "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault.",
+  "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault. (Russian UI)",
   "type": "module",
+  "author": "Aleksandr Lvov <ijullic@yandex.ru>",
+  "homepage": "https://github.com/ialexanderlvov/wizard-ssh#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ialexanderlvov/wizard-ssh.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ialexanderlvov/wizard-ssh/issues"
+  },
   "packageManager": "pnpm@10.33.2",
   "bin": {
     "wssh": "./dist/cli.js",
@@ -11,6 +20,7 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
     "docs"
   ],
   "engines": {
@@ -28,7 +38,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "prepublishOnly": "pnpm build"
   },
   "keywords": [
