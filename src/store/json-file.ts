@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ensureDir } from '../core/paths.js';
+import { atomicWrite } from '../utils/atomic.js';
 import { tr } from '../i18n/index.js';
 
 export interface ReadResult<T> {
@@ -32,22 +33,12 @@ export function readJson<T>(file: string, fallback: T): ReadResult<T> {
   }
 }
 
-let tmpCounter = 0;
-
-/** Atomic write (tmp + fsync + rename) with restrictive permissions. The tmp
- *  name is unique per process+call so two concurrent writers (e.g. a background
- *  tunnel and a foreground edit) can't clobber each other's tmp file and corrupt
- *  the target; fsync flushes the bytes to disk before the rename so a crash
- *  right after can't leave a half-written file. */
+/** Atomic write (tmp + fsync + rename) with restrictive permissions. The tmp is
+ *  opened exclusively with an unpredictable name (see {@link atomicWrite}) so two
+ *  concurrent writers can't clobber each other and a pre-planted symlink at the
+ *  tmp path can't redirect the write — relevant when `file` lives in a shared dir
+ *  (e.g. an export target under /tmp), not just under ~/.wizard-ssh. */
 export function writeJson(file: string, data: unknown): void {
   ensureDir(path.dirname(file));
-  const tmp = `${file}.${process.pid}.${tmpCounter++}.tmp`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try {
-    fs.writeFileSync(fd, JSON.stringify(data, null, 2));
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  fs.renameSync(tmp, file);
+  atomicWrite(file, JSON.stringify(data, null, 2));
 }

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { SSH_CONFIG_FILE, SSH_DIR, FILES, ensureDir } from '../core/paths.js';
 import { WizardError } from '../core/errors.js';
 import { hasUnsafeChars } from '../utils/validators.js';
+import { atomicWrite } from '../utils/atomic.js';
 import type { SshConfigEntry } from './types.js';
 import { blocksFromLines } from './parser.js';
 import { parseWsshComment, serializeWssh } from './wssh.js';
@@ -61,12 +62,13 @@ function readLines(): string[] {
   }
 }
 
-let tmpCounter = 0;
-
 /** Atomic write (tmp + fsync + rename) so a concurrent run or a crash mid-write
  *  can't tear the file (last-writer-wins is still possible, but never a
  *  half-written ~/.ssh/config). Resolves through a symlink so a symlinked config
- *  (dotfiles repo) is updated in place, not replaced by a regular file. */
+ *  (dotfiles repo) is updated in place, not replaced by a regular file. The tmp
+ *  is created with an unpredictable name and an exclusive, no-follow open so a
+ *  pre-planted symlink (e.g. if the resolved dir is group/world-writable) can't
+ *  redirect the write. */
 function writeLines(lines: string[]): void {
   let text = lines.join('\n');
   if (!text.endsWith('\n')) text += '\n';
@@ -78,15 +80,7 @@ function writeLines(lines: string[]): void {
   } catch {
     /* file may not exist yet — write at the canonical path */
   }
-  const tmp = `${target}.${process.pid}.${tmpCounter++}.tmp`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try {
-    fs.writeFileSync(fd, text);
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  fs.renameSync(tmp, target);
+  atomicWrite(target, text);
 }
 
 export function formatBlock(entry: SshConfigEntry): string[] {
