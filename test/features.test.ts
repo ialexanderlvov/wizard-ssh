@@ -162,7 +162,7 @@ describe('transfer via rsync', () => {
     const a = args as string[];
     expect(a[0]).toBe('-e');
     expect(a[1]).toContain('ssh');
-    expect(a[1]).toContain('-p 2222'); // transport carries the port
+    expect(a[1]).toContain("'-p' '2222'"); // transport carries the port (shell-quoted, #1-3)
     expect(a).toContain('-a');
     expect(a.at(-1)).toBe('deploy@1.2.3.4:/b');
   });

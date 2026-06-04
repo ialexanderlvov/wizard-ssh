@@ -92,6 +92,7 @@ describe('server duplicate', () => {
       auth: 'agent',
       keyPath: null,
       secretId: null,
+      proxyJump: 'bastion',
       kind: 'server',
       description: 'prod box',
       tags: ['eu'],
@@ -105,6 +106,47 @@ describe('server duplicate', () => {
     expect(dup?.user).toBe('deploy');
     expect(dup?.sshPort).toBe(2222);
     expect(dup?.tags).toEqual(['eu']);
+    expect(dup?.proxyJump).toBe('bastion'); // bastion route is carried over (#7)
+  });
+});
+
+describe('shell-quoting of transport strings (injection fix #1-3)', () => {
+  it('shQuote/shJoin neutralize metacharacters and spaces', async () => {
+    const { shQuote, shJoin } = await import('../src/utils/shell.js');
+    expect(shQuote('plain')).toBe("'plain'");
+    expect(shQuote('/k;touch /tmp/x')).toBe("'/k;touch /tmp/x'");
+    expect(shQuote("a'b")).toBe("'a'\\''b'"); // embedded single quote escaped
+    expect(shJoin(['ssh', '-i', '/My Keys/id_rsa'])).toBe("'ssh' '-i' '/My Keys/id_rsa'");
+  });
+
+  it('buildMoshArgs single-quotes a malicious/space key path so it cannot break out', async () => {
+    const { buildMoshArgs } = await import('../src/ssh/args.js');
+    const evil = buildMoshArgs({
+      hostMode: 'manual',
+      sshHost: '',
+      host: 'h',
+      user: 'u',
+      sshPort: 22,
+      auth: 'key',
+      keyPath: '/k;touch /tmp/pwned',
+      secretId: null,
+    });
+    // the whole dangerous path is one single-quoted token → no shell break-out,
+    // no word-splitting, no ssh-option injection.
+    expect(evil[1]).toContain("'/k;touch /tmp/pwned'");
+
+    const spaced = buildMoshArgs({
+      hostMode: 'manual',
+      sshHost: '',
+      host: 'h',
+      user: 'u',
+      sshPort: 2222,
+      auth: 'key',
+      keyPath: '/home/u/My Keys/id_rsa',
+      secretId: null,
+    });
+    expect(spaced[1]).toContain("'/home/u/My Keys/id_rsa'");
+    expect(spaced[1]).toContain("'-p' '2222'");
   });
 });
 
@@ -185,9 +227,9 @@ describe('mosh args', () => {
       secretId: null,
     });
     expect(manual[0]).toBe('--ssh');
-    expect(manual[1]).toContain('-p 2222');
-    expect(manual[1]).toContain('-i /tmp/id_key');
-    expect(manual[manual.length - 1]).toBe('deploy@1.2.3.4');
+    expect(manual[1]).toContain("'-p' '2222'"); // tokens are shell-quoted (#1-3)
+    expect(manual[1]).toContain("'-i' '/tmp/id_key'");
+    expect(manual[manual.length - 1]).toBe('deploy@1.2.3.4'); // destination is a separate argv
 
     const alias = buildMoshArgs({
       hostMode: 'sshconfig',

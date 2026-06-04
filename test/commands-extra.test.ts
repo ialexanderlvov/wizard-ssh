@@ -32,6 +32,14 @@ const touch = { supported: false };
 function setupMocks(): void {
   vi.doMock('../src/ui/prompts.js', () => promptMock(q));
   vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
+  // Force the reveal flow down its print fallback (and never touch the real
+  // system clipboard) by making copyToClipboard report no clipboard tool.
+  vi.doMock('../src/utils/platform.js', async () => {
+    const actual = await vi.importActual<typeof import('../src/utils/platform.js')>(
+      '../src/utils/platform.js',
+    );
+    return { ...actual, copyToClipboard: () => null };
+  });
   vi.doMock('../src/ssh/runner.js', () => ({ ...runner, preflight: () => null }));
   vi.doMock('../src/ssh/features.js', () => ({
     healthCheck: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
