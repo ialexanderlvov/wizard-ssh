@@ -61,10 +61,32 @@ function readLines(): string[] {
   }
 }
 
+let tmpCounter = 0;
+
+/** Atomic write (tmp + fsync + rename) so a concurrent run or a crash mid-write
+ *  can't tear the file (last-writer-wins is still possible, but never a
+ *  half-written ~/.ssh/config). Resolves through a symlink so a symlinked config
+ *  (dotfiles repo) is updated in place, not replaced by a regular file. */
 function writeLines(lines: string[]): void {
   let text = lines.join('\n');
   if (!text.endsWith('\n')) text += '\n';
-  fs.writeFileSync(SSH_CONFIG_FILE, text.replace(/\n{3,}/g, '\n\n'), { mode: 0o600 });
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  let target = SSH_CONFIG_FILE;
+  try {
+    target = fs.realpathSync(SSH_CONFIG_FILE);
+  } catch {
+    /* file may not exist yet — write at the canonical path */
+  }
+  const tmp = `${target}.${process.pid}.${tmpCounter++}.tmp`;
+  const fd = fs.openSync(tmp, 'w', 0o600);
+  try {
+    fs.writeFileSync(fd, text);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, target);
 }
 
 export function formatBlock(entry: SshConfigEntry): string[] {

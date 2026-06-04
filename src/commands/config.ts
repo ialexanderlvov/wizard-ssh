@@ -9,7 +9,7 @@ import { usage } from '../store/usage.store.js';
 import { vault } from '../vault/vault.js';
 import * as ui from '../ui/index.js';
 import { renderConfigHostsTable } from '../ui/tables.js';
-import { isValidHostOrIp, isValidPort, isValidSshAlias } from '../utils/validators.js';
+import { isValidHostOrIp, isValidPort, isValidSshAlias, isValidUser } from '../utils/validators.js';
 import { connectServer } from './servers.js';
 import { tr } from '../i18n/index.js';
 
@@ -95,7 +95,11 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
       default: get('HostName'),
       validate: (v) => !v.trim() || isValidHostOrIp(v.trim()) || tr.config.hostNameInvalid,
     }),
-    User: await ui.text({ message: tr.config.userQuestion, default: get('User') }),
+    User: await ui.text({
+      message: tr.config.userQuestion,
+      default: get('User'),
+      validate: (v) => !v.trim() || isValidUser(v.trim()) || tr.config.userInvalid,
+    }),
     Port: await ui.text({
       message: tr.config.portQuestion,
       default: get('Port'),

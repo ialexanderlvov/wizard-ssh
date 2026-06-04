@@ -66,6 +66,11 @@ const ru = {
   secretNotFound: 'Сохранённый пароль не найден.',
   revealHeader: (name: string) => `Пароль для «${name}»:`,
   revealHint: 'Скроется при возврате в меню.',
+  revealCopied: (name: string, tool: string) =>
+    `Пароль «${name}» скопирован в буфер обмена (${tool}).`,
+  revealCopiedHint: 'Буфер перезапишется при следующем копировании.',
+  revealStdoutWarning:
+    'Буфер обмена недоступен — печатаю на экран. Очистите прокрутку терминала после.',
 
   // deleteSavedPassword
   pickDeletePrompt: 'У какого подключения удалить сохранённый пароль?',

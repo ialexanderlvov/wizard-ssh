@@ -26,6 +26,7 @@ const en: Dict = {
   hostPrompt: '🖥 IP or domain',
   hostValidate: 'Enter a valid IP or domain',
   userPrompt: '👤 SSH user',
+  userInvalid: 'Only letters, digits, dot, hyphen, underscore (up to 64)',
   sshPortPrompt: '🔌 SSH port',
   authPrompt: '🔐 Authentication method',
   authAgent: 'ssh-agent / default',

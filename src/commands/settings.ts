@@ -5,6 +5,7 @@ import { settings } from '../store/settings.store.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
+import { copyToClipboard } from '../utils/platform.js';
 import * as ui from '../ui/index.js';
 import { isValidPort } from '../utils/validators.js';
 import { ensureVaultSetup, unlockVault } from './helpers.js';
@@ -273,6 +274,16 @@ async function revealSavedPassword(): Promise<void> {
     ui.printWarn(tr.settings.secretNotFound);
     return;
   }
+  // Prefer the clipboard so the plaintext never lands in terminal scrollback /
+  // a screen recorder. Only fall back to printing when no clipboard tool exists,
+  // and warn about the exposure when we do.
+  const clip = copyToClipboard(pw);
+  if (clip) {
+    ui.printOk(tr.settings.revealCopied(picked.entity.name, clip));
+    ui.printInfo(tr.settings.revealCopiedHint);
+    return;
+  }
+  ui.printWarn(tr.settings.revealStdoutWarning);
   ui.printOk(tr.settings.revealHeader(picked.entity.name));
   console.log('  ' + ui.chalk.bold.yellow(pw));
   ui.printInfo(tr.settings.revealHint);

@@ -11,6 +11,7 @@ const ru = {
   hostNameQuestion: '🖥 HostName (IP/домен)',
   hostNameInvalid: 'Введите валидный IP или домен',
   userQuestion: '👤 User',
+  userInvalid: 'Только латиница, цифры, точка, дефис, подчёркивание (до 64)',
   portQuestion: '🔌 Port (пусто = 22)',
   portInvalid: 'Порт должен быть числом 1..65535',
   identityFileQuestion: '🗝 IdentityFile (путь, необязательно)',

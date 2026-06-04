@@ -129,6 +129,7 @@ export async function duplicateServerFlow(name?: string, newName?: string): Prom
     auth: src.auth,
     keyPath: src.keyPath,
     secretId: null,
+    proxyJump: src.proxyJump,
     description: src.description,
     tags: [...src.tags],
     kind: 'server',

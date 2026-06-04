@@ -11,6 +11,7 @@ const en: Dict = {
   hostNameQuestion: '🖥 HostName (IP/domain)',
   hostNameInvalid: 'Enter a valid IP or domain',
   userQuestion: '👤 User',
+  userInvalid: 'Only letters, digits, dot, hyphen, underscore (up to 64)',
   portQuestion: '🔌 Port (empty = 22)',
   portInvalid: 'Port must be a number 1..65535',
   identityFileQuestion: '🗝 IdentityFile (path, optional)',

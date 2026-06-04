@@ -30,7 +30,7 @@ const SORTERS: Record<SortKey, (a: Server, b: Server) => number> = {
 };
 
 /** Standard connection directives the facade owns; anything else is preserved. */
-const STD_PARAMS = new Set(['hostname', 'user', 'port', 'identityfile']);
+const STD_PARAMS = new Set(['hostname', 'user', 'port', 'identityfile', 'proxyjump']);
 
 /** Assemble a Server from a parsed config host + its usage stats. */
 function toServer(h: SshConfigHost): Server {
@@ -64,7 +64,11 @@ function toServer(h: SshConfigHost): Server {
 
 /** Build the ssh-config params from a connection target, preserving any extra
  *  directives (ProxyJump, Compression, …) already present on the block. */
-function paramsFor(conn: ConnectionTarget, existing: SshConfigParam[] = []): SshConfigParam[] {
+function paramsFor(
+  conn: ConnectionTarget,
+  existing: SshConfigParam[] = [],
+  proxyJump?: string,
+): SshConfigParam[] {
   const out: SshConfigParam[] = [];
   if (conn.host) out.push({ key: 'HostName', value: conn.host });
   if (conn.user) out.push({ key: 'User', value: conn.user });
@@ -74,6 +78,9 @@ function paramsFor(conn: ConnectionTarget, existing: SshConfigParam[] = []): Ssh
   // back as agent/password + keyPath); a password connect ignores it anyway, so
   // keeping it never drops the user's key directive.
   if (conn.keyPath) out.push({ key: 'IdentityFile', value: conn.keyPath });
+  // ProxyJump is a managed field (so create/duplicate carry the bastion route,
+  // not just edits that happen to preserve the existing block's params).
+  if (proxyJump) out.push({ key: 'ProxyJump', value: proxyJump });
   for (const p of existing) if (!STD_PARAMS.has(p.key.toLowerCase())) out.push(p);
   return out;
 }
@@ -136,7 +143,7 @@ class ConfigServers {
     const createdAt = data.createdAt || existing?.wssh?.createdAt || nowIso();
     sshConfig.upsertHost({
       alias,
-      params: paramsFor(connOf(data), existing?.params ?? []),
+      params: paramsFor(connOf(data), existing?.params ?? [], data.proxyJump),
       wssh: metaFor(data, createdAt, nowIso()),
     });
     return this.findById(alias) as Server;
@@ -158,7 +165,7 @@ class ConfigServers {
     // failed write can never leave the server missing from the config.
     sshConfig.upsertHost({
       alias: newAlias,
-      params: paramsFor(connOf(merged), host?.params ?? []),
+      params: paramsFor(connOf(merged), host?.params ?? [], merged.proxyJump),
       wssh: metaFor(merged, merged.createdAt || current.createdAt || nowIso(), nowIso()),
     });
     if (newAlias !== id) {
