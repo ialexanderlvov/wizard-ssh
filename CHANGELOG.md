@@ -7,6 +7,13 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.3.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.2.0...wizard-ssh-v1.3.0) (2026-06-04)
+
+
+### Features
+
+* **ui:** let Esc cancel a value edit and step back ([99a13f7](https://github.com/ialexanderlvov/wizard-ssh/commit/99a13f7251e1d84df93b558e9a018732da801fef))
+
 ## [1.2.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.1.0...wizard-ssh-v1.2.0) (2026-06-04)
 
 
