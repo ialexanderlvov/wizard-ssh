@@ -55,6 +55,9 @@ const en: Dict = {
   backupFailed: (err) => `Could not create the archive. ${err}`.trim(),
   backupDone: (path, size) => `Backup created: ${path} (${size}).`,
   backupKeysNote: 'The archive contains private keys and is owner-only (0600).',
+  transferNeedDirection: 'Specify a direction: --upload or --download.',
+  transferNeedLocal: 'Specify the local path: --local <path>.',
+  transferNeedRemote: 'Specify the remote path: --remote <path>.',
 };
 
 export default en;

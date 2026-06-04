@@ -2,8 +2,10 @@
  *  file transfer, known_hosts, tag groups. */
 
 import type { ConnectionTarget, Server } from '../core/types.js';
+import { WizardError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
+import { settings } from '../store/settings.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
 import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
@@ -284,52 +286,96 @@ export async function runFlow(name: string | undefined, command: string[]): Prom
   return runCommand(server, cmd, password);
 }
 
-export async function transferFlow(name?: string): Promise<number> {
+/** CLI flags for a (possibly non-interactive) transfer. Anything omitted is
+ *  prompted for in an interactive session, or filled from the saved transfer
+ *  defaults / errors when scripted. */
+export interface TransferCliOptions {
+  tool?: TransferTool;
+  direction?: 'upload' | 'download';
+  local?: string;
+  remote?: string;
+  recursive?: boolean;
+  compress?: boolean;
+  delete?: boolean;
+  dryRun?: boolean;
+}
+
+export async function transferFlow(name?: string, cli: TransferCliOptions = {}): Promise<number> {
   const server = await resolveServerLike(name, tr.actions.transferPick);
   if (!server) return 0;
-  ui.ensureInteractive(tr.actions.transferEnsure);
+  const def = settings.get().transfer;
+  const interactive = ui.isInteractive() && !ui.runtime.nonInteractive;
 
-  const toolChoices: Array<{ name: string; value: TransferTool }> = [
-    { name: tr.actions.scpChoice, value: 'scp' },
-  ];
-  if (commandExists('rsync')) {
-    toolChoices.unshift({
-      name: tr.actions.rsyncChoice,
-      value: 'rsync',
+  // tool: flag → interactive picker (rsync only when installed) → saved default.
+  let tool: TransferTool;
+  const rsyncOk = commandExists('rsync');
+  if (cli.tool) tool = cli.tool;
+  else if (interactive) {
+    const choices: Array<{ name: string; value: TransferTool }> = [
+      { name: tr.actions.scpChoice, value: 'scp' },
+    ];
+    if (rsyncOk) choices.unshift({ name: tr.actions.rsyncChoice, value: 'rsync' });
+    tool =
+      choices.length > 1
+        ? await ui.choose<TransferTool>({
+            message: tr.actions.toolQuestion,
+            choices,
+            default: rsyncOk ? def.tool : 'scp',
+          })
+        : 'scp';
+  } else tool = def.tool;
+
+  // direction + paths: flag → prompt → (scripted) a clear error instead of hanging.
+  let direction = cli.direction;
+  if (!direction) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedDirection);
+    direction = await ui.choose<'upload' | 'download'>({
+      message: tr.actions.directionQuestion,
+      choices: [
+        { name: tr.actions.uploadChoice, value: 'upload' },
+        { name: tr.actions.downloadChoice, value: 'download' },
+      ],
     });
   }
-  const tool =
-    toolChoices.length > 1
-      ? await ui.choose<TransferTool>({ message: tr.actions.toolQuestion, choices: toolChoices })
-      : 'scp';
+  let localPath = cli.local;
+  if (localPath === undefined) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedLocal);
+    localPath = await ui.text({
+      message: tr.actions.localPath,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+  }
+  let remotePath = cli.remote;
+  if (remotePath === undefined) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
+    remotePath = await ui.text({
+      message: tr.actions.remotePath,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+  }
 
-  const direction = await ui.choose<'upload' | 'download'>({
-    message: tr.actions.directionQuestion,
-    choices: [
-      { name: tr.actions.uploadChoice, value: 'upload' },
-      { name: tr.actions.downloadChoice, value: 'download' },
-    ],
-  });
-  const localPath = await ui.text({
-    message: tr.actions.localPath,
-    validate: (v) => v.trim().length > 0 || tr.common.empty,
-  });
-  const remotePath = await ui.text({
-    message: tr.actions.remotePath,
-    validate: (v) => v.trim().length > 0 || tr.common.empty,
-  });
-
+  // each toggle: explicit flag → interactive prompt → saved default. Under `--yes`
+  // (assumeYes) we must NOT route through ui.confirm: it answers "yes" to every
+  // confirmation, which would silently force --delete (destructive) and --dry-run
+  // (a no-op transfer that still reports success). Treat --yes as "accept the
+  // configured default" for these toggles, not "turn everything on".
+  const ask = async (
+    flag: boolean | undefined,
+    message: string,
+    dflt: boolean,
+  ): Promise<boolean> => {
+    if (flag !== undefined) return flag;
+    if (interactive && !ui.runtime.assumeYes) return ui.confirm({ message, default: dflt });
+    return dflt;
+  };
   const opts: TransferOptions = { direction, localPath, remotePath, tool };
   if (tool === 'rsync') {
     opts.archive = true;
-    opts.compress = await ui.confirm({ message: tr.actions.rsyncCompress, default: true });
-    opts.delete = await ui.confirm({
-      message: tr.actions.rsyncDelete,
-      default: false,
-    });
-    opts.dryRun = await ui.confirm({ message: tr.actions.rsyncDryRun, default: false });
+    opts.compress = await ask(cli.compress, tr.actions.rsyncCompress, def.compress);
+    opts.delete = await ask(cli.delete, tr.actions.rsyncDelete, def.delete);
+    opts.dryRun = await ask(cli.dryRun, tr.actions.rsyncDryRun, false);
   } else {
-    opts.recursive = await ui.confirm({ message: tr.actions.scpRecursive, default: false });
+    opts.recursive = await ask(cli.recursive, tr.actions.scpRecursive, def.recursive);
   }
 
   const password = await resolvePassword(server);

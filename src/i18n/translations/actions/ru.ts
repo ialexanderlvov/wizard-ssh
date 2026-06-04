@@ -55,6 +55,9 @@ const ru = {
   backupFailed: (err: string) => `Не удалось создать архив. ${err}`.trim(),
   backupDone: (path: string, size: string) => `Бэкап создан: ${path} (${size}).`,
   backupKeysNote: 'Архив содержит приватные ключи и доступен только владельцу (0600).',
+  transferNeedDirection: 'Укажите направление: --upload или --download.',
+  transferNeedLocal: 'Укажите локальный путь: --local <путь>.',
+  transferNeedRemote: 'Укажите путь на сервере: --remote <путь>.',
 };
 
 export default ru;

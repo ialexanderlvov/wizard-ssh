@@ -164,6 +164,73 @@ describe('actions branches', () => {
       undefined,
     );
   });
+
+  it('transferFlow runs fully from CLI flags (no prompts)', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    const code = await transferFlow('box', {
+      tool: 'scp',
+      direction: 'upload',
+      local: './a',
+      remote: '/b',
+      recursive: true,
+    });
+    expect(code).toBe(0);
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tool: 'scp',
+        direction: 'upload',
+        localPath: './a',
+        remotePath: '/b',
+        recursive: true,
+      }),
+      undefined,
+    );
+  });
+
+  it('transferFlow errors when scripted and a required field is missing', async () => {
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ nonInteractive: true }); // reset by vi.resetModules in beforeEach
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    await expect(transferFlow('box', { local: './a', remote: '/b' })).rejects.toThrow();
+  });
+
+  it('transferFlow applies saved transfer defaults when flags are omitted', async () => {
+    const { settings } = await import('../src/store/settings.store.js');
+    settings.update({
+      transfer: { tool: 'rsync', recursive: false, compress: true, delete: true },
+    });
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ nonInteractive: true });
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    await transferFlow('box', { direction: 'upload', local: './a', remote: '/b' }); // no tool/compress/delete
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tool: 'rsync', compress: true, delete: true }),
+      undefined,
+    );
+  });
+
+  it('transferFlow under --yes accepts toggle defaults (no forced --delete / --dry-run)', async () => {
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ assumeYes: true }); // --yes, but session is still "interactive"
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    // rsync via flag (skips picker); no toggle flags → must fall to defaults, NOT "yes"
+    await transferFlow('box', { tool: 'rsync', direction: 'upload', local: './a', remote: '/b' });
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tool: 'rsync', delete: false, dryRun: false }),
+      undefined,
+    );
+  });
 });
 
 describe('connect branches', () => {

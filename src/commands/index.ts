@@ -299,10 +299,46 @@ export function registerCommands(program: Command): void {
     .command('transfer [name]')
     .alias('scp')
     .description(tr.cmd.transferDesc)
-    .action(async (n?: string) => {
-      const code = await actions.transferFlow(n);
-      if (code) process.exitCode = code;
-    });
+    .option('--tool <scp|rsync>', tr.cmd.transferOptTool)
+    .option('--upload', tr.cmd.transferOptUpload)
+    .option('--download', tr.cmd.transferOptDownload)
+    .option('--local <path>', tr.cmd.transferOptLocal)
+    .option('--remote <path>', tr.cmd.transferOptRemote)
+    .option('--recursive', tr.cmd.transferOptRecursive)
+    .option('--compress', tr.cmd.transferOptCompress)
+    .option('--delete', tr.cmd.transferOptDelete)
+    .option('--dry-run', tr.cmd.transferOptDryRun)
+    .action(
+      async (
+        n: string | undefined,
+        o: {
+          tool?: string;
+          upload?: boolean;
+          download?: boolean;
+          local?: string;
+          remote?: string;
+          recursive?: boolean;
+          compress?: boolean;
+          delete?: boolean;
+          dryRun?: boolean;
+        },
+      ) => {
+        if (o.upload && o.download) throw new WizardError(tr.cmd.transferBothDirections);
+        if (o.tool && o.tool !== 'scp' && o.tool !== 'rsync')
+          throw new WizardError(tr.cmd.transferBadTool('scp, rsync'));
+        const code = await actions.transferFlow(n, {
+          tool: o.tool as 'scp' | 'rsync' | undefined,
+          direction: o.upload ? 'upload' : o.download ? 'download' : undefined,
+          local: o.local,
+          remote: o.remote,
+          recursive: o.recursive,
+          compress: o.compress,
+          delete: o.delete,
+          dryRun: o.dryRun,
+        });
+        if (code) process.exitCode = code;
+      },
+    );
 
   // ---- fleet status ----
   program

@@ -70,6 +70,19 @@ export interface VaultSettings {
   touchId: boolean;
 }
 
+/** Defaults for file transfers (scp / rsync), used to pre-fill the transfer
+ *  flow and as the baseline for non-interactive `wssh transfer` runs. */
+export interface TransferSettings {
+  /** which tool to default to */
+  tool: 'scp' | 'rsync';
+  /** scp: copy directories recursively (rsync archive mode covers this anyway) */
+  recursive: boolean;
+  /** rsync: compress in transit (-z) */
+  compress: boolean;
+  /** rsync: delete extraneous files at the destination (--delete) */
+  delete: boolean;
+}
+
 export interface Settings {
   /** UI language; `system` auto-detects from env / OS at startup */
   language: LanguageSetting;
@@ -82,6 +95,7 @@ export interface Settings {
   /** auto-restart a dropped tunnel (autossh-style) with backoff, until Ctrl+C */
   tunnelAutoReconnect: boolean;
   vault: VaultSettings;
+  transfer: TransferSettings;
 }
 
 /**

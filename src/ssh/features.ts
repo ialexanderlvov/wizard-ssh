@@ -216,7 +216,10 @@ function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
   if (opts.compress) args.push('-z');
   if (opts.delete) args.push('--delete');
   if (opts.dryRun) args.push('-n');
-  args.push('--progress');
+  // --info=progress2 shows the OVERALL transfer: percent, bytes, speed, ETA and
+  // files-to-go — i.e. "% done / how much is left". -v names each file as it goes
+  // so the current file is visible too. (Plain --progress is only per-file.)
+  args.push('--info=progress2', '-v');
 
   const remoteSpec = `${destination(t)}:${opts.remotePath}`;
   // `--` so a local path beginning with `-` is a file operand, not an rsync option.

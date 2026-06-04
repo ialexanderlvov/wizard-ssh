@@ -74,6 +74,17 @@ const en: Dict = {
   copyIdDesc: 'install SSH key on server (ssh-copy-id)',
   runDesc: 'run a command on a server: wssh run <name> -- <cmd>',
   transferDesc: 'transfer files via scp or rsync',
+  transferOptTool: 'tool: scp or rsync',
+  transferOptUpload: 'direction: upload to the server',
+  transferOptDownload: 'direction: download from the server',
+  transferOptLocal: 'local path',
+  transferOptRemote: 'remote path',
+  transferOptRecursive: 'scp: recursive (folder)',
+  transferOptCompress: 'rsync: compress in transit (-z)',
+  transferOptDelete: 'rsync: delete extraneous on the receiver (--delete)',
+  transferOptDryRun: 'rsync: dry run (--dry-run)',
+  transferBothDirections: 'Pick only one: --upload or --download.',
+  transferBadTool: (tools) => `--tool must be one of: ${tools}.`,
 
   // status
   statusDesc: 'bulk availability check (dashboard)',

@@ -73,6 +73,17 @@ const ru = {
   copyIdDesc: 'установить SSH-ключ на сервер (ssh-copy-id)',
   runDesc: 'выполнить команду на сервере: wssh run <name> -- <cmd>',
   transferDesc: 'передача файлов по scp или rsync',
+  transferOptTool: 'инструмент: scp или rsync',
+  transferOptUpload: 'направление: загрузить на сервер',
+  transferOptDownload: 'направление: скачать с сервера',
+  transferOptLocal: 'локальный путь',
+  transferOptRemote: 'путь на сервере',
+  transferOptRecursive: 'scp: рекурсивно (папка)',
+  transferOptCompress: 'rsync: сжимать в пути (-z)',
+  transferOptDelete: 'rsync: удалять лишнее на приёмнике (--delete)',
+  transferOptDryRun: 'rsync: пробный прогон (--dry-run)',
+  transferBothDirections: 'Укажите только одно: --upload или --download.',
+  transferBadTool: (tools: string) => `--tool должно быть одним из: ${tools}.`,
 
   // status
   statusDesc: 'массовая проверка доступности (дашборд)',
