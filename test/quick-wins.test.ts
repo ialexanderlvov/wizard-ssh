@@ -3,7 +3,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { freshHome } from './helpers.js';
+import { freshHome, stripAnsi } from './helpers.js';
 
 beforeEach(() => {
   vi.resetModules();
@@ -151,5 +151,86 @@ describe('tunnel logs', () => {
 
     expect(await tunnelLogsFlow('does-not-exist')).toBe(1);
     fs.unlinkSync(logFile);
+  });
+});
+
+describe('ssh key audit', () => {
+  it('keyIssues classifies weakness/hygiene flags', async () => {
+    const { keyIssues } = await import('../src/ssh/keys.js');
+    expect(keyIssues({ type: 'RSA', bits: 1024, hasPub: true }, true, false)).toEqual(['weak-rsa']);
+    expect(keyIssues({ type: 'RSA', bits: 4096, hasPub: true }, false, false)).toEqual([
+      'unencrypted',
+    ]);
+    expect(keyIssues({ type: 'ED25519', bits: 256, hasPub: false }, true, true)).toEqual([
+      'no-pub',
+      'orphan',
+    ]);
+    // strong, encrypted, has pub, referenced → clean; unknown encryption ignored
+    expect(keyIssues({ type: 'ED25519', bits: 256, hasPub: true }, null, false)).toEqual([]);
+  });
+});
+
+describe('mosh args', () => {
+  it('builds the mosh argv from a manual host and a config alias', async () => {
+    const { buildMoshArgs } = await import('../src/ssh/args.js');
+
+    const manual = buildMoshArgs({
+      hostMode: 'manual',
+      sshHost: '',
+      host: '1.2.3.4',
+      user: 'deploy',
+      sshPort: 2222,
+      auth: 'key',
+      keyPath: '/tmp/id_key',
+      secretId: null,
+    });
+    expect(manual[0]).toBe('--ssh');
+    expect(manual[1]).toContain('-p 2222');
+    expect(manual[1]).toContain('-i /tmp/id_key');
+    expect(manual[manual.length - 1]).toBe('deploy@1.2.3.4');
+
+    const alias = buildMoshArgs({
+      hostMode: 'sshconfig',
+      sshHost: 'prod',
+      host: '',
+      user: '',
+      sshPort: 22,
+      auth: 'agent',
+      keyPath: null,
+      secretId: null,
+    });
+    expect(alias[alias.length - 1]).toBe('prod');
+  });
+});
+
+describe('ProxyJump visualization', () => {
+  it('renders a bastion chain in a server detail box', async () => {
+    const { detailBox } = await import('../src/ui/format.js');
+    const server = {
+      kind: 'server' as const,
+      id: 'p',
+      name: 'p',
+      description: '',
+      tags: [],
+      createdAt: '',
+      updatedAt: '',
+      lastUsedAt: null,
+      useCount: 0,
+      hostMode: 'sshconfig' as const,
+      sshHost: 'p',
+      host: '10.0.0.9',
+      user: 'root',
+      sshPort: 22,
+      auth: 'agent' as const,
+      keyPath: null,
+      secretId: null,
+      manageable: true,
+      proxyJump: 'bastion1,bastion2',
+    };
+    const out = stripAnsi(detailBox(server));
+    expect(out).toContain('bastion1');
+    expect(out).toContain('bastion2');
+    expect(out).toContain('10.0.0.9');
+    expect(out).toContain('→');
   });
 });
