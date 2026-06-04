@@ -47,6 +47,24 @@ describe('pickFromList', () => {
     await expect(answer).resolves.toBe(BACK);
   });
 
+  it('under a TTY, ignores a byte-less Esc echo but honors a real (byte-backed) Esc', async () => {
+    // In a real terminal a previous inquirer prompt can re-emit a held Esc as a
+    // byte-less keypress after closing; that echo must NOT back this list out.
+    const desc = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    try {
+      const { answer, events, getScreen } = await render(pickFromList, base);
+      events.keypress('escape'); // echo: no preceding input byte → ignored
+      expect(getScreen()).toContain('alpha'); // still open, did not back out
+      events.type('z'); // a real keystroke writes a byte (sets lastByteAt)
+      events.keypress('escape'); // now a byte-backed Esc → backs out
+      await expect(answer).resolves.toBe(BACK);
+    } finally {
+      if (desc) Object.defineProperty(process.stdin, 'isTTY', desc);
+      else delete (process.stdin as unknown as { isTTY?: boolean }).isTTY;
+    }
+  });
+
   it('the trailing back row returns BACK', async () => {
     const { answer, events } = await render(pickFromList, base);
     events.keypress('up'); // wrap to the "← Назад" row (it is last)

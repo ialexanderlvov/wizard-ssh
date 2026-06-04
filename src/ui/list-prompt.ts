@@ -69,6 +69,14 @@ const isPrintable = (key: RawKey): boolean =>
   key.sequence.length === 1 &&
   key.sequence >= ' ';
 
+// Timestamp of the last raw stdin byte seen WHILE this list is mounted. Used to
+// tell a real Esc keypress (always preceded by a fresh byte) from the delayed
+// "echo" of an Esc that a previous inquirer prompt held in its 500ms escape
+// timeout and re-emitted as a keypress — with NO new byte — only after it closed
+// and this list had already opened. Without this, that echo would bounce the user
+// a second screen back. Module-scoped because only one list is ever active.
+let lastByteAt = 0;
+
 // The prompt is created once at module scope so @inquirer can bind it to the
 // (real or test) streams passed via the context argument.
 const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
@@ -83,6 +91,17 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
   // so shrink it; otherwise backing out with Esc lags about half a second.
   useEffect((rl) => {
     (rl as unknown as { escapeCodeTimeout: number }).escapeCodeTimeout = 1;
+    // Track fresh input bytes so the keypress handler can reject a byte-less echo
+    // Esc (see lastByteAt). Forget any byte seen before this list mounted. Watch
+    // the prompt's OWN input stream (process.stdin in real use) rather than a
+    // hard-coded one, so it also works under an injected test stream.
+    lastByteAt = 0;
+    const input = (rl as unknown as { input?: NodeJS.EventEmitter }).input;
+    const onData = (): void => {
+      lastByteAt = Date.now();
+    };
+    input?.on('data', onData);
+    return () => input?.removeListener('data', onData);
   }, []);
 
   const sorts = cfg.sorts ?? [];
@@ -112,8 +131,17 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
       setStatus('done');
       done(sel === BACK ? BACK : sel);
     } else if (key.name === 'escape') {
-      setStatus('done');
-      done(BACK);
+      // The cross-prompt echo is a real-terminal artifact: a previous inquirer
+      // prompt holds a lone Esc for its 500ms escapeCodeTimeout and re-emits it as
+      // a byte-less keypress only after closing — by which time this list has
+      // mounted, so it would bounce a second screen back. A genuine Esc is always
+      // preceded by a fresh stdin byte (lastByteAt set since mount). Off a TTY
+      // (tests, pipes) there is no escapeCodeTimeout and keypresses are injected
+      // without bytes, so honour every Esc there.
+      if (!process.stdin.isTTY || lastByteAt !== 0) {
+        setStatus('done');
+        done(BACK);
+      }
     } else if (isUpKey(key)) {
       setCursor((active - 1 + entries.length) % entries.length);
     } else if (isDownKey(key)) {
