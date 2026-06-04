@@ -5,9 +5,11 @@ import type { SshConfigHost } from '../core/types.js';
 import type { SshConfigParam } from '../ssh-config/index.js';
 import * as sshConfig from '../ssh-config/index.js';
 import { servers } from '../store/servers.store.js';
+import { usage } from '../store/usage.store.js';
+import { vault } from '../vault/vault.js';
 import * as ui from '../ui/index.js';
 import { renderConfigHostsTable } from '../ui/tables.js';
-import { isValidSshAlias } from '../utils/validators.js';
+import { isValidHostOrIp, isValidPort, isValidSshAlias } from '../utils/validators.js';
 import { connectServer } from './servers.js';
 
 const STD_KEYS = ['HostName', 'User', 'Port', 'IdentityFile', 'ProxyJump'] as const;
@@ -87,9 +89,17 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
   const get = (k: string): string =>
     current?.params.find((p) => p.key.toLowerCase() === k.toLowerCase())?.value ?? '';
   return {
-    HostName: await ui.text({ message: '🖥 HostName (IP/домен)', default: get('HostName') }),
+    HostName: await ui.text({
+      message: '🖥 HostName (IP/домен)',
+      default: get('HostName'),
+      validate: (v) => !v.trim() || isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
+    }),
     User: await ui.text({ message: '👤 User', default: get('User') }),
-    Port: await ui.text({ message: '🔌 Port (пусто = 22)', default: get('Port') }),
+    Port: await ui.text({
+      message: '🔌 Port (пусто = 22)',
+      default: get('Port'),
+      validate: (v) => !v.trim() || isValidPort(v.trim()) || 'Порт должен быть числом 1..65535',
+    }),
     IdentityFile: await ui.text({
       message: '🗝 IdentityFile (путь, необязательно)',
       default: get('IdentityFile'),
@@ -160,6 +170,10 @@ export async function removeConfigHostFlow(alias?: string): Promise<void> {
   }
   const { removed, backup } = sshConfig.removeHost(host.alias);
   if (removed) {
+    // Mirror the server facade's delete: drop usage stats and any orphaned vault
+    // secret so a re-added alias of the same name doesn't silently inherit them.
+    usage.remove(host.alias);
+    vault.removeSecret(host.wssh?.secretId);
     ui.printOk(`Хост ${host.alias} удалён.`);
     if (backup) ui.printInfo(`Бэкап: ${backup}`);
   } else ui.printWarn('Не удалось удалить.');
