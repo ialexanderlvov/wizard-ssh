@@ -171,14 +171,19 @@ export function generateKey(opts: GenerateKeyOptions): Promise<number> {
   });
 }
 
-/** Delete a private key and its `.pub` sibling. Returns the paths removed. */
+/** Delete a private key and its `.pub` sibling. Returns the paths removed.
+ *  Containment: refuses to touch anything outside ~/.ssh, so a stray or
+ *  hand-edited keyPath can never make this remove an unrelated file. */
 export function deleteKey(privPath: string): { removed: string[] } {
-  const abs = expandHome(privPath);
+  const abs = path.resolve(expandHome(privPath));
+  const sshRoot = path.resolve(path.join(os.homedir(), '.ssh'));
+  const inSsh = (p: string): boolean => p === sshRoot || p.startsWith(sshRoot + path.sep);
   const removed: string[] = [];
+  if (!inSsh(abs)) return { removed }; // never delete outside ~/.ssh
   for (const f of [abs, pubPathFor(abs)]) {
     try {
       if (fs.existsSync(f)) {
-        fs.rmSync(f, { force: true });
+        fs.rmSync(f);
         removed.push(f);
       }
     } catch {
