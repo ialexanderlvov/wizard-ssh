@@ -57,7 +57,14 @@ export function pidAlive(pid: number): boolean {
 function sessionAlive(s: TunnelSession): boolean {
   if (!pidAlive(s.pid)) return false;
   if (!s.startToken) return true; // legacy session without a token — best effort
-  return processStartToken(s.pid) === s.startToken;
+  const token = processStartToken(s.pid);
+  // An empty token means the `ps` probe itself failed (ps missing on PATH, the
+  // 30s timeout, any transient error) — that's inconclusive, NOT a PID-reuse
+  // mismatch. The PID is alive, so keep the session rather than permanently
+  // pruning (and orphaning) a still-running tunnel; mirror the launch-time
+  // tolerance of an absent token above.
+  if (!token) return true;
+  return token === s.startToken;
 }
 
 class SessionsStore {
