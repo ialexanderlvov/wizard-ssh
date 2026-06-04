@@ -39,6 +39,9 @@ describe('listKnownHosts', () => {
     expect(list.find((e) => e.host === '[example.com]:2222')?.keyTypes).toEqual([
       'ecdsa-sha2-nistp256',
     ]);
+    // Newest first: the last readable line (*.corp) is on top; the first (1.2.3.4) is last.
+    expect(hosts[0]).toBe('*.corp');
+    expect(hosts[hosts.length - 1]).toBe('1.2.3.4');
   });
 
   it('returns [] when known_hosts is absent', async () => {

@@ -16,7 +16,8 @@ export interface KnownHost {
   keyTypes: string[];
 }
 
-/** Parse ~/.ssh/known_hosts into a deduped, sorted host list. Hashed entries
+/** Parse ~/.ssh/known_hosts into a deduped host list, newest first — entries
+ *  lower in the file (added later) come out on top. Hashed entries
  *  (HashKnownHosts, "|1|…") can't be shown in plaintext and are skipped — but
  *  `ssh-keygen -R` still removes them when you pass the exact host/IP. */
 export function listKnownHosts(): KnownHost[] {
@@ -27,8 +28,10 @@ export function listKnownHosts(): KnownHost[] {
     return [];
   }
   const byHost = new Map<string, Set<string>>();
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
+  const lastLine = new Map<string, number>();
+  const lines = text.split(/\r?\n/);
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = (lines[idx] ?? '').trim();
     if (!line || line.startsWith('#')) continue;
     const tokens = line.split(/\s+/);
     // Optional leading marker: @cert-authority / @revoked
@@ -42,11 +45,13 @@ export function listKnownHosts(): KnownHost[] {
       const set = byHost.get(h) ?? new Set<string>();
       if (keyType) set.add(keyType);
       byHost.set(h, set);
+      lastLine.set(h, idx); // track the latest line a host appears on
     }
   }
+  // Sort by latest line descending → the most recently added entries first.
   return [...byHost.entries()]
     .map(([host, types]) => ({ host, keyTypes: [...types].sort() }))
-    .sort((a, b) => a.host.localeCompare(b.host));
+    .sort((a, b) => (lastLine.get(b.host) ?? 0) - (lastLine.get(a.host) ?? 0));
 }
 
 /** Remove every key for `host` from known_hosts (`ssh-keygen -R <host> -f file`).
