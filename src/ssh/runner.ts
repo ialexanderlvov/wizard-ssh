@@ -415,11 +415,23 @@ export interface DetachedTunnel {
  *  tied to this process) — the caller must guard that. */
 export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
   ensureDir(FILES.logsDir);
-  const logFile = path.join(FILES.logsDir, `tunnel-${tunnel.id}.log`);
+  // The id rides in the log filename. normalizeBase already keeps ids to a safe
+  // token, but re-sanitize at the sink (defense in depth) so a record that
+  // reached here some other way can never escape logsDir via `../` traversal.
+  const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(tunnel.id) ? tunnel.id : 'tunnel';
+  const logFile = path.join(FILES.logsDir, `tunnel-${safeId}.log`);
   // 0o600: tunnel logs can carry ssh's verbose diagnostics — keep them readable
   // only by the owner (the mode arg applies on creation; tighten a pre-existing
-  // world-readable log too).
-  const fd = fs.openSync(logFile, 'a', 0o600);
+  // world-readable log too). O_NOFOLLOW: never follow a symlink planted at the
+  // log path (POSIX-only — 0 on platforms that don't define it).
+  const fd = fs.openSync(
+    logFile,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_APPEND |
+      (fs.constants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
   try {
     fs.chmodSync(logFile, 0o600);
   } catch {
