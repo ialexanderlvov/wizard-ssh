@@ -94,6 +94,8 @@ export interface WsshMeta {
   secretId?: string | null;
   /** ISO creation timestamp (immutable once set) */
   createdAt?: string;
+  /** ISO last-modified timestamp (bumped on every edit) */
+  updatedAt?: string;
 }
 
 /** A host parsed from ~/.ssh/config (for listing / picking / importing). */

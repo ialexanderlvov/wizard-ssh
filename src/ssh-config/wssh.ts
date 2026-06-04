@@ -13,7 +13,8 @@ export function isEmptyMeta(meta: WsshMeta | null | undefined): boolean {
     !(meta.tags && meta.tags.length) &&
     meta.auth !== 'password' &&
     !meta.secretId &&
-    !meta.createdAt
+    !meta.createdAt &&
+    !meta.updatedAt
   );
 }
 
@@ -40,6 +41,7 @@ export function parseWsshComment(line: string): WsshMeta | null {
   if (raw.auth === 'password') meta.auth = 'password';
   if (typeof raw.secretId === 'string' && raw.secretId) meta.secretId = raw.secretId;
   if (typeof raw.createdAt === 'string' && raw.createdAt) meta.createdAt = raw.createdAt;
+  if (typeof raw.updatedAt === 'string' && raw.updatedAt) meta.updatedAt = raw.updatedAt;
   return meta;
 }
 
@@ -53,5 +55,6 @@ export function serializeWssh(meta: WsshMeta | null | undefined): string | null 
   if (m.auth === 'password') out.auth = 'password';
   if (m.secretId) out.secretId = m.secretId;
   if (m.createdAt) out.createdAt = m.createdAt;
+  if (m.updatedAt) out.updatedAt = m.updatedAt;
   return `#wssh ${JSON.stringify(out)}`;
 }

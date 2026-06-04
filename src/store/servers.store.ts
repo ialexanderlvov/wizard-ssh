@@ -46,7 +46,7 @@ function toServer(h: SshConfigHost): Server {
     description: meta.desc ?? '',
     tags: meta.tags ?? [],
     createdAt: meta.createdAt ?? '',
-    updatedAt: meta.createdAt ?? '',
+    updatedAt: meta.updatedAt ?? meta.createdAt ?? '',
     lastUsedAt: u.lastUsedAt,
     useCount: u.useCount,
     hostMode: 'sshconfig',
@@ -77,13 +77,14 @@ function paramsFor(conn: ConnectionTarget, existing: SshConfigParam[] = []): Ssh
   return out;
 }
 
-function metaFor(data: Partial<Server>, createdAt: string): WsshMeta {
+function metaFor(data: Partial<Server>, createdAt: string, updatedAt: string): WsshMeta {
   return {
     ...(data.description ? { desc: data.description } : {}),
     ...(data.tags && data.tags.length ? { tags: data.tags } : {}),
     ...(data.auth === 'password' ? { auth: 'password' as const } : {}),
     ...(data.secretId ? { secretId: data.secretId } : {}),
     ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
   };
 }
 
@@ -135,7 +136,7 @@ class ConfigServers {
     sshConfig.upsertHost({
       alias,
       params: paramsFor(connOf(data), existing?.params ?? []),
-      wssh: metaFor(data, createdAt),
+      wssh: metaFor(data, createdAt, nowIso()),
     });
     return this.findById(alias) as Server;
   }
@@ -157,7 +158,7 @@ class ConfigServers {
     sshConfig.upsertHost({
       alias: newAlias,
       params: paramsFor(connOf(merged), host?.params ?? []),
-      wssh: metaFor(merged, merged.createdAt || current.createdAt || nowIso()),
+      wssh: metaFor(merged, merged.createdAt || current.createdAt || nowIso(), nowIso()),
     });
     if (newAlias !== id) {
       sshConfig.removeHost(id);
@@ -190,7 +191,7 @@ class ConfigServers {
       sshConfig.upsertHost({
         alias,
         params: paramsFor(connOf(s), sshConfig.getHost(alias)?.params ?? []),
-        wssh: metaFor(s, s.createdAt || nowIso()),
+        wssh: metaFor(s, s.createdAt || nowIso(), s.updatedAt || s.createdAt || nowIso()),
       });
       usage.set(alias, { lastUsedAt: s.lastUsedAt ?? null, useCount: s.useCount || 0 });
     }
