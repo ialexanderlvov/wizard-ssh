@@ -22,6 +22,7 @@ import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
 import { backupSshFlow } from './backup.js';
 import { completeFromProgram, completionScript, type Shell } from './completion.js';
+import { manFlow } from './man.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
@@ -441,6 +442,14 @@ export function registerCommands(program: Command): void {
       const { mainMenu } = await import('./menu.js');
       ui.printBanner();
       await mainMenu();
+    });
+  program
+    .command('man')
+    .description(tr.cmd.manDesc)
+    .option('--roff', tr.cmd.manOptRoff)
+    .action((o: { roff?: boolean }) => {
+      const code = manFlow(program, { roff: o.roff });
+      if (code) process.exitCode = code;
     });
 
   // ---- shell completion ----
