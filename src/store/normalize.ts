@@ -10,6 +10,7 @@ import type {
 } from '../core/types.js';
 import { newId } from '../utils/id.js';
 import { nowIso, safeIso } from '../utils/time.js';
+import { stripControl } from '../utils/strings.js';
 
 type Raw = Record<string, unknown>;
 
@@ -40,8 +41,10 @@ export function normalizeBase(raw: Raw): BaseEntity {
   return {
     id: str(raw.id) || newId(),
     name: str(raw.name).trim(),
-    description: str(raw.description),
-    tags: strArr(raw.tags),
+    // desc/tags are free text printed by the renderers — strip control/escape
+    // bytes so an imported/hand-edited record can't emit terminal escapes.
+    description: stripControl(str(raw.description)),
+    tags: strArr(raw.tags).map(stripControl).filter(Boolean),
     createdAt: created,
     updatedAt: safeIso(raw.updatedAt, created),
     lastUsedAt: safeIso(raw.lastUsedAt, null),

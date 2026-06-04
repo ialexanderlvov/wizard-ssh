@@ -62,3 +62,21 @@ export const isValidName = (v: unknown): boolean =>
  *  command words and the remote login shell would otherwise interpret them. */
 export const isValidTmuxSession = (v: unknown): boolean =>
   typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(v.trim());
+
+/** A single ProxyJump hop: `[user@]host[:port]`, where host is a name/IP or a
+ *  bracketed IPv6 literal. No leading dash (so it can't smuggle an ssh option),
+ *  no whitespace/metacharacters. */
+const PROXY_HOP =
+  /^([A-Za-z0-9][A-Za-z0-9._-]*@)?([A-Za-z0-9][A-Za-z0-9._-]*|\[[0-9A-Fa-f:]+\])(:\d{1,5})?$/;
+
+/** A ~/.ssh/config ProxyJump value: a comma-separated chain of hops (or `none`).
+ *  Written verbatim as a `ProxyJump` directive, so an imported/edited value must
+ *  be a real jump spec — never an option-injecting or whitespace-laden string
+ *  (the writer's control-char gate already blocks CR/LF, this blocks the rest). */
+export const isValidProxyJump = (v: unknown): boolean => {
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  if (!s || s.length > 512 || hasUnsafeChars(s)) return false;
+  if (s.toLowerCase() === 'none') return true;
+  return s.split(',').every((hop) => PROXY_HOP.test(hop.trim()));
+};

@@ -4,6 +4,7 @@
  *  with no extras adds no comment at all. */
 
 import type { WsshMeta } from '../core/types.js';
+import { stripControl } from '../utils/strings.js';
 
 /** True when there is nothing worth persisting in a `#wssh` comment. */
 export function isEmptyMeta(meta: WsshMeta | null | undefined): boolean {
@@ -33,9 +34,15 @@ export function parseWsshComment(line: string): WsshMeta | null {
     return null;
   }
   const meta: WsshMeta = {};
-  if (typeof raw.desc === 'string' && raw.desc) meta.desc = raw.desc;
+  // desc/tags are free text that lands on the terminal via the renderers — strip
+  // control/escape bytes here (the single read path from config) so a hand-edited
+  // or imported annotation can't smuggle terminal escape sequences into output.
+  if (typeof raw.desc === 'string' && raw.desc) meta.desc = stripControl(raw.desc);
   if (Array.isArray(raw.tags)) {
-    const tags = raw.tags.filter((x): x is string => typeof x === 'string' && x.length > 0);
+    const tags = raw.tags
+      .filter((x): x is string => typeof x === 'string' && x.length > 0)
+      .map(stripControl)
+      .filter(Boolean);
     if (tags.length) meta.tags = tags;
   }
   if (raw.auth === 'password') meta.auth = 'password';
