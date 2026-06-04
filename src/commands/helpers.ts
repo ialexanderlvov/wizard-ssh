@@ -3,6 +3,7 @@
 
 import fs from 'node:fs';
 import type { ConnectionTarget, Entity } from '../core/types.js';
+import { PromptCancelError } from '../core/errors.js';
 import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import { destination } from '../ssh/args.js';
@@ -81,20 +82,45 @@ export async function ensureVaultSetup(): Promise<boolean> {
   return true;
 }
 
-/** Unlock the vault for this session (Touch ID first, then passphrase). The
- *  passphrase comes from the environment when set (unattended runs), otherwise
- *  from an interactive prompt. */
+/** Unlock the vault for this session with EITHER Touch ID or the passphrase.
+ *  When Touch ID is enabled + available in an interactive session, the user picks
+ *  the method up front (default Touch ID) so neither is the only way in — and
+ *  choosing Touch ID still falls back to the passphrase if biometrics fail. A
+ *  scripted run (env passphrase) skips the prompt and biometrics and uses the
+ *  passphrase directly; when Touch ID is off, it's the passphrase as before. */
 export async function unlockVault(): Promise<boolean> {
   if (!vault.exists()) return false;
   if (vault.isUnlocked()) return true;
+
+  const env = resolveVaultPassphrase();
+  // Touch ID is usable only when it was enabled (the key is in the Keychain) and
+  // is supported here. A scripted passphrase takes precedence (no biometric prompt
+  // in unattended runs).
+  let allowTouchId = env == null && vault.isTouchIdEnabled() && vault.touchIdSupported();
+  if (allowTouchId && ui.isInteractive()) {
+    try {
+      const method = await ui.choose<'touchid' | 'passphrase'>({
+        message: tr.helpers.unlockMethod,
+        choices: [
+          { name: tr.helpers.unlockWithTouchId, value: 'touchid' },
+          { name: tr.helpers.unlockWithPassphrase, value: 'passphrase' },
+        ],
+        default: 'touchid',
+      });
+      allowTouchId = method === 'touchid';
+    } catch (e) {
+      if (e instanceof PromptCancelError) return false; // Esc on the chooser → cancel
+      throw e;
+    }
+  }
+
   let envTried = false;
   return vault.unlock({
-    allowTouchId: settings.get().vault.touchId,
+    allowTouchId,
     promptPassphrase: async () => {
-      // Try an env-provided passphrase once; if it's wrong, don't loop on it.
+      // Try the env-provided passphrase once; if it's wrong, don't loop on it.
       if (!envTried) {
         envTried = true;
-        const env = resolveVaultPassphrase();
         if (env != null) return env;
       }
       ui.ensureInteractive(tr.helpers.unlockEnsure);
