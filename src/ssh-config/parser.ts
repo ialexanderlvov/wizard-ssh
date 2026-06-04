@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { SshConfigHost, WsshMeta } from '../core/types.js';
 import { SSH_CONFIG_FILE } from '../core/paths.js';
+import { stripControl } from '../utils/strings.js';
 import { parseWsshComment } from './wssh.js';
 
 export interface Block {
@@ -154,9 +155,14 @@ function parseLines(
       closeAt(i);
       if (key === 'host') {
         const tokens = splitTokens(value);
-        const aliases = tokens.filter(
-          (a) => !a.includes('*') && !a.includes('?') && !a.startsWith('!'),
-        );
+        // strip control/escape bytes: the alias is both a display string and a
+        // map key, so sanitizing here keeps reader and writer (both via
+        // parseLines) consistent while neutralizing terminal-escape spoofing from
+        // an untrusted ~/.ssh/config.
+        const aliases = tokens
+          .filter((a) => !a.includes('*') && !a.includes('?') && !a.startsWith('!'))
+          .map(stripControl)
+          .filter(Boolean);
         current = {
           aliases,
           patternCount: tokens.length,
@@ -191,13 +197,16 @@ function blockToHost(block: Block, alias: string): SshConfigHost {
     block.aliases.length === 1 &&
     block.patternCount === 1 &&
     path.resolve(block.source) === path.resolve(SSH_CONFIG_FILE);
+  // Strip control/escape bytes from the connection fields the renderers print
+  // (alias is already sanitized in parseLines). An untrusted/Included config
+  // could otherwise smuggle terminal escapes through HostName/User/ProxyJump/etc.
   return {
     alias,
-    hostName: param(block, 'HostName'),
-    user: param(block, 'User'),
-    port: param(block, 'Port'),
-    identityFile: param(block, 'IdentityFile'),
-    proxyJump: param(block, 'ProxyJump'),
+    hostName: stripControl(param(block, 'HostName')),
+    user: stripControl(param(block, 'User')),
+    port: stripControl(param(block, 'Port')),
+    identityFile: stripControl(param(block, 'IdentityFile')),
+    proxyJump: stripControl(param(block, 'ProxyJump')),
     params: block.params.slice(),
     source: block.source,
     wssh: block.meta,
