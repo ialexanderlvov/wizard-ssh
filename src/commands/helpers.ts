@@ -1,14 +1,44 @@
 /** Cross-cutting command helpers: vault unlock/setup, password resolution at
  *  connect-time, and fuzzy entity pickers/resolvers. */
 
+import fs from 'node:fs';
 import type { ConnectionTarget, Entity } from '../core/types.js';
 import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import { destination } from '../ssh/args.js';
+import { capture } from '../utils/exec.js';
 import { filterEntities } from '../search/index.js';
 import * as ui from '../ui/index.js';
 
 // ---------- vault ----------
+
+/** Resolve the vault passphrase from the environment, for unattended/scripted
+ *  runs (no TTY). Precedence: WSSH_VAULT_PASSPHRASE → *_FILE → *_CMD. Returns
+ *  null when none is set, so callers fall back to an interactive prompt. */
+export function resolveVaultPassphrase(): string | null {
+  const direct = process.env.WSSH_VAULT_PASSPHRASE;
+  if (direct != null && direct !== '') return direct;
+
+  const file = process.env.WSSH_VAULT_PASSPHRASE_FILE;
+  if (file) {
+    try {
+      const v = fs.readFileSync(file, 'utf8').replace(/\r?\n$/, '');
+      if (v) return v;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const cmd = process.env.WSSH_VAULT_PASSPHRASE_CMD;
+  if (cmd) {
+    const res = capture('sh', ['-c', cmd]);
+    if (res.status === 0) {
+      const v = res.stdout.replace(/\r?\n$/, '');
+      if (v) return v;
+    }
+  }
+  return null;
+}
 
 export function vaultSupportsTouchId(): boolean {
   return vault.touchIdSupported();
@@ -42,13 +72,22 @@ export async function ensureVaultSetup(): Promise<boolean> {
   return true;
 }
 
-/** Unlock the vault for this session (Touch ID first, then passphrase). */
+/** Unlock the vault for this session (Touch ID first, then passphrase). The
+ *  passphrase comes from the environment when set (unattended runs), otherwise
+ *  from an interactive prompt. */
 export async function unlockVault(): Promise<boolean> {
   if (!vault.exists()) return false;
   if (vault.isUnlocked()) return true;
+  let envTried = false;
   return vault.unlock({
     allowTouchId: settings.get().vault.touchId,
     promptPassphrase: async () => {
+      // Try an env-provided passphrase once; if it's wrong, don't loop on it.
+      if (!envTried) {
+        envTried = true;
+        const env = resolveVaultPassphrase();
+        if (env != null) return env;
+      }
       ui.ensureInteractive('Ввод парольной фразы хранилища');
       return ui.secret({
         message: '🔑 Парольная фраза хранилища',
