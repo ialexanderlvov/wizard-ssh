@@ -7,6 +7,14 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.3.2](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.1...wizard-ssh-v1.3.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* **cli:** read version from package.json so -v never drifts ([110b68b](https://github.com/ialexanderlvov/wizard-ssh/commit/110b68b397977bb86778f5fcee93d87288291c26))
+* **cli:** read version from package.json so -v never drifts ([12b252d](https://github.com/ialexanderlvov/wizard-ssh/commit/12b252d863ef2427c334dfa79914e2ffc892d0aa))
+
 ## [1.3.1](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.0...wizard-ssh-v1.3.1) (2026-06-04)
 
 
