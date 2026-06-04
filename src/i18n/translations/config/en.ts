@@ -15,6 +15,8 @@ const en: Dict = {
   portQuestion: '🔌 Port (empty = 22)',
   portInvalid: 'Port must be a number 1..65535',
   identityFileQuestion: '🗝 IdentityFile (path, optional)',
+  identityFileInvalid: 'Key path must not contain control characters',
+  proxyJumpInvalid: 'Invalid ProxyJump: use [user@]host[:port] (comma-separated) or none',
   addEnsure: 'Adding to ~/.ssh/config',
   addSection: 'New host in ~/.ssh/config',
   aliasQuestion: '🔗 Host (alias)',

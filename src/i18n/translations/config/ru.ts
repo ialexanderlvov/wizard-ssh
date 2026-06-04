@@ -15,6 +15,8 @@ const ru = {
   portQuestion: '🔌 Port (пусто = 22)',
   portInvalid: 'Порт должен быть числом 1..65535',
   identityFileQuestion: '🗝 IdentityFile (путь, необязательно)',
+  identityFileInvalid: 'Путь к ключу не должен содержать управляющих символов',
+  proxyJumpInvalid: 'Неверный ProxyJump: [user@]host[:port] (через запятую) или none',
   addEnsure: 'Добавление в ~/.ssh/config',
   addSection: 'Новый хост в ~/.ssh/config',
   aliasQuestion: '🔗 Host (алиас)',
