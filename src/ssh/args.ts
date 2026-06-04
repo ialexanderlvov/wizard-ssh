@@ -50,8 +50,18 @@ export function forwardFlags(t: Tunnel): string[] {
   return ['-L', `${t.localPort}:${t.remoteHost || '127.0.0.1'}:${t.remotePort}`];
 }
 
-/** Interactive shell connect: `ssh [opts] dest`. */
-export function buildConnectArgs(t: ConnectionTarget): string[] {
+export interface ConnectOptions {
+  /** attach/create a tmux session on the remote (true → "wssh", string → name) */
+  tmux?: string | boolean;
+}
+
+/** Interactive shell connect: `ssh [opts] dest`. With `tmux`, request a tty and
+ *  run `tmux new-session -A -s <name>` so the session survives drops. */
+export function buildConnectArgs(t: ConnectionTarget, opts: ConnectOptions = {}): string[] {
+  if (opts.tmux) {
+    const session = typeof opts.tmux === 'string' && opts.tmux.trim() ? opts.tmux.trim() : 'wssh';
+    return [...targetOptions(t), '-t', destination(t), 'tmux', 'new-session', '-A', '-s', session];
+  }
   return [...targetOptions(t), destination(t)];
 }
 
