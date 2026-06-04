@@ -29,6 +29,7 @@ const en: Dict = {
   serverEditDesc: 'edit server',
   serverRemoveDesc: 'remove server(s)',
   serverListDesc: 'list servers',
+  serverDuplicateDesc: 'duplicate a server under a new alias',
 
   // tunnel group
   tunnelGroupDesc: 'manage tunnels (-L/-R/-D)',
@@ -51,6 +52,10 @@ const en: Dict = {
   tunnelEditDesc: 'edit tunnel',
   tunnelRemoveDesc: 'remove tunnel(s)',
   tunnelListDesc: 'list tunnels',
+  tunnelCloneDesc: 'clone a tunnel (a free local port is auto-picked)',
+  tunnelLogsDesc: 'show a background tunnel log',
+  tunnelLogsOptTail: 'how many trailing lines (default 40)',
+  tunnelLogsOptFollow: 'follow the log in real time',
 
   // config group
   configGroupDesc: 'manage ~/.ssh/config',

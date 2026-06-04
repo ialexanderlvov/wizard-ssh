@@ -105,6 +105,11 @@ export function registerCommands(program: Command): void {
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       serverCmd.listServers({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
     });
+  server
+    .command('duplicate [name] [newName]')
+    .alias('dup')
+    .description(tr.cmd.serverDuplicateDesc)
+    .action((n?: string, nn?: string) => serverCmd.duplicateServerFlow(n, nn));
   server.action(() => server.help());
 
   // ---- tunnels ----
@@ -192,6 +197,24 @@ export function registerCommands(program: Command): void {
     .option('--json', tr.cmd.optOutputJson)
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       tunnelCmd.listTunnels({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
+    });
+  tunnel
+    .command('clone [name] [newName]')
+    .alias('cp')
+    .description(tr.cmd.tunnelCloneDesc)
+    .action((n?: string, nn?: string) => tunnelCmd.cloneTunnelFlow(n, nn));
+  tunnel
+    .command('logs [name]')
+    .alias('log')
+    .description(tr.cmd.tunnelLogsDesc)
+    .option('--tail <n>', tr.cmd.tunnelLogsOptTail)
+    .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
+    .action(async (n: string | undefined, o: { tail?: string; follow?: boolean }) => {
+      const code = await tunnelCmd.tunnelLogsFlow(n, {
+        tail: o.tail !== undefined ? Number(o.tail) : undefined,
+        follow: o.follow,
+      });
+      if (code) process.exitCode = code;
     });
   tunnel.action(() => tunnel.help());
 

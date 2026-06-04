@@ -70,6 +70,62 @@ export async function addServer(seed: Partial<Server> = {}): Promise<Server | nu
   }
 }
 
+/** Duplicate a server under a new alias: copies its connection + metadata into a
+ *  fresh ~/.ssh/config Host block. A saved password is NOT shared (a vault blob
+ *  is per-entity) — the copy re-asks on first connect. */
+export async function duplicateServerFlow(name?: string, newName?: string): Promise<void> {
+  const src = await resolveEntity(servers, name, tr.servers.pickServerDuplicate);
+  if (!src) return;
+  if (!src.manageable) {
+    ui.printWarn(tr.servers.duplicateNotManageable);
+    return;
+  }
+
+  let target = (newName ?? '').trim();
+  if (target) {
+    if (!isValidSshAlias(target)) {
+      ui.printError(tr.servers.nameInvalid);
+      return;
+    }
+    if (servers.nameExists(target)) {
+      ui.printError(tr.servers.nameExists);
+      return;
+    }
+  } else {
+    let suggestion = `${src.name}-copy`;
+    for (let i = 2; servers.nameExists(suggestion); i++) suggestion = `${src.name}-copy-${i}`;
+    target = ui.isInteractive()
+      ? (
+          await ui.text({
+            message: tr.servers.duplicateNamePrompt,
+            default: suggestion,
+            validate: (v) =>
+              !isValidSshAlias(v.trim())
+                ? tr.servers.nameInvalid
+                : servers.nameExists(v.trim())
+                  ? tr.servers.nameExists
+                  : true,
+          })
+        ).trim()
+      : suggestion;
+  }
+
+  const dup = servers.create({
+    name: target,
+    host: src.host,
+    user: src.user,
+    sshPort: src.sshPort,
+    auth: src.auth,
+    keyPath: src.keyPath,
+    secretId: null,
+    description: src.description,
+    tags: [...src.tags],
+    kind: 'server',
+  });
+  ui.printOk(tr.servers.duplicated(src.name, dup.name));
+  console.log(detailBox(dup));
+}
+
 export async function editServer(name?: string): Promise<void> {
   ui.ensureInteractive(tr.servers.editEnsure);
   const server = await resolveEntity(servers, name, tr.servers.editSelectServer);

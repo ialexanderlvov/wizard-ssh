@@ -41,6 +41,12 @@ const ru = {
   emptyList: 'Серверов пока нет. Добавьте: wssh server add',
   listSection: (count: number, sort: string, dir: string) =>
     `Серверы (${count}) · сортировка: ${sort}${dir}`,
+
+  // duplicate
+  pickServerDuplicate: '🧬 Какой сервер дублировать',
+  duplicateNotManageable: 'Этот хост (multi-alias / Match / Include) нельзя дублировать.',
+  duplicateNamePrompt: '🏷 Алиас для копии',
+  duplicated: (src: string, dst: string) => `Сервер «${src}» дублирован как «${dst}».`,
 };
 
 export default ru;

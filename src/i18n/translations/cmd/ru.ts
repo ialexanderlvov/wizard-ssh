@@ -28,6 +28,7 @@ const ru = {
   serverEditDesc: 'редактировать сервер',
   serverRemoveDesc: 'удалить сервер(ы)',
   serverListDesc: 'список серверов',
+  serverDuplicateDesc: 'дублировать сервер под новым алиасом',
 
   // tunnel group
   tunnelGroupDesc: 'управление туннелями (-L/-R/-D)',
@@ -50,6 +51,10 @@ const ru = {
   tunnelEditDesc: 'редактировать туннель',
   tunnelRemoveDesc: 'удалить туннель(и)',
   tunnelListDesc: 'список туннелей',
+  tunnelCloneDesc: 'клонировать туннель (свободный локальный порт подберётся сам)',
+  tunnelLogsDesc: 'показать лог фонового туннеля',
+  tunnelLogsOptTail: 'сколько последних строк (по умолчанию 40)',
+  tunnelLogsOptFollow: 'следить за логом в реальном времени',
 
   // config group
   configGroupDesc: 'управление ~/.ssh/config',

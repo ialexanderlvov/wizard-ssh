@@ -134,9 +134,11 @@ const serversMenu = (): Promise<void> =>
     [
       { label: tr.menu.servers.list, value: 'list' },
       { label: tr.menu.servers.add, value: 'add' },
+      { label: tr.menu.servers.duplicate, value: 'duplicate' },
     ],
     async (a) => {
       if (a === 'add') await serverCmd.addServer();
+      else if (a === 'duplicate') await serverCmd.duplicateServerFlow();
       else if (a === 'list')
         await browseEntities(
           [root(), tr.menu.servers.title],
@@ -158,9 +160,11 @@ const tunnelsMenu = (): Promise<void> =>
       { label: tr.menu.tunnels.bg, value: 'bg' },
       { label: tr.menu.tunnels.temp, value: 'temp' },
       { label: tr.menu.tunnels.add, value: 'add' },
+      { label: tr.menu.tunnels.clone, value: 'clone' },
     ],
     async (a) => {
       if (a === 'add') await tunnelCmd.addTunnel();
+      else if (a === 'clone') await tunnelCmd.cloneTunnelFlow();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
       else if (a === 'bg') await backgroundTunnelsMenu();
       else if (a === 'temp') await tempTunnelsMenu();
@@ -203,12 +207,14 @@ const backgroundTunnelsMenu = (): Promise<void> =>
     [
       { label: tr.menu.background.list, value: 'list' },
       { label: tr.menu.background.up, value: 'up' },
+      { label: tr.menu.background.logs, value: 'logs' },
       { label: tr.menu.background.down, value: 'down' },
       { label: tr.menu.background.downAll, value: 'downAll' },
     ],
     async (a) => {
       if (a === 'list') tunnelCmd.listSessions();
       else if (a === 'up') await tunnelCmd.tunnelUpFlow();
+      else if (a === 'logs') await tunnelCmd.tunnelLogsFlow();
       else if (a === 'down') await tunnelCmd.tunnelDownFlow();
       else if (a === 'downAll') await tunnelCmd.tunnelDownFlow(undefined, { all: true });
     },
