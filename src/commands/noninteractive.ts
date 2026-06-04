@@ -12,6 +12,7 @@ import { settings } from '../store/settings.store.js';
 import {
   isValidForwardHost,
   isValidHostOrIp,
+  isValidName,
   isValidPort,
   isValidSshAlias,
   isValidUser,
@@ -170,6 +171,11 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     };
   }
 
+  // An explicit --name must satisfy the same contract as the wizard/import, so a
+  // non-interactive add can't persist a garbled/over-long/control-char name that
+  // the interactive path would reject. The slugified fallback is always valid.
+  if (f.name && !isValidName(f.name.trim()))
+    throw new WizardError('Некорректное --name: 1–64 символа, буквы/цифры и пробел . @ : - _');
   const suggested = slugify(f.name || `${f.alias || f.host}-${localPort}`);
   let name = (f.name || suggested).trim();
   let i = 2;
