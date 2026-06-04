@@ -55,3 +55,10 @@ export const isSafeKeyPath = (v: unknown): boolean =>
 /** Human-friendly unique entity name. */
 export const isValidName = (v: unknown): boolean =>
   typeof v === 'string' && /^[\w][\w .@:-]{0,63}$/.test(v.trim());
+
+/** A tmux session name safe to hand to the REMOTE shell as a command word
+ *  (`tmux new-session -A -s <name>`): letters, digits, dot, dash, underscore.
+ *  No shell metacharacters (`;`, `$()`, backticks, spaces) — ssh joins remote
+ *  command words and the remote login shell would otherwise interpret them. */
+export const isValidTmuxSession = (v: unknown): boolean =>
+  typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(v.trim());

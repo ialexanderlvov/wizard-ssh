@@ -2,7 +2,9 @@
  *  tunnels. The destination is either a ~/.ssh/config alias or user@host. */
 
 import type { ConnectionTarget, Tunnel } from '../core/types.js';
+import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
+import { isValidTmuxSession } from '../utils/validators.js';
 
 const ROBUST_OPTS = [
   '-o',
@@ -76,6 +78,14 @@ const END_OPTS = '--';
 export function buildConnectArgs(t: ConnectionTarget, opts: ConnectOptions = {}): string[] {
   if (opts.tmux) {
     const session = typeof opts.tmux === 'string' && opts.tmux.trim() ? opts.tmux.trim() : 'wssh';
+    // The session name becomes a REMOTE command word (`tmux … -s <name>`), which
+    // ssh hands to the remote login shell — reject shell metacharacters so it
+    // can't smuggle a remote command (and so a name with spaces/`-` doesn't
+    // silently break the session).
+    if (!isValidTmuxSession(session))
+      throw new WizardError(
+        'Недопустимое имя tmux-сессии: разрешены латиница, цифры, точка, дефис и подчёркивание (до 64 символов).',
+      );
     return [
       ...targetOptions(t),
       '-t',
