@@ -8,15 +8,24 @@ import { renderEntityTable } from '../ui/tables.js';
 import { connectServer } from './servers.js';
 import { connectTunnel } from './tunnels.js';
 
-export async function searchFlow(query?: string): Promise<void> {
+export async function searchFlow(query?: string, opts: { json?: boolean } = {}): Promise<void> {
   let q = query;
   if (!q) {
+    if (opts.json) {
+      ui.printError('Для --json укажите запрос: wssh search <query> --json');
+      process.exitCode = 1;
+      return;
+    }
     ui.ensureInteractive('Поиск');
     q = await ui.text({ message: 'Поиск по серверам и туннелям' });
   }
   if (!q.trim()) return;
 
   const res = searchEverything(q.trim());
+  if (opts.json) {
+    console.log(JSON.stringify({ servers: res.servers, tunnels: res.tunnels }, null, 2));
+    return;
+  }
   if (!res.total) {
     ui.printWarn(`Ничего не найдено по «${q.trim()}».`);
     return;
