@@ -11,8 +11,10 @@ import {
   search as _search,
 } from '@inquirer/prompts';
 import { NotInteractiveError, PromptAbortError } from '../core/errors.js';
+import { runtime } from './runtime.js';
 
-export const isInteractive = (): boolean => Boolean(process.stdin.isTTY && process.stdout.isTTY);
+export const isInteractive = (): boolean =>
+  !runtime.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
 export function ensureInteractive(what?: string): void {
   if (!isInteractive()) throw new NotInteractiveError(what);
@@ -58,6 +60,8 @@ export function secret(opts: {
 }
 
 export function confirm(opts: { message: string; default?: boolean }): Promise<boolean> {
+  // `--yes` assumes "yes" to every confirmation (for unattended/scripted runs).
+  if (runtime.assumeYes) return Promise.resolve(true);
   return guard(_confirm({ message: opts.message, default: opts.default }));
 }
 
