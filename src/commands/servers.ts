@@ -19,6 +19,7 @@ import {
   resolvePassword,
   rollbackSecretChange,
 } from './helpers.js';
+import { tr } from '../i18n/index.js';
 
 /** Connect an interactive shell to a server. Returns the ssh exit code. */
 export async function connectServer(
@@ -35,23 +36,23 @@ export async function connectServerFlow(
   name?: string,
   opts: { tmux?: string | boolean } = {},
 ): Promise<number> {
-  const server = await resolveEntity(servers, name, '🖥 Выберите сервер');
+  const server = await resolveEntity(servers, name, tr.servers.selectServer);
   if (!server) return 0;
   return connectServer(server, opts);
 }
 
 export async function addServer(seed: Partial<Server> = {}): Promise<Server | null> {
-  ui.ensureInteractive('Добавление сервера');
-  ui.printSection('➕', 'Новый сервер (Host в ~/.ssh/config)');
+  ui.ensureInteractive(tr.servers.addEnsure);
+  ui.printSection('➕', tr.servers.addSection);
   const alias = (
     await ui.text({
-      message: '🔗 Имя сервера (= алиас в ~/.ssh/config)',
+      message: tr.servers.namePrompt,
       default: seed.name,
       validate: (v) =>
         !isValidSshAlias(v.trim())
-          ? 'Только буквы, цифры, точка, дефис, подчёркивание (без пробелов)'
+          ? tr.servers.nameInvalid
           : servers.nameExists(v.trim())
-            ? 'Такой хост уже есть в ~/.ssh/config'
+            ? tr.servers.nameExists
             : true,
     })
   ).trim();
@@ -60,7 +61,7 @@ export async function addServer(seed: Partial<Server> = {}): Promise<Server | nu
   try {
     const ann = await askAnnotations(seed);
     const server = servers.create({ name: alias, ...target, secretId, ...ann, kind: 'server' });
-    ui.printOk(`Сервер «${server.name}» сохранён в ~/.ssh/config.`);
+    ui.printOk(tr.servers.serverSaved(server.name));
     console.log(detailBox(server));
     return server;
   } catch (e) {
@@ -70,13 +71,11 @@ export async function addServer(seed: Partial<Server> = {}): Promise<Server | nu
 }
 
 export async function editServer(name?: string): Promise<void> {
-  ui.ensureInteractive('Редактирование');
-  const server = await resolveEntity(servers, name, '✏️ Выберите сервер');
+  ui.ensureInteractive(tr.servers.editEnsure);
+  const server = await resolveEntity(servers, name, tr.servers.editSelectServer);
   if (!server) return;
   if (!server.manageable) {
-    ui.printWarn(
-      `«${server.name}» задан мульти-алиасным блоком / Include / Match — авто-редактирование не поддерживается. Подключаться можно.`,
-    );
+    ui.printWarn(tr.servers.editNotManageable(server.name));
     return;
   }
 
@@ -85,18 +84,21 @@ export async function editServer(name?: string): Promise<void> {
   let dirty = false;
 
   for (;;) {
-    ui.printSection('✏️', `Сервер: ${working.name}`);
+    ui.printSection('✏️', tr.servers.editSection(working.name));
     console.log(detailBox(working) + '\n');
 
     const field = await ui.choose<string>({
-      message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
+      message: dirty ? tr.servers.editWhatDirty : tr.servers.editWhat,
       choices: [
-        { name: `Имя          ${working.name}`, value: 'name' },
-        { name: `Описание     ${working.description || '—'}`, value: 'description' },
-        { name: `Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
-        { name: 'Подключение / авторизация', value: 'connection' },
-        { name: 'Сохранить и выйти', value: '__save__' },
-        { name: 'Выйти без сохранения', value: '__cancel__' },
+        { name: tr.servers.fieldName(working.name), value: 'name' },
+        {
+          name: tr.servers.fieldDescription(working.description || tr.common.dash),
+          value: 'description',
+        },
+        { name: tr.servers.fieldTags(working.tags.join(', ') || tr.common.dash), value: 'tags' },
+        { name: tr.servers.fieldConnection, value: 'connection' },
+        { name: tr.servers.actionSave, value: '__save__' },
+        { name: tr.servers.actionCancel, value: '__cancel__' },
       ],
     });
 
@@ -104,37 +106,40 @@ export async function editServer(name?: string): Promise<void> {
       if (dirty) {
         servers.update(server.id, working);
         commitSecretChange(originalSecretId, working.secretId); // drop the replaced blob
-        ui.printOk('Изменения сохранены в ~/.ssh/config.');
-      } else ui.printInfo('Изменений не было.');
+        ui.printOk(tr.servers.changesSaved);
+      } else ui.printInfo(tr.servers.noChanges);
       return;
     }
     if (field === '__cancel__') {
-      if (dirty && !(await ui.confirm({ message: 'Выйти без сохранения?', default: false })))
+      if (dirty && !(await ui.confirm({ message: tr.servers.confirmExitUnsaved, default: false })))
         continue;
       rollbackSecretChange(originalSecretId, working.secretId); // discard any pending blob
-      ui.printInfo('Отменено.');
+      ui.printInfo(tr.common.cancelled);
       return;
     }
     if (field === 'name') {
       working.name = (
         await ui.text({
-          message: 'Новый алиас',
+          message: tr.servers.newAlias,
           default: working.name,
           validate: (v) =>
             !isValidSshAlias(v.trim())
-              ? 'Только буквы, цифры, точка, дефис, подчёркивание'
+              ? tr.servers.aliasInvalid
               : servers.nameExists(v.trim(), server.id)
-                ? 'Имя занято'
+                ? tr.servers.aliasTaken
                 : true,
         })
       ).trim();
       dirty = true;
     } else if (field === 'description') {
-      working.description = await ui.text({ message: 'Описание', default: working.description });
+      working.description = await ui.text({
+        message: tr.servers.descriptionPrompt,
+        default: working.description,
+      });
       dirty = true;
     } else if (field === 'tags') {
       working.tags = parseTags(
-        await ui.text({ message: 'Теги через запятую', default: working.tags.join(', ') }),
+        await ui.text({ message: tr.servers.tagsPrompt, default: working.tags.join(', ') }),
       );
       dirty = true;
     } else if (field === 'connection') {
@@ -152,44 +157,40 @@ export async function editServer(name?: string): Promise<void> {
 }
 
 export async function removeServerFlow(name?: string): Promise<void> {
-  ui.ensureInteractive('Удаление');
+  ui.ensureInteractive(tr.servers.removeEnsure);
   if (name) {
-    const server = await resolveEntity(servers, name, '🗑 Выберите сервер');
+    const server = await resolveEntity(servers, name, tr.servers.removeSelectServer);
     if (!server) return;
     if (!server.manageable) {
-      ui.printWarn(
-        `«${server.name}» нельзя удалить автоматически (мульти-алиас / Include / Match).`,
-      );
+      ui.printWarn(tr.servers.removeNotManageable(server.name));
       return;
     }
-    if (
-      await ui.confirm({ message: `Удалить «${server.name}» из ~/.ssh/config?`, default: false })
-    ) {
+    if (await ui.confirm({ message: tr.servers.confirmRemoveOne(server.name), default: false })) {
       removeServerById(server);
-      ui.printOk(`«${server.name}» удалён.`);
-    } else ui.printInfo('Отменено.');
+      ui.printOk(tr.servers.serverRemoved(server.name));
+    } else ui.printInfo(tr.common.cancelled);
     return;
   }
   const list = servers.sorted('name').filter((s) => s.manageable);
   if (!list.length) {
-    ui.printWarn('Нет серверов, доступных для удаления.');
+    ui.printWarn(tr.servers.noRemovable);
     return;
   }
   const ids = await ui.multiChoose<string>({
-    message: 'Отметьте серверы для удаления (пробел — отметить, Enter — подтвердить)',
+    message: tr.servers.removeMultiPrompt,
     choices: list.map((s) => ({ name: `${s.name} — ${targetSummary(s)}`, value: s.id })),
   });
   if (!ids.length) {
-    ui.printInfo('Ничего не выбрано.');
+    ui.printInfo(tr.servers.noneSelected);
     return;
   }
-  if (await ui.confirm({ message: `Удалить ${ids.length}?`, default: false })) {
+  if (await ui.confirm({ message: tr.servers.confirmRemoveMany(ids.length), default: false })) {
     ids.forEach((id) => {
       const s = servers.findById(id);
       if (s) removeServerById(s);
     });
-    ui.printOk(`Удалено: ${ids.length}.`);
-  } else ui.printInfo('Отменено.');
+    ui.printOk(tr.servers.removedMany(ids.length));
+  } else ui.printInfo(tr.common.cancelled);
 }
 
 function removeServerById(server: Server): void {
@@ -206,13 +207,10 @@ export function listServers(opts: { sort?: SortKey; reverse?: boolean; json?: bo
     return list;
   }
   if (!list.length) {
-    ui.printWarn('Серверов пока нет. Добавьте: ' + 'wssh server add');
+    ui.printWarn(tr.servers.emptyList);
     return list;
   }
-  ui.printSection(
-    '🖥',
-    `Серверы (${list.length}) · сортировка: ${sortKey}${opts.reverse ? ' ↑' : ' ↓'}`,
-  );
+  ui.printSection('🖥', tr.servers.listSection(list.length, sortKey, opts.reverse ? ' ↑' : ' ↓'));
   console.log(renderEntityTable(list));
   return list;
 }

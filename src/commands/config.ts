@@ -11,16 +11,17 @@ import * as ui from '../ui/index.js';
 import { renderConfigHostsTable } from '../ui/tables.js';
 import { isValidHostOrIp, isValidPort, isValidSshAlias } from '../utils/validators.js';
 import { connectServer } from './servers.js';
+import { tr } from '../i18n/index.js';
 
 const STD_KEYS = ['HostName', 'User', 'Port', 'IdentityFile', 'ProxyJump'] as const;
 
 async function pickHost(message: string): Promise<SshConfigHost | null> {
   const hosts = sshConfig.listHosts();
   if (!hosts.length) {
-    ui.printWarn('В ~/.ssh/config нет хостов.');
+    ui.printWarn(tr.config.noHosts);
     return null;
   }
-  ui.ensureInteractive('Выбор хоста');
+  ui.ensureInteractive(tr.config.pickHostEnsure);
   const res = await ui.pickFromList<SshConfigHost>({
     message,
     items: hosts,
@@ -59,16 +60,16 @@ async function askProxyJump(current: string, excludeAlias?: string): Promise<str
   const NONE = '__none__';
   const MANUAL = '__manual__';
   const choices = [
-    ...(current ? [{ name: `Оставить: ${current}`, value: KEEP }] : []),
-    { name: 'Без jump-хоста', value: NONE },
+    ...(current ? [{ name: tr.config.proxyKeep(current), value: KEEP }] : []),
+    { name: tr.config.proxyNone, value: NONE },
     ...hosts.map((h) => ({
       name: `${h.alias}${h.hostName ? ` (${h.hostName})` : ''}`,
       value: h.alias,
     })),
-    { name: 'Ввести вручную (цепочку через запятую)', value: MANUAL },
+    { name: tr.config.proxyManual, value: MANUAL },
   ];
   const pick = await ui.choose<string>({
-    message: '🛬 ProxyJump (bastion, необязательно)',
+    message: tr.config.proxyQuestion,
     choices,
     default: current ? KEEP : NONE,
   });
@@ -77,7 +78,7 @@ async function askProxyJump(current: string, excludeAlias?: string): Promise<str
   if (pick === MANUAL) {
     return (
       await ui.text({
-        message: 'ProxyJump (alias или user@host:port, через запятую)',
+        message: tr.config.proxyManualPrompt,
         default: current,
       })
     ).trim();
@@ -90,18 +91,18 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
     current?.params.find((p) => p.key.toLowerCase() === k.toLowerCase())?.value ?? '';
   return {
     HostName: await ui.text({
-      message: '🖥 HostName (IP/домен)',
+      message: tr.config.hostNameQuestion,
       default: get('HostName'),
-      validate: (v) => !v.trim() || isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
+      validate: (v) => !v.trim() || isValidHostOrIp(v.trim()) || tr.config.hostNameInvalid,
     }),
-    User: await ui.text({ message: '👤 User', default: get('User') }),
+    User: await ui.text({ message: tr.config.userQuestion, default: get('User') }),
     Port: await ui.text({
-      message: '🔌 Port (пусто = 22)',
+      message: tr.config.portQuestion,
       default: get('Port'),
-      validate: (v) => !v.trim() || isValidPort(v.trim()) || 'Порт должен быть числом 1..65535',
+      validate: (v) => !v.trim() || isValidPort(v.trim()) || tr.config.portInvalid,
     }),
     IdentityFile: await ui.text({
-      message: '🗝 IdentityFile (путь, необязательно)',
+      message: tr.config.identityFileQuestion,
       default: get('IdentityFile'),
     }),
     ProxyJump: await askProxyJump(get('ProxyJump'), current?.alias),
@@ -109,63 +110,59 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
 }
 
 export async function addConfigHost(): Promise<void> {
-  ui.ensureInteractive('Добавление в ~/.ssh/config');
-  ui.printSection('➕', 'Новый хост в ~/.ssh/config');
+  ui.ensureInteractive(tr.config.addEnsure);
+  ui.printSection('➕', tr.config.addSection);
   const alias = (
     await ui.text({
-      message: '🔗 Host (алиас)',
+      message: tr.config.aliasQuestion,
       validate: (v) =>
         !isValidSshAlias(v)
-          ? 'Только буквы, цифры, . _ -'
+          ? tr.config.aliasInvalidChars
           : sshConfig.getHost(v.trim())
-            ? 'Такой алиас уже есть'
+            ? tr.config.aliasExists
             : true,
     })
   ).trim();
   const answers = await askHostFields();
   const { backup, created } = sshConfig.upsertHost({ alias, params: mergeParams([], answers) });
-  ui.printOk(`${created ? 'Добавлен' : 'Обновлён'} хост ${alias}.`);
-  if (backup) ui.printInfo(`Бэкап: ${backup}`);
+  ui.printOk(created ? tr.config.hostAdded(alias) : tr.config.hostUpdated(alias));
+  if (backup) ui.printInfo(tr.config.backupInfo(backup));
 }
 
 export async function editConfigHost(alias?: string): Promise<void> {
-  ui.ensureInteractive('Редактирование ~/.ssh/config');
-  const host = alias ? sshConfig.getHost(alias) : await pickHost('✏️ Выберите хост');
+  ui.ensureInteractive(tr.config.editEnsure);
+  const host = alias ? sshConfig.getHost(alias) : await pickHost(tr.config.pickHostEdit);
   if (!host) {
-    if (alias) ui.printError(`Хост «${alias}» не найден.`);
+    if (alias) ui.printError(tr.config.hostNotFound(alias));
     return;
   }
-  ui.printSection('✏️', `Хост ${host.alias}`);
+  ui.printSection('✏️', tr.config.editSection(host.alias));
   const answers = await askHostFields(host);
   const { backup } = sshConfig.upsertHost({
     alias: host.alias,
     params: mergeParams(host.params, answers),
     wssh: host.wssh, // keep the #wssh annotation (desc/tags/auth/secret) intact
   });
-  ui.printOk(`Хост ${host.alias} обновлён.`);
-  if (backup) ui.printInfo(`Бэкап: ${backup}`);
+  ui.printOk(tr.config.editOk(host.alias));
+  if (backup) ui.printInfo(tr.config.backupInfo(backup));
   if (!sshConfig.isManageable(host.alias)) {
-    ui.printWarn(
-      'Исходное определение в Include/Match — добавлен переопределяющий блок в основной ~/.ssh/config.',
-    );
+    ui.printWarn(tr.config.includeMatchWarn);
   }
 }
 
 export async function removeConfigHostFlow(alias?: string): Promise<void> {
-  ui.ensureInteractive('Удаление из ~/.ssh/config');
-  const host = alias ? sshConfig.getHost(alias) : await pickHost('🗑 Выберите хост');
+  ui.ensureInteractive(tr.config.removeEnsure);
+  const host = alias ? sshConfig.getHost(alias) : await pickHost(tr.config.pickHostRemove);
   if (!host) {
-    if (alias) ui.printError(`Хост «${alias}» не найден.`);
+    if (alias) ui.printError(tr.config.hostNotFound(alias));
     return;
   }
   if (!sshConfig.isManageable(host.alias)) {
-    ui.printWarn(
-      `Хост ${host.alias} определён в Include/Match или мультиалиасном блоке — авто-удаление не поддерживается.`,
-    );
+    ui.printWarn(tr.config.includeMatchRemoveWarn(host.alias));
     return;
   }
-  if (!(await ui.confirm({ message: `Удалить ${host.alias} из ~/.ssh/config?`, default: false }))) {
-    ui.printInfo('Отменено.');
+  if (!(await ui.confirm({ message: tr.config.removeConfirm(host.alias), default: false }))) {
+    ui.printInfo(tr.common.cancelled);
     return;
   }
   const { removed, backup } = sshConfig.removeHost(host.alias);
@@ -174,9 +171,9 @@ export async function removeConfigHostFlow(alias?: string): Promise<void> {
     // secret so a re-added alias of the same name doesn't silently inherit them.
     usage.remove(host.alias);
     vault.removeSecret(host.wssh?.secretId);
-    ui.printOk(`Хост ${host.alias} удалён.`);
-    if (backup) ui.printInfo(`Бэкап: ${backup}`);
-  } else ui.printWarn('Не удалось удалить.');
+    ui.printOk(tr.config.removeOk(host.alias));
+    if (backup) ui.printInfo(tr.config.backupInfo(backup));
+  } else ui.printWarn(tr.config.removeFailed);
 }
 
 export function listConfigHosts(opts: { json?: boolean } = {}): SshConfigHost[] {
@@ -186,10 +183,10 @@ export function listConfigHosts(opts: { json?: boolean } = {}): SshConfigHost[] 
     return hosts;
   }
   if (!hosts.length) {
-    ui.printWarn('В ~/.ssh/config нет хостов.');
+    ui.printWarn(tr.config.noHosts);
     return hosts;
   }
-  ui.printSection('🗂', `~/.ssh/config (${hosts.length})`);
+  ui.printSection('🗂', tr.config.listSection(hosts.length));
   console.log(renderConfigHostsTable(hosts));
   return hosts;
 }
@@ -197,11 +194,9 @@ export function listConfigHosts(opts: { json?: boolean } = {}): SshConfigHost[] 
 /** Connect straight to a config alias — same path as connecting to a server,
  *  since every config host IS a server. */
 export async function connectConfigHostFlow(alias?: string): Promise<number> {
-  const host = alias
-    ? sshConfig.getHost(alias)
-    : await pickHost('🔌 Выберите хост для подключения');
+  const host = alias ? sshConfig.getHost(alias) : await pickHost(tr.config.pickHostConnect);
   if (!host) {
-    if (alias) ui.printError(`Хост «${alias}» не найден.`);
+    if (alias) ui.printError(tr.config.hostNotFound(alias));
     return 0;
   }
   const server = servers.findById(host.alias);

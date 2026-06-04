@@ -1,7 +1,7 @@
 {
   "name": "wizard-ssh",
   "version": "1.0.0",
-  "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault. (Russian UI)",
+  "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault. (English / Russian UI)",
   "type": "module",
   "author": "Aleksandr Lvov <ijullic@yandex.ru>",
   "homepage": "https://github.com/ialexanderlvov/wizard-ssh#readme",
@@ -60,7 +60,8 @@
     "commander": "^12.1.0",
     "figlet": "^1.8.0",
     "fuse.js": "^7.0.0",
-    "gradient-string": "^3.0.0"
+    "gradient-string": "^3.0.0",
+    "i18n-typed-store": "^0.4.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

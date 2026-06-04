@@ -13,6 +13,7 @@ import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import { listKeys } from '../ssh/keys.js';
 import * as ui from '../ui/index.js';
+import { tr } from '../i18n/index.js';
 
 type Status = 'ok' | 'warn' | 'fail';
 interface Check {
@@ -49,43 +50,41 @@ export function collectChecks(): Check[] {
     checks.push({
       label: name,
       status: ok ? 'ok' : required ? 'fail' : 'warn',
-      detail: ok ? 'найден' : `не найден — ${why}`,
+      detail: ok ? tr.doctor.binFound : tr.doctor.binNotFound(why),
     });
   };
 
   checks.push({
     label: 'ssh',
     status: commandExists('ssh') ? 'ok' : 'fail',
-    detail: commandExists('ssh')
-      ? sshVersion() || 'найден'
-      : 'не найден — основа всего, установите OpenSSH',
+    detail: commandExists('ssh') ? sshVersion() || tr.doctor.binFound : tr.doctor.sshMissing,
   });
-  bin('scp', false, 'без него недоступна передача файлов scp');
-  bin('rsync', false, 'без него недоступна дельта-синхронизация');
-  bin('ssh-keygen', false, 'нужен для генерации ключей и known_hosts');
-  bin('ssh-copy-id', false, 'нужен для установки ключа на сервер');
-  bin('sshpass', false, 'нужен только для парольной авторизации');
+  bin('scp', false, tr.doctor.whyScp);
+  bin('rsync', false, tr.doctor.whyRsync);
+  bin('ssh-keygen', false, tr.doctor.whyKeygen);
+  bin('ssh-copy-id', false, tr.doctor.whyCopyId);
+  bin('sshpass', false, tr.doctor.whySshpass);
   const clip = isMac ? 'pbcopy' : isWindows ? 'clip' : 'xclip/wl-copy';
   const clipOk = ['pbcopy', 'clip', 'xclip', 'wl-copy', 'xsel'].some(commandExists);
   checks.push({
-    label: 'буфер обмена',
+    label: tr.doctor.clipLabel,
     status: clipOk ? 'ok' : 'warn',
-    detail: clipOk ? 'доступен' : `не найден (${clip}) — копирование .pub отключено`,
+    detail: clipOk ? tr.doctor.clipOk : tr.doctor.clipMissing(clip),
   });
 
   // data dir + perms
   const dm = mode(DATA_DIR);
   checks.push({
-    label: 'каталог данных',
+    label: tr.doctor.dataDirLabel,
     status: dm == null ? 'warn' : dm === '700' ? 'ok' : 'warn',
-    detail: dm == null ? `${DATA_DIR} (нет)` : `${DATA_DIR} (права ${dm})`,
+    detail: dm == null ? tr.doctor.dataDirMissing(DATA_DIR) : tr.doctor.dataDirPerms(DATA_DIR, dm),
   });
   if (fs.existsSync(FILES.vault)) {
     const vm = mode(FILES.vault);
     checks.push({
-      label: 'права vault.json',
+      label: tr.doctor.vaultPermsLabel,
       status: vm === '600' ? 'ok' : 'warn',
-      detail: vm === '600' ? '600' : `${vm} (ожидается 600)`,
+      detail: vm === '600' ? '600' : tr.doctor.vaultPermsWrong(vm ?? tr.common.dash),
     });
   }
 
@@ -94,7 +93,7 @@ export function collectChecks(): Check[] {
   checks.push({
     label: '~/.ssh',
     status: sm == null ? 'warn' : sm === '700' ? 'ok' : 'warn',
-    detail: sm == null ? 'нет каталога' : `права ${sm}`,
+    detail: sm == null ? tr.doctor.sshDirMissing : tr.doctor.sshDirPerms(sm),
   });
   if (fs.existsSync(SSH_CONFIG_FILE)) {
     const cm = mode(SSH_CONFIG_FILE);
@@ -107,23 +106,26 @@ export function collectChecks(): Check[] {
     checks.push({
       label: '~/.ssh/config',
       status: hostsCount < 0 ? 'fail' : 'ok',
-      detail: hostsCount < 0 ? 'не удалось разобрать' : `${hostsCount} хостов · права ${cm ?? '—'}`,
+      detail:
+        hostsCount < 0
+          ? tr.doctor.sshConfigUnparseable
+          : tr.doctor.sshConfigOk(hostsCount, cm ?? tr.common.dash),
     });
   } else {
-    checks.push({ label: '~/.ssh/config', status: 'warn', detail: 'нет файла (будет создан)' });
+    checks.push({ label: '~/.ssh/config', status: 'warn', detail: tr.doctor.sshConfigMissing });
   }
 
   // vault / touch id
   checks.push({
-    label: 'хранилище паролей',
+    label: tr.doctor.vaultLabel,
     status: 'ok',
-    detail: vault.exists() ? 'создано' : 'не создано',
+    detail: vault.exists() ? tr.doctor.vaultCreated : tr.doctor.vaultNotCreated,
   });
   if (isMac) {
     checks.push({
       label: 'Touch ID',
       status: 'ok',
-      detail: vault.touchIdSupported() ? 'поддерживается' : 'недоступен (нужен Xcode CLT)',
+      detail: vault.touchIdSupported() ? tr.doctor.touchIdSupported : tr.doctor.touchIdUnavailable,
     });
   }
 
@@ -134,9 +136,9 @@ export function collectChecks(): Check[] {
     const corrupt = fs.readdirSync(DATA_DIR).filter((f) => f.includes('.corrupt-'));
     if (corrupt.length) {
       checks.push({
-        label: 'повреждённые данные',
+        label: tr.doctor.corruptLabel,
         status: 'warn',
-        detail: `найдены резервные копии: ${corrupt.join(', ')} — проверьте и удалите вручную`,
+        detail: tr.doctor.corruptFound(corrupt.join(', ')),
       });
     }
   } catch {
@@ -145,9 +147,14 @@ export function collectChecks(): Check[] {
 
   // inventory
   checks.push({
-    label: 'инвентарь',
+    label: tr.doctor.inventoryLabel,
     status: 'ok',
-    detail: `серверов: ${safeCount(() => servers.all().length)} · туннелей: ${safeCount(() => tunnels.all().length)} · врем.: ${safeCount(() => tempTunnels.all().length)} · ключей: ${safeCount(() => listKeys().length)}`,
+    detail: tr.doctor.inventoryDetail(
+      safeCount(() => servers.all().length),
+      safeCount(() => tunnels.all().length),
+      safeCount(() => tempTunnels.all().length),
+      safeCount(() => listKeys().length),
+    ),
   });
 
   return checks;
@@ -168,14 +175,14 @@ export function doctor(opts: { json?: boolean } = {}): number {
     console.log(JSON.stringify({ ok: !failed, platform: os.platform(), checks }, null, 2));
     return failed ? 2 : 0;
   }
-  ui.printSection('🩺', 'Диагностика wssh');
+  ui.printSection('🩺', tr.doctor.sectionTitle);
   for (const c of checks) {
     console.log(
       `  ${ICON[c.status]} ${ui.chalk.bold(c.label.padEnd(20))} ${ui.chalk.dim(c.detail)}`,
     );
   }
   console.log('');
-  if (failed) ui.printError('Есть критические проблемы (✖). Их стоит починить.');
-  else ui.printOk('Всё в порядке.');
+  if (failed) ui.printError(tr.doctor.hasCritical);
+  else ui.printOk(tr.doctor.allOk);
   return failed ? 2 : 0;
 }

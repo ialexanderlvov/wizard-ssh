@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { capture, commandExists } from '../utils/exec.js';
+import { tr } from '../i18n/index.js';
 import { expandHome } from '../utils/strings.js';
 
 function looksPrivate(file: string): boolean {
@@ -161,7 +162,7 @@ export function buildKeygenArgs(opts: GenerateKeyOptions): string[] {
  *  passphrase and print the randomart). Resolves with the exit code. */
 export function generateKey(opts: GenerateKeyOptions): Promise<number> {
   if (!commandExists('ssh-keygen')) {
-    return Promise.reject(new Error('ssh-keygen не найден в PATH.'));
+    return Promise.reject(new Error(tr.ssh.keysKeygenNotFound));
   }
   const args = buildKeygenArgs(opts);
   return new Promise((resolve) => {

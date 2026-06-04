@@ -7,6 +7,7 @@ export const APP_BIN = 'wssh';
 export const APP_VERSION = '1.0.0';
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: 'system',
   defaultUser: 'root',
   defaultSshPort: 22,
   defaultAuth: 'agent',

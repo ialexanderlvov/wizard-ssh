@@ -18,6 +18,7 @@ import {
   isValidUser,
 } from '../utils/validators.js';
 import * as ui from '../ui/index.js';
+import { tr } from '../i18n/index.js';
 
 /** An imported file is untrusted input. A server/tunnel record flows straight
  *  into ~/.ssh/config (host/user/keyPath/alias) and the ssh argv (remoteHost),
@@ -72,9 +73,9 @@ export function exportData(file?: string): string {
     bundle.vault = readJson<unknown>(FILES.vault, null).data;
   }
   writeJson(target, bundle);
-  ui.printOk(`Экспортировано в ${target}`);
+  ui.printOk(tr.importExport.exportedTo(target));
   ui.printInfo(
-    `Серверов: ${bundle.servers.length} · туннелей: ${bundle.tunnels.length}${bundle.vault ? ' · хранилище включено (зашифровано)' : ''}`,
+    tr.importExport.exportSummary(bundle.servers.length, bundle.tunnels.length, !!bundle.vault),
   );
   return target;
 }
@@ -82,13 +83,13 @@ export function exportData(file?: string): string {
 export async function importData(file: string, opts: { replace?: boolean } = {}): Promise<void> {
   const abs = path.resolve(file);
   if (!fs.existsSync(abs)) {
-    ui.printError(`Файл не найден: ${abs}`);
+    ui.printError(tr.importExport.fileNotFound(abs));
     process.exitCode = 1;
     return;
   }
   const { data } = readJson<Partial<Bundle>>(abs, {});
   if (data.app !== 'wizard-ssh' || !Array.isArray(data.servers)) {
-    ui.printError('Это не файл экспорта wizard-ssh.');
+    ui.printError(tr.importExport.notExportFile);
     process.exitCode = 1;
     return;
   }
@@ -96,12 +97,12 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
   let replace = opts.replace ?? false;
   if (!opts.replace && ui.isInteractive()) {
     replace = await ui.choose<boolean>({
-      message: 'Как импортировать?',
+      message: tr.importExport.howToImport,
       choices: [
-        { name: '➕ Добавить к существующим (безопасно)', value: false },
+        { name: tr.importExport.choiceAdd, value: false },
         // Servers live in ~/.ssh/config (shared, source of truth) so they are
         // merged/updated, not wiped; only the tunnels list is truly replaced.
-        { name: '♻️ Заменить туннели; серверы — обновить в ~/.ssh/config', value: true },
+        { name: tr.importExport.choiceReplace, value: true },
       ],
     });
   }
@@ -112,10 +113,7 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
   const importedTunnels = rawTunnels.filter(tunnelIsSafe);
   const skipped =
     rawServers.length - importedServers.length + (rawTunnels.length - importedTunnels.length);
-  if (skipped > 0)
-    ui.printWarn(
-      `Пропущено небезопасных/некорректных записей: ${skipped} (недопустимые символы в host/user/alias/ключе).`,
-    );
+  if (skipped > 0) ui.printWarn(tr.importExport.skippedRecords(skipped));
 
   if (replace) {
     servers.replaceAll(importedServers);
@@ -144,42 +142,41 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
   if (data.vault && !fs.existsSync(FILES.vault)) {
     if (isVaultFileShape(data.vault)) {
       writeJson(FILES.vault, data.vault);
-      ui.printInfo('Хранилище паролей восстановлено (нужна та же парольная фраза).');
+      ui.printInfo(tr.importExport.vaultRestored);
     } else {
-      ui.printWarn(
-        'Хранилище в файле импорта имеет неверный формат или параметры KDF — пропущено.',
-      );
+      ui.printWarn(tr.importExport.vaultBadFormat);
     }
   } else if (data.vault) {
-    ui.printWarn(
-      'Локальное хранилище уже есть — оно не перезаписано. Перенесите vault.json вручную при необходимости.',
-    );
+    ui.printWarn(tr.importExport.vaultExists);
   }
 
   ui.printOk(
-    `Импорт завершён (${replace ? 'туннели заменены, серверы обновлены' : 'добавление'}): ` +
-      `серверов +${importedServers.length}, туннелей +${importedTunnels.length}.`,
+    tr.importExport.importDone(
+      replace ? tr.importExport.importModeReplace : tr.importExport.importModeAdd,
+      importedServers.length,
+      importedTunnels.length,
+    ),
   );
 }
 
 export async function importExportMenu(): Promise<void> {
-  ui.ensureInteractive('Экспорт/импорт');
+  ui.ensureInteractive(tr.importExport.ensureInteractive);
   const action = await ui.choose<string>({
-    message: '📦 Экспорт / импорт',
+    message: tr.importExport.menuTitle,
     choices: [
-      { name: '📤 Экспортировать всё в файл', value: 'export' },
-      { name: '📥 Импортировать из файла', value: 'import' },
-      { name: '↩ Назад', value: 'back' },
+      { name: tr.importExport.choiceExport, value: 'export' },
+      { name: tr.importExport.choiceImport, value: 'import' },
+      { name: tr.importExport.choiceBack, value: 'back' },
     ],
   });
   if (action === 'back') return;
   if (action === 'export') {
-    const file = await ui.text({ message: 'Путь файла (Enter — по умолчанию)', default: '' });
+    const file = await ui.text({ message: tr.importExport.exportPathPrompt, default: '' });
     exportData(file.trim() || undefined);
   } else {
     const file = await ui.text({
-      message: 'Путь к файлу экспорта',
-      validate: (v) => v.trim().length > 0 || 'Укажите путь',
+      message: tr.importExport.importPathPrompt,
+      validate: (v) => v.trim().length > 0 || tr.importExport.specifyPath,
     });
     await importData(file.trim());
   }

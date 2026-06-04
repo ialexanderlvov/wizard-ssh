@@ -12,6 +12,7 @@ import {
 } from '@inquirer/prompts';
 import { NotInteractiveError, PromptAbortError } from '../core/errors.js';
 import { runtime } from './runtime.js';
+import { tr } from '../i18n/index.js';
 
 export const isInteractive = (): boolean =>
   !runtime.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -106,6 +107,6 @@ export function searchChoose<V>(opts: {
   );
 }
 
-export async function pause(message = '↩ Enter — назад'): Promise<void> {
+export async function pause(message = tr.ui.pause): Promise<void> {
   await guard(_input({ message }));
 }

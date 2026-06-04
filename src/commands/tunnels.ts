@@ -22,6 +22,7 @@ import {
   resolvePassword,
   rollbackSecretChange,
 } from './helpers.js';
+import { tr } from '../i18n/index.js';
 
 /** Tunnels live in one of two collections: the main list or the temporary one. */
 type TunnelStore = EntityCollection<Tunnel>;
@@ -41,19 +42,16 @@ export async function connectTunnel(tunnel: Tunnel, store: TunnelStore = tunnels
 /** Start a tunnel detached in the background and register the session. Only
  *  agent/key tunnels qualify (password tunnels need a foreground sshpass). */
 export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels): Promise<number> {
-  const tunnel = await resolveEntity(store, name, '🚇 Какой туннель поднять в фоне?');
+  const tunnel = await resolveEntity(store, name, tr.tunnels.pickTunnelUp);
   if (!tunnel) return 0;
 
   if (tunnel.auth === 'password') {
-    ui.printError(
-      'Фоновый режим не поддерживает парольную авторизацию (нужен интерактивный sshpass). ' +
-        'Используйте ключ/agent или поднимите туннель на переднем плане.',
-    );
+    ui.printError(tr.tunnels.bgNoPassword);
     return 1;
   }
   const existing = sessions.find(tunnel.id);
   if (existing) {
-    ui.printWarn(`«${tunnel.name}» уже запущен в фоне (pid ${existing.pid}).`);
+    ui.printWarn(tr.tunnels.alreadyRunning(tunnel.name, existing.pid));
     return 0;
   }
   const err = preflight(tunnel, {
@@ -63,11 +61,11 @@ export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels):
     ui.printError(err);
     return 1;
   }
-  if (isWindows) ui.printWarn('Фоновые туннели на Windows работают нестабильно.');
+  if (isWindows) ui.printWarn(tr.tunnels.windowsUnstable);
 
   const { pid, logFile } = startTunnelDetached(tunnel);
   if (pid <= 0) {
-    ui.printError('Не удалось запустить фоновый процесс.');
+    ui.printError(tr.tunnels.bgStartFailed);
     return 1;
   }
   store.touch(tunnel.id);
@@ -80,8 +78,8 @@ export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels):
     target: targetSummary(tunnel),
     logFile,
   });
-  ui.printOk(`Туннель «${tunnel.name}» поднят в фоне (pid ${pid}).`);
-  ui.printInfo(`Лог: ${tilde(logFile)} · остановить: wssh tunnel down ${tunnel.name}`);
+  ui.printOk(tr.tunnels.tunnelRaised(tunnel.name, pid));
+  ui.printInfo(tr.tunnels.tunnelLog(tilde(logFile), tunnel.name));
   return 0;
 }
 
@@ -92,10 +90,10 @@ export function listSessions(opts: { json?: boolean } = {}): void {
     return;
   }
   if (!live.length) {
-    ui.printWarn('Нет фоновых туннелей. Поднять: wssh tunnel start <имя>');
+    ui.printWarn(tr.tunnels.noBackground);
     return;
   }
-  ui.printSection('🟢', `Фоновые туннели (${live.length})`);
+  ui.printSection('🟢', tr.tunnels.backgroundSection(live.length));
   console.log(renderSessionsTable(live));
 }
 
@@ -103,7 +101,7 @@ export function listSessions(opts: { json?: boolean } = {}): void {
 export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}): Promise<number> {
   const live = sessions.list();
   if (!live.length) {
-    ui.printWarn('Нет фоновых туннелей.');
+    ui.printWarn(tr.tunnels.noBackgroundDown);
     return 0;
   }
   let toStop = live;
@@ -111,9 +109,9 @@ export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}
     const target = name
       ? live.find((s) => s.name.toLowerCase() === name.toLowerCase())
       : await (async () => {
-          ui.ensureInteractive('Остановка туннеля');
+          ui.ensureInteractive(tr.tunnels.stopEnsure);
           const picked = await ui.pickFromList({
-            message: '🛑 Какой фоновый туннель остановить?',
+            message: tr.tunnels.pickTunnelDown,
             items: live,
             render: (s) => `${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.forward)}  pid ${s.pid}`,
             search: (s) => s.name,
@@ -122,12 +120,14 @@ export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}
           return picked === ui.BACK ? null : picked;
         })();
     if (!target) {
-      if (name) ui.printError(`Фоновый туннель «${name}» не найден.`);
+      if (name) ui.printError(tr.tunnels.bgNotFound(name));
       return name ? 1 : 0;
     }
     toStop = [target];
-  } else if (!(await ui.confirm({ message: `Остановить все (${live.length})?`, default: false }))) {
-    ui.printInfo('Отменено.');
+  } else if (
+    !(await ui.confirm({ message: tr.tunnels.confirmStopAll(live.length), default: false }))
+  ) {
+    ui.printInfo(tr.common.cancelled);
     return 0;
   }
 
@@ -141,7 +141,7 @@ export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}
     }
     sessions.remove(s.tunnelId);
   }
-  ui.printOk(`Остановлено: ${stopped}.`);
+  ui.printOk(tr.tunnels.stopped(stopped));
   return 0;
 }
 
@@ -149,21 +149,21 @@ export async function connectTunnelFlow(
   name?: string,
   store: TunnelStore = tunnels,
 ): Promise<number> {
-  const tunnel = await resolveEntity(store, name, '🚇 Выберите туннель');
+  const tunnel = await resolveEntity(store, name, tr.tunnels.pickTunnelConnect);
   if (!tunnel) return 0;
   return connectTunnel(tunnel, store);
 }
 
 /** #9 — pick a ~/.ssh/config host, define the forward, save and raise it now. */
 export async function createAndRaiseTunnel(): Promise<number> {
-  ui.ensureInteractive('Быстрый туннель');
+  ui.ensureInteractive(tr.tunnels.quickTunnelEnsure);
   const hosts = sshConfig.listHosts();
   if (!hosts.length) {
-    ui.printWarn('В ~/.ssh/config нет хостов.');
+    ui.printWarn(tr.tunnels.noSshConfigHosts);
     return 0;
   }
   const host = await ui.pickFromList<SshConfigHost>({
-    message: 'Хост из ~/.ssh/config для туннеля',
+    message: tr.tunnels.pickSshConfigHost,
     items: hosts,
     render: ui.configRowRenderer(hosts),
     search: ui.configSearch,
@@ -191,15 +191,15 @@ export async function createAndRaiseTunnel(): Promise<number> {
     ...meta,
     kind: 'tunnel',
   });
-  ui.printOk(`Туннель «${tunnel.name}» создан.`);
+  ui.printOk(tr.tunnels.tunnelCreated(tunnel.name));
   return connectTunnel(tunnel);
 }
 
 /** Create + raise a tunnel to ANY host — including one not in ~/.ssh/config.
  *  Saved to its OWN list (temp-tunnels.json), kept apart from the main tunnels. */
 export async function raiseTemporaryTunnel(): Promise<number> {
-  ui.ensureInteractive('Временный туннель');
-  ui.printSection('🚇', 'Временный туннель (на любой хост)');
+  ui.ensureInteractive(tr.tunnels.tempTunnelEnsure);
+  ui.printSection('🚇', tr.tunnels.tempTunnelSection);
   const target = await askConnectionTarget({});
   const secretId = await handlePasswordSecret(target, null);
   try {
@@ -209,7 +209,7 @@ export async function raiseTemporaryTunnel(): Promise<number> {
     );
     const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
     const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-    ui.printOk(`Временный туннель «${tunnel.name}» сохранён (отдельный список).`);
+    ui.printOk(tr.tunnels.tempTunnelSaved(tunnel.name));
     return connectTunnel(tunnel, tempTunnels);
   } catch (e) {
     rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
@@ -218,8 +218,8 @@ export async function raiseTemporaryTunnel(): Promise<number> {
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
-  ui.ensureInteractive('Добавление туннеля');
-  ui.printSection('➕', 'Новый туннель');
+  ui.ensureInteractive(tr.tunnels.addTunnelEnsure);
+  ui.printSection('➕', tr.tunnels.addTunnelSection);
   const target = await askConnectionTarget(seed);
   const secretId = await handlePasswordSecret(target, null);
   try {
@@ -229,7 +229,7 @@ export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | nu
     );
     const meta = await askMeta(seed, (n) => tunnels.nameExists(n), suggested);
     const tunnel = tunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-    ui.printOk(`Туннель «${tunnel.name}» сохранён.`);
+    ui.printOk(tr.tunnels.tunnelSaved(tunnel.name));
     console.log(detailBox(tunnel));
     return tunnel;
   } catch (e) {
@@ -239,8 +239,8 @@ export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | nu
 }
 
 export async function editTunnel(name?: string, store: TunnelStore = tunnels): Promise<void> {
-  ui.ensureInteractive('Редактирование');
-  const tunnel = await resolveEntity(store, name, '✏️ Выберите туннель');
+  ui.ensureInteractive(tr.tunnels.editEnsure);
+  const tunnel = await resolveEntity(store, name, tr.tunnels.pickTunnelEdit);
   if (!tunnel) return;
 
   let working: Tunnel = { ...tunnel };
@@ -248,23 +248,26 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
   let dirty = false;
 
   for (;;) {
-    ui.printSection('✏️', `Туннель: ${working.name}`);
+    ui.printSection('✏️', tr.tunnels.editSection(working.name));
     console.log(detailBox(working) + '\n');
 
     const choices = [
-      { name: `Имя          ${working.name}`, value: 'name' },
-      { name: `Описание     ${working.description || '—'}`, value: 'description' },
-      { name: `Теги         ${working.tags.join(', ') || '—'}`, value: 'tags' },
-      { name: 'Подключение / авторизация', value: 'connection' },
-      { name: `Проброс      ${forwardSummary(working)}`, value: 'forward' },
+      { name: tr.tunnels.editFieldName(working.name), value: 'name' },
+      {
+        name: tr.tunnels.editFieldDescription(working.description || tr.common.dash),
+        value: 'description',
+      },
+      { name: tr.tunnels.editFieldTags(working.tags.join(', ') || tr.common.dash), value: 'tags' },
+      { name: tr.tunnels.editFieldConnection, value: 'connection' },
+      { name: tr.tunnels.editFieldForward(forwardSummary(working)), value: 'forward' },
       ...(working.type === 'local'
-        ? [{ name: `Авто-браузер ${working.openBrowser ? 'вкл' : 'выкл'}`, value: 'browser' }]
+        ? [{ name: tr.tunnels.editFieldBrowser(working.openBrowser ?? false), value: 'browser' }]
         : []),
-      { name: 'Сохранить и выйти', value: '__save__' },
-      { name: 'Выйти без сохранения', value: '__cancel__' },
+      { name: tr.tunnels.editSave, value: '__save__' },
+      { name: tr.tunnels.editCancel, value: '__cancel__' },
     ];
     const field = await ui.choose<string>({
-      message: dirty ? 'Что меняем? • есть несохранённые правки' : 'Что меняем?',
+      message: dirty ? tr.tunnels.editDirty : tr.tunnels.editClean,
       choices,
     });
 
@@ -272,37 +275,40 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
       if (dirty) {
         store.update(tunnel.id, working);
         commitSecretChange(originalSecretId, working.secretId); // drop the replaced blob
-        ui.printOk('Изменения сохранены.');
-      } else ui.printInfo('Изменений не было.');
+        ui.printOk(tr.tunnels.editSaved);
+      } else ui.printInfo(tr.tunnels.editNoChanges);
       return;
     }
     if (field === '__cancel__') {
-      if (dirty && !(await ui.confirm({ message: 'Выйти без сохранения?', default: false })))
+      if (dirty && !(await ui.confirm({ message: tr.tunnels.editCancelConfirm, default: false })))
         continue;
       rollbackSecretChange(originalSecretId, working.secretId); // discard any pending blob
-      ui.printInfo('Отменено.');
+      ui.printInfo(tr.common.cancelled);
       return;
     }
     if (field === 'name') {
       working.name = (
         await ui.text({
-          message: 'Новое имя',
+          message: tr.tunnels.editNewName,
           default: working.name,
           validate: (v) =>
             !isValidName(v.trim())
-              ? 'Некорректное имя'
+              ? tr.tunnels.editInvalidName
               : store.nameExists(v.trim(), tunnel.id)
-                ? 'Имя занято'
+                ? tr.tunnels.editNameTaken
                 : true,
         })
       ).trim();
       dirty = true;
     } else if (field === 'description') {
-      working.description = await ui.text({ message: 'Описание', default: working.description });
+      working.description = await ui.text({
+        message: tr.tunnels.editDescription,
+        default: working.description,
+      });
       dirty = true;
     } else if (field === 'tags') {
       working.tags = parseTags(
-        await ui.text({ message: 'Теги через запятую', default: working.tags.join(', ') }),
+        await ui.text({ message: tr.tunnels.editTags, default: working.tags.join(', ') }),
       );
       dirty = true;
     } else if (field === 'connection') {
@@ -326,36 +332,36 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
 }
 
 export async function removeTunnelFlow(name?: string, store: TunnelStore = tunnels): Promise<void> {
-  ui.ensureInteractive('Удаление');
+  ui.ensureInteractive(tr.tunnels.removeEnsure);
   if (name) {
-    const tunnel = await resolveEntity(store, name, '🗑 Выберите туннель');
+    const tunnel = await resolveEntity(store, name, tr.tunnels.pickTunnelRemove);
     if (!tunnel) return;
-    if (await ui.confirm({ message: `Удалить «${tunnel.name}»?`, default: false })) {
+    if (await ui.confirm({ message: tr.tunnels.confirmRemoveOne(tunnel.name), default: false })) {
       removeTunnelById(tunnel, store);
-      ui.printOk(`«${tunnel.name}» удалён.`);
-    } else ui.printInfo('Отменено.');
+      ui.printOk(tr.tunnels.removed(tunnel.name));
+    } else ui.printInfo(tr.common.cancelled);
     return;
   }
   const list = store.sorted('name');
   if (!list.length) {
-    ui.printWarn('Список туннелей пуст.');
+    ui.printWarn(tr.tunnels.tunnelListEmpty);
     return;
   }
   const ids = await ui.multiChoose<string>({
-    message: 'Отметьте туннели для удаления (пробел — отметить, Enter — подтвердить)',
+    message: tr.tunnels.pickTunnelsMulti,
     choices: list.map((t) => ({ name: `${t.name} — ${forwardSummary(t)}`, value: t.id })),
   });
   if (!ids.length) {
-    ui.printInfo('Ничего не выбрано.');
+    ui.printInfo(tr.tunnels.nothingSelected);
     return;
   }
-  if (await ui.confirm({ message: `Удалить ${ids.length}?`, default: false })) {
+  if (await ui.confirm({ message: tr.tunnels.confirmRemoveMulti(ids.length), default: false })) {
     ids.forEach((id) => {
       const t = store.findById(id);
       if (t) removeTunnelById(t, store);
     });
-    ui.printOk(`Удалено: ${ids.length}.`);
-  } else ui.printInfo('Отменено.');
+    ui.printOk(tr.tunnels.removedMulti(ids.length));
+  } else ui.printInfo(tr.common.cancelled);
 }
 
 function removeTunnelById(tunnel: Tunnel, store: TunnelStore): void {
@@ -371,13 +377,10 @@ export function listTunnels(opts: { sort?: SortKey; reverse?: boolean; json?: bo
     return list;
   }
   if (!list.length) {
-    ui.printWarn('Туннелей пока нет. Добавьте: wssh tunnel add');
+    ui.printWarn(tr.tunnels.listEmpty);
     return list;
   }
-  ui.printSection(
-    '🚇',
-    `Туннели (${list.length}) · сортировка: ${sortKey}${opts.reverse ? ' ↑' : ' ↓'}`,
-  );
+  ui.printSection('🚇', tr.tunnels.listSection(list.length, sortKey, opts.reverse ? ' ↑' : ' ↓'));
   console.log(renderEntityTable(list));
   return list;
 }

@@ -9,9 +9,12 @@ import { migrateServersToConfig } from './store/migrate-servers.js';
 import { registerCommands } from './commands/index.js';
 import { mainMenu } from './commands/menu.js';
 import * as ui from './ui/index.js';
+import { initI18n, tr } from './i18n/index.js';
 
 async function main(): Promise<void> {
   ensureDataDir();
+  // Resolve + load the UI language (env / settings / OS) before anything renders.
+  await initI18n();
   const migrated = runMigration();
   const serverMigration = migrateServersToConfig();
 
@@ -19,25 +22,22 @@ async function main(): Promise<void> {
   program.enablePositionalOptions(); // lets `run <name> -- <cmd>` pass flags through
   program
     .name(APP_BIN)
-    .description(
-      'Wizard SSH — серверы, туннели и ~/.ssh/config: CRUD, поиск, мгновенное подключение.',
-    )
-    .version(APP_VERSION, '-v, --version', 'показать версию')
-    .helpOption('-h, --help', 'показать помощь')
-    .addHelpText('after', `\nБез аргументов — интерактивное меню.\nДанные: ${DATA_DIR}`);
+    .description(tr.cli.programDescription)
+    .version(APP_VERSION, '-v, --version', tr.cli.versionDescription)
+    .helpOption('-h, --help', tr.cli.helpDescription)
+    .addHelpText('after', tr.cli.helpAfter(DATA_DIR));
 
   registerCommands(program);
 
   // No subcommand at all → interactive menu. (We don't register a default
   // `program.action`, so unknown commands still produce a proper error.)
   const serverNote = serverMigration?.count
-    ? `Серверы перенесены в ~/.ssh/config: ${serverMigration.count}. servers.json → servers.json.migrated.` +
-      (serverMigration.backup ? ` Бэкап конфига: ${serverMigration.backup}` : '')
+    ? tr.cli.serversMigrated(serverMigration.count, serverMigration.backup ?? '')
     : '';
 
   if (process.argv.slice(2).length === 0) {
     ui.printBanner();
-    if (migrated) ui.printInfo(`Импортировано из прежней версии: туннелей — ${migrated}.`);
+    if (migrated) ui.printInfo(tr.cli.importedFromOldVersion(migrated));
     if (serverNote) ui.printInfo(serverNote);
     await mainMenu();
     return;
@@ -55,7 +55,7 @@ main().then(
   },
   (err: unknown) => {
     if (err instanceof PromptAbortError) {
-      console.log('\nОтменено.');
+      console.log('\n' + tr.errors.cancelled);
       process.exit(130);
     }
     if (err instanceof WizardError) {
@@ -63,7 +63,7 @@ main().then(
       process.exit(err.exitCode);
     }
     ui.printError(
-      `Неожиданная ошибка: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+      tr.errors.unexpected(err instanceof Error ? (err.stack ?? err.message) : String(err)),
     );
     process.exit(1);
   },

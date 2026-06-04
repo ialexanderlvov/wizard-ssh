@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import type { ConnectionTarget, ForwardType, Tunnel } from '../core/types.js';
+import { tr } from '../i18n/index.js';
 import { settings } from '../store/settings.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import * as sshConfig from '../ssh-config/index.js';
@@ -16,21 +17,21 @@ import {
 } from '../utils/validators.js';
 import { expandHome, parseTags, slugify, tilde } from '../utils/strings.js';
 
-const portValidate = (v: string): boolean | string => isValidPort(v) || 'Порт должен быть 1..65535';
+const portValidate = (v: string): boolean | string => isValidPort(v) || tr.wizard.portRange;
 
 /** Fuzzy-pick a ~/.ssh/config alias (or type a new one). */
 export async function pickSshAlias(current?: string): Promise<string> {
   const hosts = sshConfig.listHosts();
   if (!hosts.length) {
-    ui.printWarn('В ~/.ssh/config нет хостов — введите алиас вручную.');
+    ui.printWarn(tr.wizard.noSshConfigHosts);
     return ui.text({
-      message: '🔗 Алиас хоста',
+      message: tr.wizard.aliasPrompt,
       default: current,
-      validate: (v) => isValidSshAlias(v) || 'Только буквы, цифры, . _ -',
+      validate: (v) => isValidSshAlias(v) || tr.wizard.aliasValidate,
     });
   }
   return ui.searchChoose<string>({
-    message: '🔗 Хост из ~/.ssh/config (печатай для поиска)',
+    message: tr.wizard.aliasSearchPrompt,
     source: (term) =>
       sshConfig
         .listHosts()
@@ -49,9 +50,9 @@ export async function pickKey(savedPath?: string | null): Promise<string> {
   const keys = findSshKeys();
   const MANUAL = '__manual__';
   const choices = keys.map((k) => ({ name: `${tilde(k)}`, value: k }));
-  choices.push({ name: 'Ввести путь вручную', value: MANUAL });
+  choices.push({ name: tr.wizard.keyManualChoice, value: MANUAL });
   const pick = await ui.choose<string>({
-    message: `🗝 Приватный SSH-ключ${keys.length ? ` (найдено: ${keys.length})` : ''}`,
+    message: tr.wizard.keyPrompt(keys.length),
     choices,
     ...(savedPath && keys.includes(expandHome(savedPath))
       ? { default: expandHome(savedPath) }
@@ -59,10 +60,10 @@ export async function pickKey(savedPath?: string | null): Promise<string> {
   });
   if (pick !== MANUAL) return pick;
   const manual = await ui.text({
-    message: '📁 Путь до приватного ключа',
+    message: tr.wizard.keyPathPrompt,
     default: savedPath ?? '~/.ssh/id_rsa',
     validate: (v) =>
-      fs.existsSync(expandHome(v.trim())) ? true : `Файл не найден: ${expandHome(v.trim())}`,
+      fs.existsSync(expandHome(v.trim())) ? true : tr.wizard.keyNotFound(expandHome(v.trim())),
   });
   return expandHome(manual.trim());
 }
@@ -72,17 +73,21 @@ export async function askConnectionTarget(
   defaults: Partial<ConnectionTarget> = {},
 ): Promise<ConnectionTarget> {
   const s = settings.get();
-  ui.printSection('🌐', 'Куда подключаемся');
+  ui.printSection('🌐', tr.wizard.connectSection);
 
   const hostMode = await ui.choose<'manual' | 'sshconfig'>({
-    message: '🧭 Способ адресации хоста',
+    message: tr.wizard.hostModePrompt,
     choices: [
       {
-        name: 'Алиас из ~/.ssh/config',
+        name: tr.wizard.hostModeSshConfig,
         value: 'sshconfig',
-        description: 'user/port/key берутся из конфига',
+        description: tr.wizard.hostModeSshConfigDesc,
       },
-      { name: 'IP / домен', value: 'manual', description: 'указать вручную' },
+      {
+        name: tr.wizard.hostModeManual,
+        value: 'manual',
+        description: tr.wizard.hostModeManualDesc,
+      },
     ],
     default: defaults.hostMode ?? 'manual',
   });
@@ -102,33 +107,33 @@ export async function askConnectionTarget(
   }
 
   const host = await ui.text({
-    message: '🖥 IP или домен',
+    message: tr.wizard.hostPrompt,
     default: defaults.host,
-    validate: (v) => isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
+    validate: (v) => isValidHostOrIp(v.trim()) || tr.wizard.hostValidate,
   });
   const user = await ui.text({
-    message: '👤 SSH-пользователь',
+    message: tr.wizard.userPrompt,
     default: defaults.user || s.defaultUser,
-    validate: (v) => v.trim().length > 0 || 'Не может быть пустым',
+    validate: (v) => v.trim().length > 0 || tr.common.notEmpty,
   });
   const sshPortStr = await ui.text({
-    message: '🔌 SSH-порт',
+    message: tr.wizard.sshPortPrompt,
     default: String(defaults.sshPort ?? s.defaultSshPort),
     validate: portValidate,
   });
   const auth = await ui.choose<'agent' | 'key' | 'password'>({
-    message: '🔐 Как авторизуемся?',
+    message: tr.wizard.authPrompt,
     choices: [
       {
-        name: 'ssh-agent / по умолчанию',
+        name: tr.wizard.authAgent,
         value: 'agent',
-        description: 'ничего вводить не нужно',
+        description: tr.wizard.authAgentDesc,
       },
-      { name: 'SSH-ключ', value: 'key', description: 'указать файл' },
+      { name: tr.wizard.authKey, value: 'key', description: tr.wizard.authKeyDesc },
       {
-        name: 'Пароль',
+        name: tr.wizard.authPassword,
         value: 'password',
-        description: 'можно сохранить в зашифрованном хранилище',
+        description: tr.wizard.authPasswordDesc,
       },
     ],
     default: defaults.auth ?? s.defaultAuth,
@@ -153,28 +158,36 @@ export async function askServerConnection(
   defaults: Partial<ConnectionTarget> = {},
 ): Promise<ConnectionTarget> {
   const s = settings.get();
-  ui.printSection('🌐', 'Подключение');
+  ui.printSection('🌐', tr.wizard.serverConnectSection);
   const host = await ui.text({
-    message: '🖥 HostName (IP или домен)',
+    message: tr.wizard.serverHostPrompt,
     default: defaults.host,
-    validate: (v) => isValidHostOrIp(v.trim()) || 'Введите валидный IP или домен',
+    validate: (v) => isValidHostOrIp(v.trim()) || tr.wizard.hostValidate,
   });
   const user = await ui.text({
-    message: '👤 SSH-пользователь',
+    message: tr.wizard.userPrompt,
     default: defaults.user || s.defaultUser,
-    validate: (v) => v.trim().length > 0 || 'Не может быть пустым',
+    validate: (v) => v.trim().length > 0 || tr.common.notEmpty,
   });
   const sshPortStr = await ui.text({
-    message: '🔌 SSH-порт',
+    message: tr.wizard.sshPortPrompt,
     default: String(defaults.sshPort ?? s.defaultSshPort),
     validate: portValidate,
   });
   const auth = await ui.choose<'agent' | 'key' | 'password'>({
-    message: '🔐 Как авторизуемся?',
+    message: tr.wizard.authPrompt,
     choices: [
-      { name: 'ssh-agent / по умолчанию', value: 'agent', description: 'ничего вводить не нужно' },
-      { name: 'SSH-ключ (IdentityFile)', value: 'key', description: 'указать файл ключа' },
-      { name: 'Пароль', value: 'password', description: 'можно сохранить в хранилище' },
+      { name: tr.wizard.authAgent, value: 'agent', description: tr.wizard.authAgentDesc },
+      {
+        name: tr.wizard.serverAuthKeyIdentity,
+        value: 'key',
+        description: tr.wizard.serverAuthKeyIdentityDesc,
+      },
+      {
+        name: tr.wizard.authPassword,
+        value: 'password',
+        description: tr.wizard.serverAuthPasswordDesc,
+      },
     ],
     default: defaults.auth ?? s.defaultAuth,
   });
@@ -195,14 +208,14 @@ export async function askServerConnection(
 export async function askAnnotations(
   defaults: { description?: string; tags?: string[] } = {},
 ): Promise<{ description: string; tags: string[] }> {
-  ui.printSection('🏷', 'Описание и метки');
+  ui.printSection('🏷', tr.wizard.annotationsSection);
   const description = await ui.text({
-    message: '📝 Описание (необязательно)',
+    message: tr.wizard.descriptionPrompt,
     default: defaults.description ?? '',
   });
   const tags = parseTags(
     await ui.text({
-      message: '🏷 Теги через запятую (необязательно)',
+      message: tr.wizard.tagsPrompt,
       default: (defaults.tags ?? []).join(', '),
     }),
   );
@@ -219,21 +232,21 @@ export interface ForwardAnswers {
 
 export async function askForward(defaults: Partial<Tunnel> = {}): Promise<ForwardAnswers> {
   const s = settings.get();
-  ui.printSection('🚇', 'Что пробрасываем');
+  ui.printSection('🚇', tr.wizard.forwardSection);
   const type = await ui.choose<ForwardType>({
-    message: '🎯 Тип проброса',
+    message: tr.wizard.forwardTypePrompt,
     choices: [
       {
         name: '-L  Local',
         value: 'local',
-        description: 'открыть удалённый сервис у себя (частое)',
+        description: tr.wizard.forwardLocalDesc,
       },
       {
         name: '-R  Remote (reverse)',
         value: 'remote',
-        description: 'открыть локальный сервис на сервере',
+        description: tr.wizard.forwardRemoteDesc,
       },
-      { name: '-D  Dynamic', value: 'dynamic', description: 'SOCKS5-прокси на локальном порту' },
+      { name: '-D  Dynamic', value: 'dynamic', description: tr.wizard.forwardDynamicDesc },
     ],
     default: defaults.type ?? 'local',
   });
@@ -241,7 +254,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
   if (type === 'dynamic') {
     const localPort = Number(
       await ui.text({
-        message: '🧦 Локальный порт SOCKS-прокси',
+        message: tr.wizard.socksPortPrompt,
         default: String(defaults.localPort || 1080),
         validate: portValidate,
       }),
@@ -258,7 +271,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
   if (type === 'remote') {
     const remotePort = Number(
       await ui.text({
-        message: '🛰 Порт на сервере (откроется удалённо)',
+        message: tr.wizard.remotePortPrompt,
         default: defaults.remotePort ? String(defaults.remotePort) : '',
         validate: portValidate,
       }),
@@ -266,14 +279,14 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
     const remoteHost =
       (
         await ui.text({
-          message: '🏠 Локальная цель — хост',
+          message: tr.wizard.remoteTargetHostPrompt,
           default: defaults.remoteHost || 'localhost',
-          validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || 'Некорректный хост',
+          validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || tr.wizard.invalidHost,
         })
       ).trim() || 'localhost';
     const localPort = Number(
       await ui.text({
-        message: '🔢 Локальная цель — порт',
+        message: tr.wizard.remoteTargetPortPrompt,
         default: defaults.localPort ? String(defaults.localPort) : '',
         validate: portValidate,
       }),
@@ -283,7 +296,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
 
   const remotePort = Number(
     await ui.text({
-      message: '🎯 Порт сервиса на сервере (127.0.0.1 на сервере)',
+      message: tr.wizard.servicePortPrompt,
       default: defaults.remotePort ? String(defaults.remotePort) : '',
       validate: portValidate,
     }),
@@ -291,20 +304,20 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
   const remoteHost =
     (
       await ui.text({
-        message: '🌐 Хост сервиса на сервере (обычно 127.0.0.1)',
+        message: tr.wizard.serviceHostPrompt,
         default: defaults.remoteHost || s.defaultRemoteHost,
-        validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || 'Некорректный хост',
+        validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || tr.wizard.invalidHost,
       })
     ).trim() || '127.0.0.1';
   const localPort = Number(
     await ui.text({
-      message: '🏠 Локальный порт (откроется у тебя)',
+      message: tr.wizard.localPortPrompt,
       default: String(defaults.localPort || defaults.remotePort || ''),
       validate: portValidate,
     }),
   );
   const openBrowser = await ui.confirm({
-    message: '🌍 Открывать браузер при подключении?',
+    message: tr.wizard.openBrowserPrompt,
     default: defaults.openBrowser ?? s.openBrowser,
   });
   return { type, localPort, remoteHost, remotePort, openBrowser };
@@ -321,25 +334,25 @@ export async function askMeta(
   nameTaken: (name: string) => boolean,
   suggested?: string,
 ): Promise<MetaAnswers> {
-  ui.printSection('🏷', 'Название и метки');
+  ui.printSection('🏷', tr.wizard.metaSection);
   const name = (
     await ui.text({
-      message: '🏷 Имя (уникальное, для быстрого доступа)',
+      message: tr.wizard.namePrompt,
       default: defaults.name || suggested,
       validate: (v) => {
         const t = v.trim();
-        if (!isValidName(t)) return '1–64 символа: буквы, цифры, пробел и . @ : - _';
-        if (nameTaken(t)) return `Имя «${t}» уже занято`;
+        if (!isValidName(t)) return tr.wizard.nameInvalid;
+        if (nameTaken(t)) return tr.wizard.nameTaken(t);
         return true;
       },
     })
   ).trim();
   const description = await ui.text({
-    message: '📝 Описание (необязательно)',
+    message: tr.wizard.descriptionPrompt,
     default: defaults.description ?? '',
   });
   const tagsStr = await ui.text({
-    message: '#️⃣ Теги через запятую (необязательно)',
+    message: tr.wizard.metaTagsPrompt,
     default: (defaults.tags ?? []).join(', '),
   });
   return { name, description, tags: parseTags(tagsStr) };

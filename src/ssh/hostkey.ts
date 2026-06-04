@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SSH_DIR } from '../core/paths.js';
 import { capture, commandExists } from '../utils/exec.js';
+import { tr } from '../i18n/index.js';
 
 export const KNOWN_HOSTS_FILE = path.join(SSH_DIR, 'known_hosts');
 
@@ -73,15 +74,14 @@ export function knownHostsToken(host: string, port: number): string {
  *  The file is passed explicitly so it edits exactly the known_hosts we list
  *  (ssh-keygen otherwise resolves ~ via the passwd db, not $HOME). */
 export function forgetHostKey(host: string): { ok: boolean; message: string } {
-  if (!commandExists('ssh-keygen')) return { ok: false, message: 'ssh-keygen не найден в PATH.' };
+  if (!commandExists('ssh-keygen')) return { ok: false, message: tr.ssh.hostkeyNoKeygen };
   const target = host.trim();
-  if (!target) return { ok: false, message: 'Пустой хост.' };
-  if (!fs.existsSync(KNOWN_HOSTS_FILE))
-    return { ok: false, message: 'Файл ~/.ssh/known_hosts не найден — удалять нечего.' };
+  if (!target) return { ok: false, message: tr.ssh.hostkeyEmptyHost };
+  if (!fs.existsSync(KNOWN_HOSTS_FILE)) return { ok: false, message: tr.ssh.hostkeyFileNotFound };
   const res = capture('ssh-keygen', ['-R', target, '-f', KNOWN_HOSTS_FILE]);
-  if (res.status === 0) return { ok: true, message: `Ключи для ${target} удалены из known_hosts.` };
+  if (res.status === 0) return { ok: true, message: tr.ssh.hostkeyRemoved(target) };
   return {
     ok: false,
-    message: (res.stderr || res.stdout || 'ssh-keygen завершился с ошибкой.').trim(),
+    message: (res.stderr || res.stdout || tr.ssh.hostkeyKeygenFailed).trim(),
   };
 }

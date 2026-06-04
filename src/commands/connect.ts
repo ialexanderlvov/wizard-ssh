@@ -9,6 +9,7 @@ import * as ui from '../ui/index.js';
 import { ts } from '../utils/time.js';
 import { connectServer } from './servers.js';
 import { connectTunnel } from './tunnels.js';
+import { tr } from '../i18n/index.js';
 
 type ConnectItem = ui.ConnectItem;
 
@@ -17,10 +18,10 @@ const recentOf = (i: ConnectItem): number => (i.kind === 'entity' ? ts(i.entity.
 
 const QC_SORTS: ReadonlyArray<ui.ListSort<ConnectItem>> = [
   {
-    label: 'недавние',
+    label: tr.connect.sortRecent,
     compare: (a, b) => recentOf(b) - recentOf(a) || nameOf(a).localeCompare(nameOf(b)),
   },
-  { label: 'имя', compare: (a, b) => nameOf(a).localeCompare(nameOf(b)) },
+  { label: tr.connect.sortName, compare: (a, b) => nameOf(a).localeCompare(nameOf(b)) },
 ];
 
 function allConnectItems(): ConnectItem[] {
@@ -44,12 +45,12 @@ async function dispatch(i: ConnectItem, opts: ConnectOpts = {}): Promise<number>
 export async function quickConnect(): Promise<number> {
   const items = allConnectItems();
   if (!items.length) {
-    ui.printWarn('Пока ничего нет. Добавьте сервер или туннель.');
+    ui.printWarn(tr.connect.nothingYet);
     return 0;
   }
-  ui.ensureInteractive('Быстрое подключение');
+  ui.ensureInteractive(tr.connect.ensureQuickConnect);
   const res = await ui.pickFromList<ConnectItem>({
-    message: 'К чему подключаемся',
+    message: tr.connect.pickMessage,
     items,
     render: ui.connectRowRenderer(items),
     search: ui.connectSearch,
@@ -77,14 +78,14 @@ export async function quickConnectByName(
     ...filterEntities(tunnels.all(), name).map((e): ConnectItem => ({ kind: 'entity', entity: e })),
   ];
   if (hits.length === 0) {
-    ui.printError(`«${name}» не найдено среди серверов и туннелей.`);
+    ui.printError(tr.connect.notFound(name));
     return 1;
   }
   if (hits.length === 1) return dispatch(hits[0]!, opts);
 
-  ui.ensureInteractive('Выбор подключения');
+  ui.ensureInteractive(tr.connect.ensurePickConnect);
   const res = await ui.pickFromList<ConnectItem>({
-    message: `Несколько совпадений по «${name}»`,
+    message: tr.connect.multipleMatches(name),
     items: hits,
     render: ui.connectRowRenderer(hits),
     search: ui.connectSearch,

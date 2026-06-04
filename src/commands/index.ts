@@ -6,6 +6,7 @@ import { WizardError } from '../core/errors.js';
 import { DATA_DIR } from '../core/paths.js';
 import * as ui from '../ui/index.js';
 import { setRuntime } from '../ui/runtime.js';
+import { tr } from '../i18n/index.js';
 
 import * as serverCmd from './servers.js';
 import * as tunnelCmd from './tunnels.js';
@@ -29,16 +30,14 @@ const SORT_KEYS: SortKey[] = ['recent', 'name', 'uses', 'created', 'updated'];
 function parseSort(value: string | undefined): SortKey | undefined {
   if (!value) return undefined;
   if (!SORT_KEYS.includes(value as SortKey)) {
-    throw new WizardError(`--sort должно быть одним из: ${SORT_KEYS.join(', ')}`);
+    throw new WizardError(tr.cmd.sortInvalid(SORT_KEYS.join(', ')));
   }
   return value as SortKey;
 }
 
 export function registerCommands(program: Command): void {
   // ---- global flags (scripting) ----
-  program
-    .option('-y, --yes', 'отвечать «да» на все подтверждения (для скриптов)')
-    .option('--non-interactive', 'никогда не открывать интерактивные подсказки');
+  program.option('-y, --yes', tr.cmd.optYes).option('--non-interactive', tr.cmd.optNonInteractive);
   program.hook('preAction', (thisCommand) => {
     const o = thisCommand.opts<{ yes?: boolean; nonInteractive?: boolean }>();
     setRuntime({ assumeYes: Boolean(o.yes), nonInteractive: Boolean(o.nonInteractive) });
@@ -49,8 +48,8 @@ export function registerCommands(program: Command): void {
     .command('connect [name]')
     .alias('up')
     .alias('go')
-    .description('подключиться (сервер / туннель / алиас ~/.ssh/config)')
-    .option('--tmux [session]', 'открыть/переподключиться к tmux-сессии на сервере')
+    .description(tr.cmd.connectDesc)
+    .option('--tmux [session]', tr.cmd.optTmux)
     .action(async (name: string | undefined, opts: { tmux?: string | boolean }) => {
       const code = await quickConnectByName(name, { tmux: tmuxOpt(opts.tmux) });
       if (code) process.exitCode = code;
@@ -61,12 +60,12 @@ export function registerCommands(program: Command): void {
     .command('server')
     .alias('srv')
     .alias('s')
-    .description('управление серверами (SSH-шелл)');
+    .description(tr.cmd.serverGroupDesc);
   server
     .command('connect [name]')
     .alias('c')
-    .description('подключиться к серверу')
-    .option('--tmux [session]', 'открыть/переподключиться к tmux-сессии на сервере')
+    .description(tr.cmd.serverConnectDesc)
+    .option('--tmux [session]', tr.cmd.optTmux)
     .action(async (n: string | undefined, opts: { tmux?: string | boolean }) => {
       const code = await serverCmd.connectServerFlow(n, { tmux: tmuxOpt(opts.tmux) });
       if (code) process.exitCode = code;
@@ -74,35 +73,35 @@ export function registerCommands(program: Command): void {
   server
     .command('add [name]')
     .alias('new')
-    .description('добавить сервер (с флагами — без вопросов)')
-    .option('--host <ip|домен>', 'HostName (включает неинтерактивный режим)')
-    .option('--user <user>', 'SSH-пользователь')
-    .option('--port <port>', 'SSH-порт')
-    .option('--auth <agent|key>', 'способ авторизации')
-    .option('--key <path>', 'путь к приватному ключу (для --auth key)')
-    .option('--desc <text>', 'описание')
-    .option('--tags <csv>', 'теги через запятую')
+    .description(tr.cmd.serverAddDesc)
+    .option(`--host <${tr.cmd.hostArg}>`, tr.cmd.serverAddOptHost)
+    .option('--user <user>', tr.cmd.optSshUser)
+    .option('--port <port>', tr.cmd.optSshPort)
+    .option('--auth <agent|key>', tr.cmd.optAuthMethod)
+    .option('--key <path>', tr.cmd.optKeyPath)
+    .option('--desc <text>', tr.cmd.optDesc)
+    .option('--tags <csv>', tr.cmd.optTags)
     .action(async (name: string | undefined, o: Record<string, string>) => {
       if (o.host || ui.runtime.nonInteractive) addServerNonInteractive(name, o);
       else await serverCmd.addServer(name ? { name } : {});
     });
   server
     .command('edit [name]')
-    .description('редактировать сервер')
+    .description(tr.cmd.serverEditDesc)
     .action((n?: string) => serverCmd.editServer(n));
   server
     .command('remove [name]')
     .alias('rm')
     .alias('delete')
-    .description('удалить сервер(ы)')
+    .description(tr.cmd.serverRemoveDesc)
     .action((n?: string) => serverCmd.removeServerFlow(n));
   server
     .command('list')
     .alias('ls')
-    .description('список серверов')
+    .description(tr.cmd.serverListDesc)
     .option('-s, --sort <key>', 'recent|name|uses|created|updated')
-    .option('-r, --reverse', 'обратный порядок')
-    .option('--json', 'вывести JSON')
+    .option('-r, --reverse', tr.cmd.optReverseOrder)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       serverCmd.listServers({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
     });
@@ -113,11 +112,11 @@ export function registerCommands(program: Command): void {
     .command('tunnel')
     .alias('tun')
     .alias('t')
-    .description('управление туннелями (-L/-R/-D)');
+    .description(tr.cmd.tunnelGroupDesc);
   tunnel
     .command('connect [name]')
     .alias('up')
-    .description('поднять туннель')
+    .description(tr.cmd.tunnelConnectDesc)
     .action(async (n?: string) => {
       const code = await tunnelCmd.connectTunnelFlow(n);
       if (code) process.exitCode = code;
@@ -125,20 +124,20 @@ export function registerCommands(program: Command): void {
   tunnel
     .command('add')
     .alias('new')
-    .description('добавить туннель (с флагами — без вопросов)')
-    .option('--name <name>', 'имя туннеля')
-    .option('--type <local|remote|dynamic>', 'тип проброса')
-    .option('--local <port>', 'локальный порт')
-    .option('--remote-host <host>', 'хост на дальней стороне')
-    .option('--remote-port <port>', 'порт на дальней стороне')
-    .option('--alias <alias>', 'хост из ~/.ssh/config')
-    .option('--host <ip|домен>', 'хост (вместо --alias)')
-    .option('--user <user>', 'SSH-пользователь (с --host)')
-    .option('--port <port>', 'SSH-порт (с --host)')
-    .option('--auth <agent|key>', 'способ авторизации')
-    .option('--key <path>', 'путь к приватному ключу (для --auth key)')
-    .option('--desc <text>', 'описание')
-    .option('--tags <csv>', 'теги через запятую')
+    .description(tr.cmd.tunnelAddDesc)
+    .option('--name <name>', tr.cmd.tunnelAddOptName)
+    .option('--type <local|remote|dynamic>', tr.cmd.tunnelAddOptType)
+    .option('--local <port>', tr.cmd.tunnelAddOptLocal)
+    .option('--remote-host <host>', tr.cmd.tunnelAddOptRemoteHost)
+    .option('--remote-port <port>', tr.cmd.tunnelAddOptRemotePort)
+    .option('--alias <alias>', tr.cmd.tunnelAddOptAlias)
+    .option(`--host <${tr.cmd.hostArg}>`, tr.cmd.tunnelAddOptHost)
+    .option('--user <user>', tr.cmd.tunnelAddOptSshUserWithHost)
+    .option('--port <port>', tr.cmd.tunnelAddOptSshPortWithHost)
+    .option('--auth <agent|key>', tr.cmd.optAuthMethod)
+    .option('--key <path>', tr.cmd.optKeyPath)
+    .option('--desc <text>', tr.cmd.optDesc)
+    .option('--tags <csv>', tr.cmd.optTags)
     .action(async (o: Record<string, string>) => {
       if (o.local || o.alias || o.host || ui.runtime.nonInteractive) addTunnelNonInteractive(o);
       else await tunnelCmd.addTunnel();
@@ -146,7 +145,7 @@ export function registerCommands(program: Command): void {
   tunnel
     .command('start [name]')
     .alias('bg')
-    .description('поднять туннель в фоне (agent/key)')
+    .description(tr.cmd.tunnelStartDesc)
     .action(async (n?: string) => {
       const code = await tunnelCmd.tunnelUpFlow(n);
       if (code) process.exitCode = code;
@@ -154,14 +153,14 @@ export function registerCommands(program: Command): void {
   tunnel
     .command('sessions')
     .alias('ps')
-    .description('список фоновых туннелей')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.tunnelSessionsDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => tunnelCmd.listSessions(o));
   tunnel
     .command('down [name]')
     .alias('stop')
-    .description('остановить фоновый туннель (или все: --all)')
-    .option('--all', 'остановить все')
+    .description(tr.cmd.tunnelDownDesc)
+    .option('--all', tr.cmd.tunnelDownOptAll)
     .action(async (n: string | undefined, o: { all?: boolean }) => {
       const code = await tunnelCmd.tunnelDownFlow(n, o);
       if (code) process.exitCode = code;
@@ -169,47 +168,47 @@ export function registerCommands(program: Command): void {
   tunnel
     .command('temp')
     .alias('tmp')
-    .description('временный туннель на любой хост (без сохранения)')
+    .description(tr.cmd.tunnelTempDesc)
     .action(async () => {
       const code = await tunnelCmd.raiseTemporaryTunnel();
       if (code) process.exitCode = code;
     });
   tunnel
     .command('edit [name]')
-    .description('редактировать туннель')
+    .description(tr.cmd.tunnelEditDesc)
     .action((n?: string) => tunnelCmd.editTunnel(n));
   tunnel
     .command('remove [name]')
     .alias('rm')
     .alias('delete')
-    .description('удалить туннель(и)')
+    .description(tr.cmd.tunnelRemoveDesc)
     .action((n?: string) => tunnelCmd.removeTunnelFlow(n));
   tunnel
     .command('list')
     .alias('ls')
-    .description('список туннелей')
+    .description(tr.cmd.tunnelListDesc)
     .option('-s, --sort <key>', 'recent|name|uses|created|updated')
-    .option('-r, --reverse', 'обратный порядок')
-    .option('--json', 'вывести JSON')
+    .option('-r, --reverse', tr.cmd.optReverseOrder)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       tunnelCmd.listTunnels({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
     });
   tunnel.action(() => tunnel.help());
 
   // ---- ~/.ssh/config ----
-  const config = program.command('config').alias('cfg').description('управление ~/.ssh/config');
+  const config = program.command('config').alias('cfg').description(tr.cmd.configGroupDesc);
   config
     .command('list')
     .alias('ls')
-    .description('список хостов')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.configListDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => {
       configCmd.listConfigHosts(o);
     });
   config
     .command('connect [alias]')
     .alias('c')
-    .description('подключиться к хосту из конфига')
+    .description(tr.cmd.configConnectDesc)
     .action(async (a?: string) => {
       const code = await configCmd.connectConfigHostFlow(a);
       if (code) process.exitCode = code;
@@ -217,17 +216,17 @@ export function registerCommands(program: Command): void {
   config
     .command('add')
     .alias('new')
-    .description('добавить хост')
+    .description(tr.cmd.configAddDesc)
     .action(() => configCmd.addConfigHost());
   config
     .command('edit [alias]')
-    .description('редактировать хост')
+    .description(tr.cmd.configEditDesc)
     .action((a?: string) => configCmd.editConfigHost(a));
   config
     .command('remove [alias]')
     .alias('rm')
     .alias('delete')
-    .description('удалить хост')
+    .description(tr.cmd.configRemoveDesc)
     .action((a?: string) => configCmd.removeConfigHostFlow(a));
   config.action(() => config.help());
 
@@ -235,15 +234,15 @@ export function registerCommands(program: Command): void {
   program
     .command('search [query]')
     .alias('find')
-    .description('поиск по серверам, туннелям и ~/.ssh/config')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.searchDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((q: string | undefined, o: { json?: boolean }) => searchFlow(q, o));
 
   // ---- actions ----
   program
     .command('check [name]')
-    .description('проверить доступность сервера/туннеля')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.checkDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action(async (n: string | undefined, o: { json?: boolean }) => {
       const code = await actions.checkFlow(n, o);
       if (code) process.exitCode = code;
@@ -251,14 +250,14 @@ export function registerCommands(program: Command): void {
   program
     .command('copy-id [name]')
     .alias('copyid')
-    .description('установить SSH-ключ на сервер (ssh-copy-id)')
+    .description(tr.cmd.copyIdDesc)
     .action(async (n?: string) => {
       const code = await actions.copyIdFlow(n);
       if (code) process.exitCode = code;
     });
   program
     .command('run [name] [command...]')
-    .description('выполнить команду на сервере: wssh run <name> -- <cmd>')
+    .description(tr.cmd.runDesc)
     .passThroughOptions()
     .allowUnknownOption()
     .action(async (n: string | undefined, command: string[]) => {
@@ -268,7 +267,7 @@ export function registerCommands(program: Command): void {
   program
     .command('transfer [name]')
     .alias('scp')
-    .description('передача файлов по scp или rsync')
+    .description(tr.cmd.transferDesc)
     .action(async (n?: string) => {
       const code = await actions.transferFlow(n);
       if (code) process.exitCode = code;
@@ -278,11 +277,11 @@ export function registerCommands(program: Command): void {
   program
     .command('status')
     .alias('ps')
-    .description('массовая проверка доступности (дашборд)')
-    .option('--json', 'вывести JSON')
-    .option('--servers', 'только серверы')
-    .option('--tunnels', 'только туннели')
-    .option('--tag <tag>', 'только с этим тегом')
+    .description(tr.cmd.statusDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .option('--servers', tr.cmd.statusOptServers)
+    .option('--tunnels', tr.cmd.statusOptTunnels)
+    .option('--tag <tag>', tr.cmd.statusOptTag)
     .action(async (o: { json?: boolean; servers?: boolean; tunnels?: boolean; tag?: string }) => {
       const code = await actions.statusFlow({
         json: o.json,
@@ -294,12 +293,12 @@ export function registerCommands(program: Command): void {
     });
 
   // ---- ssh keys ----
-  const keys = program.command('keys').alias('key').description('управление SSH-ключами (~/.ssh)');
+  const keys = program.command('keys').alias('key').description(tr.cmd.keysGroupDesc);
   keys
     .command('list')
     .alias('ls')
-    .description('список ключей с отпечатками')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.keysListDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => {
       keysCmd.listKeysCommand(o);
     });
@@ -307,7 +306,7 @@ export function registerCommands(program: Command): void {
     .command('gen')
     .alias('new')
     .alias('generate')
-    .description('сгенерировать новый ключ (ssh-keygen)')
+    .description(tr.cmd.keysGenDesc)
     .action(async () => {
       await keysCmd.generateKeyFlow();
     });
@@ -315,7 +314,7 @@ export function registerCommands(program: Command): void {
     .command('remove [path]')
     .alias('rm')
     .alias('delete')
-    .description('удалить ключ (покажет, кто на него ссылается)')
+    .description(tr.cmd.keysRemoveDesc)
     .action((p?: string) => keysCmd.deleteKeyCommand(p));
   keys.action(() => keysCmd.keysMenu());
 
@@ -323,9 +322,9 @@ export function registerCommands(program: Command): void {
   program
     .command('forget-host [name]')
     .alias('known-hosts')
-    .description('known_hosts: удалить запись (ssh-keygen -R) или показать (--list)')
-    .option('--list', 'показать записи known_hosts')
-    .option('--json', 'вывести JSON (с --list)')
+    .description(tr.cmd.forgetHostDesc)
+    .option('--list', tr.cmd.forgetHostOptList)
+    .option('--json', tr.cmd.optOutputJsonWithList)
     .action(async (n: string | undefined, o: { list?: boolean; json?: boolean }) => {
       if (o.list) {
         actions.knownHostsListFlow({ json: o.json });
@@ -336,17 +335,17 @@ export function registerCommands(program: Command): void {
     });
 
   // ---- tag groups ----
-  const group = program.command('group').description('группы серверов/туннелей по тегам');
+  const group = program.command('group').description(tr.cmd.groupDesc);
   group
     .command('list')
     .alias('ls')
-    .description('теги и их размеры')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.groupListDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => actions.groupListFlow(o));
   group
     .command('check <tag>')
-    .description('проверить доступность всех с тегом')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.groupCheckDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action(async (tag: string, o: { json?: boolean }) => {
       const code = await actions.groupCheckFlow(tag, o);
       if (code) process.exitCode = code;
@@ -356,8 +355,8 @@ export function registerCommands(program: Command): void {
   // ---- diagnostics ----
   program
     .command('doctor')
-    .description('диагностика окружения (бинари, права, конфиг)')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.doctorDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => {
       const code = doctor(o);
       if (code) process.exitCode = code;
@@ -365,8 +364,8 @@ export function registerCommands(program: Command): void {
   program
     .command('info')
     .alias('env')
-    .description('сводка окружения, путей и инвентаря')
-    .option('--json', 'вывести JSON')
+    .description(tr.cmd.infoDesc)
+    .option('--json', tr.cmd.optOutputJson)
     .action((o: { json?: boolean }) => {
       info(o);
     });
@@ -374,53 +373,37 @@ export function registerCommands(program: Command): void {
   // ---- vault / settings / io ----
   program
     .command('vault')
-    .description('управление хранилищем паролей')
+    .description(tr.cmd.vaultDesc)
     .action(() => vaultFlow());
   program
     .command('settings')
-    .description('настройки по умолчанию')
+    .description(tr.cmd.settingsDesc)
     .action(() => settingsFlow());
   program
     .command('export [file]')
-    .description('экспортировать все списки в файл')
+    .description(tr.cmd.exportDesc)
     .action((f?: string) => {
       exportData(f);
     });
   program
     .command('import <file>')
-    .description('импортировать списки из файла')
-    .option('--replace', 'заменить существующие списки')
+    .description(tr.cmd.importDesc)
+    .option('--replace', tr.cmd.importOptReplace)
     .action((f: string, o: { replace?: boolean }) => importData(f, o));
 
   // ---- misc ----
   program
     .command('path')
-    .description('путь к директории с данными')
+    .description(tr.cmd.pathDesc)
     .action(() => console.log(DATA_DIR));
   program
     .command('menu')
-    .description('открыть интерактивное меню')
+    .description(tr.cmd.menuDesc)
     .action(async () => {
       const { mainMenu } = await import('./menu.js');
       ui.printBanner();
       await mainMenu();
     });
 
-  program.addHelpText(
-    'after',
-    `
-Примеры:
-  wssh                          интерактивное меню
-  wssh connect prod             подключиться к серверу/туннелю «prod»
-  wssh connect prod --tmux      войти в постоянную tmux-сессию
-  wssh run prod -- uptime       выполнить команду на сервере
-  wssh server add prod --host 10.0.0.5 --user deploy --auth key --key ~/.ssh/id_ed25519
-  wssh tunnel add --alias prod --type local --local 8080 --remote-port 80
-  wssh tunnel start prod-db     поднять туннель в фоне
-  wssh tunnel sessions          какие туннели работают в фоне
-  wssh status --json            доступность всего парка (для скриптов)
-  wssh keys gen                 сгенерировать SSH-ключ
-  wssh doctor                   проверить окружение
-  WSSH_VAULT_PASSPHRASE=… wssh run prod -- ls   неинтерактивно (пароль из env)`,
-  );
+  program.addHelpText('after', tr.cmd.helpExamples);
 }

@@ -1,0 +1,47 @@
+import type { Dict } from './ru.js';
+
+const en: Dict = {
+  selectServer: '🖥 Select server',
+  addEnsure: 'Add server',
+  addSection: 'New server (Host in ~/.ssh/config)',
+  namePrompt: '🔗 Server name (= alias in ~/.ssh/config)',
+  nameInvalid: 'Letters, digits, dot, hyphen, underscore only (no spaces)',
+  nameExists: 'This host already exists in ~/.ssh/config',
+  serverSaved: (name) => `Server "${name}" saved to ~/.ssh/config.`,
+  editEnsure: 'Edit',
+  editSelectServer: '✏️ Select server',
+  editNotManageable: (name) =>
+    `"${name}" is defined by a multi-alias block / Include / Match — automatic editing is not supported. You can still connect.`,
+  editSection: (name) => `Server: ${name}`,
+  editWhatDirty: 'What to change? • unsaved edits',
+  editWhat: 'What to change?',
+  fieldName: (name) => `Name         ${name}`,
+  fieldDescription: (desc) => `Description  ${desc}`,
+  fieldTags: (tags) => `Tags         ${tags}`,
+  fieldConnection: 'Connection / auth',
+  actionSave: 'Save and exit',
+  actionCancel: 'Exit without saving',
+  changesSaved: 'Changes saved to ~/.ssh/config.',
+  noChanges: 'No changes.',
+  confirmExitUnsaved: 'Exit without saving?',
+  newAlias: 'New alias',
+  aliasInvalid: 'Letters, digits, dot, hyphen, underscore only',
+  aliasTaken: 'Name taken',
+  descriptionPrompt: 'Description',
+  tagsPrompt: 'Tags (comma-separated)',
+  removeEnsure: 'Delete',
+  removeSelectServer: '🗑 Select server',
+  removeNotManageable: (name) =>
+    `"${name}" cannot be deleted automatically (multi-alias / Include / Match).`,
+  confirmRemoveOne: (name) => `Delete "${name}" from ~/.ssh/config?`,
+  serverRemoved: (name) => `"${name}" deleted.`,
+  noRemovable: 'No servers available for deletion.',
+  removeMultiPrompt: 'Mark servers to delete (space — mark, Enter — confirm)',
+  noneSelected: 'Nothing selected.',
+  confirmRemoveMany: (n) => `Delete ${n}?`,
+  removedMany: (n) => `Deleted: ${n}.`,
+  emptyList: 'No servers yet. Add one: wssh server add',
+  listSection: (count, sort, dir) => `Servers (${count}) · sort: ${sort}${dir}`,
+};
+
+export default en;

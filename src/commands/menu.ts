@@ -8,6 +8,7 @@ import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import * as ui from '../ui/index.js';
 import { detailBox } from '../ui/format.js';
+import { tr } from '../i18n/index.js';
 
 import * as serverCmd from './servers.js';
 import * as tunnelCmd from './tunnels.js';
@@ -23,7 +24,8 @@ interface MenuItem {
   value: string;
 }
 
-const ROOT = 'Главное меню';
+/** Title shown as the root breadcrumb; read lazily so a language switch applies. */
+const root = (): string => tr.menu.root;
 
 /** A navigation menu using the list prompt; returns the chosen value or BACK.
  *  `crumbs` are the ancestor titles shown before the active one. */
@@ -65,8 +67,8 @@ async function loop(
     try {
       await run(action);
     } catch (e) {
-      if (e instanceof PromptAbortError) ui.printInfo('Отменено.');
-      else ui.printError(`Ошибка: ${e instanceof Error ? e.message : String(e)}`);
+      if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
+      else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
     }
     await ui.pause();
   }
@@ -84,11 +86,11 @@ async function browseEntities(
     ui.clearScreen();
     const items = list();
     if (!items.length) {
-      ui.printWarn('Список пуст.');
+      ui.printWarn(tr.common.listEmpty);
       return;
     }
     const picked = await ui.pickFromList<Entity>({
-      message: 'Список',
+      message: tr.menu.browseTitle,
       items,
       render: ui.entityRowRenderer(items),
       search: ui.entitySearch,
@@ -103,11 +105,11 @@ async function browseEntities(
     const act = await menuChoose(
       picked.name,
       [
-        { label: 'Подключиться', value: 'connect' },
-        { label: 'Редактировать', value: 'edit' },
-        { label: 'Удалить', value: 'remove' },
+        { label: tr.menu.entityAction.connect, value: 'connect' },
+        { label: tr.menu.entityAction.edit, value: 'edit' },
+        { label: tr.menu.entityAction.remove, value: 'remove' },
       ],
-      [...crumbs, 'Список'],
+      [...crumbs, tr.menu.browseTitle],
     );
     if (act === ui.BACK) continue;
     ui.clearScreen(); // wipe the detail/action menu before the action's output
@@ -120,24 +122,24 @@ async function browseEntities(
       if (act === 'remove') await remove(picked.name);
     } catch (e) {
       if (!(e instanceof PromptAbortError)) throw e;
-      ui.printInfo('Отменено.');
+      ui.printInfo(tr.common.cancelled);
     }
   }
 }
 
 const serversMenu = (): Promise<void> =>
   loop(
-    'Серверы / ~/.ssh/config',
-    [ROOT],
+    tr.menu.servers.title,
+    [root()],
     [
-      { label: 'Список / подключиться', value: 'list' },
-      { label: 'Добавить', value: 'add' },
+      { label: tr.menu.servers.list, value: 'list' },
+      { label: tr.menu.servers.add, value: 'add' },
     ],
     async (a) => {
       if (a === 'add') await serverCmd.addServer();
       else if (a === 'list')
         await browseEntities(
-          [ROOT, 'Серверы / ~/.ssh/config'],
+          [root(), tr.menu.servers.title],
           () => servers.all(),
           (e) => serverCmd.connectServer(e as Server),
           (name) => serverCmd.editServer(name),
@@ -148,14 +150,14 @@ const serversMenu = (): Promise<void> =>
 
 const tunnelsMenu = (): Promise<void> =>
   loop(
-    'Туннели',
-    [ROOT],
+    tr.menu.tunnels.title,
+    [root()],
     [
-      { label: 'Список / поднять', value: 'list' },
-      { label: 'Создать и сразу поднять (из ~/.ssh/config)', value: 'quick' },
-      { label: 'Фоновые сессии ▸', value: 'bg' },
-      { label: 'Временные туннели (на любой хост) ▸', value: 'temp' },
-      { label: 'Добавить', value: 'add' },
+      { label: tr.menu.tunnels.list, value: 'list' },
+      { label: tr.menu.tunnels.quick, value: 'quick' },
+      { label: tr.menu.tunnels.bg, value: 'bg' },
+      { label: tr.menu.tunnels.temp, value: 'temp' },
+      { label: tr.menu.tunnels.add, value: 'add' },
     ],
     async (a) => {
       if (a === 'add') await tunnelCmd.addTunnel();
@@ -164,7 +166,7 @@ const tunnelsMenu = (): Promise<void> =>
       else if (a === 'temp') await tempTunnelsMenu();
       else if (a === 'list')
         await browseEntities(
-          [ROOT, 'Туннели'],
+          [root(), tr.menu.tunnels.title],
           () => tunnels.all(),
           (e) => tunnelCmd.connectTunnel(e as Tunnel),
           (name) => tunnelCmd.editTunnel(name),
@@ -175,17 +177,17 @@ const tunnelsMenu = (): Promise<void> =>
 
 const tempTunnelsMenu = (): Promise<void> =>
   loop(
-    'Временные туннели',
-    [ROOT, 'Туннели'],
+    tr.menu.temp.title,
+    [root(), tr.menu.tunnels.title],
     [
-      { label: 'Список / поднять', value: 'list' },
-      { label: 'Создать и поднять (на любой хост)', value: 'create' },
+      { label: tr.menu.temp.list, value: 'list' },
+      { label: tr.menu.temp.create, value: 'create' },
     ],
     async (a) => {
       if (a === 'create') await tunnelCmd.raiseTemporaryTunnel();
       else if (a === 'list')
         await browseEntities(
-          [ROOT, 'Туннели', 'Временные'],
+          [root(), tr.menu.tunnels.title, tr.menu.temp.crumb],
           () => tempTunnels.all(),
           (e) => tunnelCmd.connectTunnel(e as Tunnel, tempTunnels),
           (name) => tunnelCmd.editTunnel(name, tempTunnels),
@@ -196,13 +198,13 @@ const tempTunnelsMenu = (): Promise<void> =>
 
 const backgroundTunnelsMenu = (): Promise<void> =>
   loop(
-    'Фоновые туннели',
-    [ROOT, 'Туннели'],
+    tr.menu.background.title,
+    [root(), tr.menu.tunnels.title],
     [
-      { label: 'Список запущенных', value: 'list' },
-      { label: 'Поднять в фоне', value: 'up' },
-      { label: 'Остановить', value: 'down' },
-      { label: 'Остановить все', value: 'downAll' },
+      { label: tr.menu.background.list, value: 'list' },
+      { label: tr.menu.background.up, value: 'up' },
+      { label: tr.menu.background.down, value: 'down' },
+      { label: tr.menu.background.downAll, value: 'downAll' },
     ],
     async (a) => {
       if (a === 'list') tunnelCmd.listSessions();
@@ -214,15 +216,15 @@ const backgroundTunnelsMenu = (): Promise<void> =>
 
 const actionsMenu = (): Promise<void> =>
   loop(
-    'Действия по SSH',
-    [ROOT],
+    tr.menu.actions.title,
+    [root()],
     [
-      { label: 'Статус — проверить всё', value: 'status' },
-      { label: 'Проверка доступности', value: 'check' },
-      { label: 'ssh-copy-id (ключ на сервер)', value: 'copyId' },
-      { label: 'Выполнить команду', value: 'run' },
-      { label: 'Передача файлов', value: 'transfer' },
-      { label: 'Группы по тегам', value: 'groups' },
+      { label: tr.menu.actions.status, value: 'status' },
+      { label: tr.menu.actions.check, value: 'check' },
+      { label: tr.menu.actions.copyId, value: 'copyId' },
+      { label: tr.menu.actions.run, value: 'run' },
+      { label: tr.menu.actions.transfer, value: 'transfer' },
+      { label: tr.menu.actions.groups, value: 'groups' },
     ],
     async (a) => {
       if (a === 'status') await actions.statusFlow();
@@ -235,29 +237,29 @@ const actionsMenu = (): Promise<void> =>
   );
 
 export async function mainMenu(): Promise<void> {
-  ui.ensureInteractive('Интерактивное меню');
-  const bye = (): void => console.log(ui.chalk.dim('\nПока! 👋\n'));
+  ui.ensureInteractive(tr.menu.ensure);
+  const bye = (): void => console.log(ui.chalk.dim(tr.menu.goodbye));
   // The first screen keeps the startup banner/notices above it; every later
   // visit to the main menu clears so only it is shown.
   let first = true;
   for (;;) {
     if (!first) ui.clearScreen();
     first = false;
-    const counts = `${servers.all().length} серв · ${tunnels.all().length} тун`;
+    const counts = tr.menu.counts(servers.all().length, tunnels.all().length);
     let action: string | typeof ui.BACK;
     try {
-      action = await menuChoose(`${ROOT}  ·  ${counts}`, [
-        { label: 'Быстрое подключение', value: 'quick' },
-        { label: 'Серверы / ~/.ssh/config ▸', value: 'servers' },
-        { label: 'Туннели ▸', value: 'tunnels' },
-        { label: 'Действия ▸', value: 'actions' },
-        { label: 'SSH-ключи ▸', value: 'keys' },
-        { label: 'Забыть host-key (known_hosts)', value: 'forget' },
-        { label: 'Поиск по всему', value: 'search' },
-        { label: 'Хранилище паролей', value: 'vault' },
-        { label: 'Настройки', value: 'settings' },
-        { label: 'Экспорт / импорт', value: 'io' },
-        { label: 'Выход', value: 'exit' },
+      action = await menuChoose(`${root()}  ·  ${counts}`, [
+        { label: tr.menu.main.quick, value: 'quick' },
+        { label: tr.menu.main.servers, value: 'servers' },
+        { label: tr.menu.main.tunnels, value: 'tunnels' },
+        { label: tr.menu.main.actions, value: 'actions' },
+        { label: tr.menu.main.keys, value: 'keys' },
+        { label: tr.menu.main.forget, value: 'forget' },
+        { label: tr.menu.main.search, value: 'search' },
+        { label: tr.menu.main.vault, value: 'vault' },
+        { label: tr.menu.main.settings, value: 'settings' },
+        { label: tr.menu.main.io, value: 'io' },
+        { label: tr.menu.main.exit, value: 'exit' },
       ]);
     } catch (e) {
       if (e instanceof PromptAbortError) {
@@ -279,7 +281,7 @@ export async function mainMenu(): Promise<void> {
       } else if (action === 'servers') await serversMenu();
       else if (action === 'tunnels') await tunnelsMenu();
       else if (action === 'actions') await actionsMenu();
-      else if (action === 'keys') await keysCmd.keysMenu([ROOT]);
+      else if (action === 'keys') await keysCmd.keysMenu([root()]);
       else if (action === 'forget') {
         await actions.forgetHostKeyFlow();
         await ui.pause();
@@ -290,8 +292,8 @@ export async function mainMenu(): Promise<void> {
       else if (action === 'settings') await settingsFlow();
       else if (action === 'io') await importExportMenu();
     } catch (e) {
-      if (e instanceof PromptAbortError) ui.printInfo('Отменено.');
-      else ui.printError(`Ошибка: ${e instanceof Error ? e.message : String(e)}`);
+      if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
+      else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
       await ui.pause();
     }
   }

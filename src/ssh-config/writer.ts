@@ -10,6 +10,7 @@ import { hasUnsafeChars } from '../utils/validators.js';
 import type { SshConfigEntry } from './types.js';
 import { blocksFromLines } from './parser.js';
 import { parseWsshComment, serializeWssh } from './wssh.js';
+import { tr } from '../i18n/index.js';
 
 /** Last-resort defense against ssh_config directive injection: a CR/LF (or any
  *  control char) in an alias/key/value would be written as extra physical lines,
@@ -17,8 +18,7 @@ import { parseWsshComment, serializeWssh } from './wssh.js';
  *  write funnels through formatBlock, so guarding here closes ALL callers
  *  (create/update/replaceAll/import/migrate), even ones that skipped validation. */
 function assertConfigSafe(label: string, value: string): void {
-  if (hasUnsafeChars(value))
-    throw new WizardError(`Недопустимый символ (перевод строки/управляющий) в ${label}.`);
+  if (hasUnsafeChars(value)) throw new WizardError(tr.vault.writerUnsafeChar(label));
 }
 
 export function backupConfig(): string | null {
@@ -69,13 +69,13 @@ function writeLines(lines: string[]): void {
 
 export function formatBlock(entry: SshConfigEntry): string[] {
   const out: string[] = [];
-  assertConfigSafe('алиасе хоста', entry.alias);
+  assertConfigSafe(tr.vault.writerAliasLabel, entry.alias);
   const meta = serializeWssh(entry.wssh);
   if (meta) out.push(meta); // `#wssh {...}` directly above the Host
   out.push(`Host ${entry.alias}`);
   for (const { key, value } of entry.params) {
-    assertConfigSafe(`параметре ${key.trim()}`, key);
-    assertConfigSafe(`значении ${key.trim()}`, value);
+    assertConfigSafe(tr.vault.writerParamLabel(key.trim()), key);
+    assertConfigSafe(tr.vault.writerValueLabel(key.trim()), value);
     if (key.trim() && value.trim()) out.push(`    ${key.trim()} ${value.trim()}`);
   }
   return out;
@@ -112,7 +112,7 @@ function findManaged(
 
 /** Create or update a Host block. Returns the backup path (if a backup was made). */
 export function upsertHost(entry: SshConfigEntry): { backup: string | null; created: boolean } {
-  if (!entry.alias.trim()) throw new WizardError('Алиас не может быть пустым.');
+  if (!entry.alias.trim()) throw new WizardError(tr.vault.writerAliasEmpty);
   ensureConfigFile();
   const backup = backupConfig();
   const lines = readLines();

@@ -20,6 +20,7 @@ import {
   keyMatchesCheck,
 } from './crypto.js';
 import * as touchid from './touchid.js';
+import { tr } from '../i18n/index.js';
 
 interface VaultFile {
   version: 1;
@@ -178,7 +179,7 @@ class Vault {
         }
         return true;
       }
-      opts.onError?.(`Неверная парольная фраза (попытка ${attempt + 1}/3).`);
+      opts.onError?.(tr.vault.wrongPassphrase(attempt + 1));
     }
     return false;
   }
@@ -252,9 +253,7 @@ class Vault {
     } catch {
       // A corrupt/tampered blob would otherwise crash mid-rekey. Bail before
       // touching any state so the existing vault stays intact.
-      throw new Error(
-        'Не удалось расшифровать часть хранилища (повреждение?). Смена фразы отменена.',
-      );
+      throw new Error(tr.vault.rekeyDecryptFailed);
     }
 
     const kdf = defaultKdf();

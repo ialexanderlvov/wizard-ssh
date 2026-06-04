@@ -23,6 +23,7 @@ import {
 import { chalk, brand } from './theme.js';
 import { stripAnsi } from '../utils/strings.js';
 import { PromptAbortError } from '../core/errors.js';
+import { tr } from '../i18n/index.js';
 
 /** Returned when the user backs out (Esc / "← Назад") instead of choosing. */
 export const BACK = Symbol('list:back');
@@ -86,7 +87,7 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
 
   const sorts = cfg.sorts ?? [];
   const searchOf = cfg.search ?? ((it: unknown) => stripAnsi(cfg.render(it, false)));
-  const backLabel = cfg.backLabel ?? '← Назад';
+  const backLabel = cfg.backLabel ?? tr.common.back;
 
   const tokens = term.toLowerCase().split(/\s+/).filter(Boolean);
   let view = cfg.items.filter((it) => {
@@ -169,10 +170,10 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
     sorts.length > 1
       ? `${chalk.dim('  ·  Tab:')} ${chalk.cyan(sorts[sortIdx % sorts.length]!.label)}`
       : '';
-  const help = chalk.dim('фильтр: печатай · ↑↓ — выбор · Enter — выбрать · Esc — назад') + sortHint;
+  const help = chalk.dim(tr.ui.listHelp) + sortHint;
 
   const body =
-    view.length || term ? page : chalk.dim(`  ${cfg.emptyText ?? 'ничего нет'}\n${page}`);
+    view.length || term ? page : chalk.dim(`  ${cfg.emptyText ?? tr.common.nothingHere}\n${page}`);
   return indentAll([header, rule, body, rule, help].join('\n'));
 });
 

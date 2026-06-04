@@ -2,6 +2,7 @@
  *  quick-connect. */
 
 import type { Server, Tunnel } from '../core/types.js';
+import { tr } from '../i18n/index.js';
 import { searchEverything } from '../search/index.js';
 import * as ui from '../ui/index.js';
 import { renderEntityTable } from '../ui/tables.js';
@@ -12,12 +13,12 @@ export async function searchFlow(query?: string, opts: { json?: boolean } = {}):
   let q = query;
   if (!q) {
     if (opts.json) {
-      ui.printError('Для --json укажите запрос: wssh search <query> --json');
+      ui.printError(tr.search.jsonNeedsQuery);
       process.exitCode = 1;
       return;
     }
-    ui.ensureInteractive('Поиск');
-    q = await ui.text({ message: 'Поиск по серверам и туннелям' });
+    ui.ensureInteractive(tr.search.ensureLabel);
+    q = await ui.text({ message: tr.search.prompt });
   }
   if (!q.trim()) return;
 
@@ -27,16 +28,16 @@ export async function searchFlow(query?: string, opts: { json?: boolean } = {}):
     return;
   }
   if (!res.total) {
-    ui.printWarn(`Ничего не найдено по «${q.trim()}».`);
+    ui.printWarn(tr.search.notFound(q.trim()));
     return;
   }
 
   if (res.servers.length) {
-    ui.printSection('🖥', `Серверы (${res.servers.length})`);
+    ui.printSection('🖥', tr.search.serversSection(res.servers.length));
     console.log(renderEntityTable(res.servers));
   }
   if (res.tunnels.length) {
-    ui.printSection('🚇', `Туннели (${res.tunnels.length})`);
+    ui.printSection('🚇', tr.search.tunnelsSection(res.tunnels.length));
     console.log(renderEntityTable(res.tunnels));
   }
 
@@ -47,7 +48,7 @@ export async function searchFlow(query?: string, opts: { json?: boolean } = {}):
     ...res.tunnels.map((e): ui.ConnectItem => ({ kind: 'entity', entity: e })),
   ];
   const picked = await ui.pickFromList<ui.ConnectItem>({
-    message: 'Подключиться (Esc — просто посмотреть)',
+    message: tr.search.connectPrompt,
     items,
     render: ui.connectRowRenderer(items),
     search: ui.connectSearch,

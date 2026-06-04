@@ -4,6 +4,8 @@
  */
 
 export type HostMode = 'manual' | 'sshconfig';
+/** UI language. `system` defers to env / OS locale, resolved at startup. */
+export type LanguageSetting = 'system' | 'ru' | 'en';
 export type AuthMethod = 'agent' | 'key' | 'password';
 export type ForwardType = 'local' | 'remote' | 'dynamic';
 export type SortKey = 'recent' | 'name' | 'uses' | 'created' | 'updated';
@@ -67,6 +69,8 @@ export interface VaultSettings {
 }
 
 export interface Settings {
+  /** UI language; `system` auto-detects from env / OS at startup */
+  language: LanguageSetting;
   defaultUser: string;
   defaultSshPort: number;
   defaultAuth: AuthMethod;

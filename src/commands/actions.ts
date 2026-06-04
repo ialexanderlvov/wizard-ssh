@@ -16,6 +16,7 @@ import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
+import { tr } from '../i18n/index.js';
 
 /** Resolve a server, or fall back to a tunnel (both are connection targets). */
 async function resolveServerLike(
@@ -27,12 +28,12 @@ async function resolveServerLike(
 }
 
 export async function checkTarget(target: ConnectionTarget, label: string): Promise<boolean> {
-  ui.printSection('🔎', `Проверка доступности → ${label}`);
+  ui.printSection('🔎', tr.actions.checkSection(label));
   const result = await healthCheck(target);
   if (result.open) {
-    ui.printOk(`${result.host}:${result.port} доступен (${result.ms} мс).`);
+    ui.printOk(tr.actions.reachable(result.host, result.port, result.ms));
   } else {
-    ui.printError(`${result.host}:${result.port} недоступен (таймаут/отказ за ${result.ms} мс).`);
+    ui.printError(tr.actions.unreachable(result.host, result.port, result.ms));
   }
   return result.open;
 }
@@ -45,7 +46,7 @@ export async function checkFlow(name?: string, opts: { json?: boolean } = {}): P
 
   if (opts.json) {
     if (!direct) {
-      ui.printError(`«${name ?? ''}» не найдено (для --json нужно точное имя).`);
+      ui.printError(tr.actions.notFoundJson(name ?? ''));
       return 1;
     }
     const res = await healthCheck(direct);
@@ -55,7 +56,7 @@ export async function checkFlow(name?: string, opts: { json?: boolean } = {}): P
 
   if (direct) return (await checkTarget(direct, direct.name)) ? 0 : 2;
 
-  const picked = await resolveServerLike(name, '🔎 Выберите сервер для проверки');
+  const picked = await resolveServerLike(name, tr.actions.pickCheck);
   if (!picked) return 0;
   return (await checkTarget(picked, picked.name)) ? 0 : 2;
 }
@@ -88,10 +89,10 @@ export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
   const targets = fleetTargets(opts);
   if (!targets.length) {
     if (opts.json) console.log('[]');
-    else ui.printWarn('Нет целей для проверки.');
+    else ui.printWarn(tr.actions.noTargets);
     return 0;
   }
-  if (!opts.json) ui.printSection('📡', `Статус — проверяю ${targets.length}…`);
+  if (!opts.json) ui.printSection('📡', tr.actions.statusChecking(targets.length));
   const results = await healthCheckAll(targets, { concurrency: 10 });
   if (opts.json) {
     console.log(
@@ -111,8 +112,8 @@ export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
   } else {
     console.log(renderStatusTable(results));
     const down = results.filter((r) => !r.result.open).length;
-    if (down) ui.printWarn(`Недоступно: ${down} из ${results.length}.`);
-    else ui.printOk(`Все доступны (${results.length}).`);
+    if (down) ui.printWarn(tr.actions.someDown(down, results.length));
+    else ui.printOk(tr.actions.allUp(results.length));
   }
   return results.some((r) => !r.result.open) ? 2 : 0;
 }
@@ -134,10 +135,10 @@ export function knownHostsListFlow(opts: { json?: boolean } = {}): void {
     return;
   }
   if (!entries.length) {
-    ui.printWarn('В ~/.ssh/known_hosts нет читаемых записей (или включён HashKnownHosts).');
+    ui.printWarn(tr.actions.knownHostsEmpty);
     return;
   }
-  ui.printSection('🧾', `known_hosts (${entries.length})`);
+  ui.printSection('🧾', tr.actions.knownHostsSection(entries.length));
   for (const e of entries)
     console.log(`  ${ui.chalk.bold(e.host)}  ${ui.chalk.dim(e.keyTypes.join(', '))}`);
 }
@@ -152,17 +153,17 @@ export async function forgetHostKeyFlow(name?: string): Promise<number> {
     // Destructive: drops the pinned key, disabling MITM protection for this host
     // until it is trusted again. Confirm first (auto-yes under --yes for scripts).
     const ok = await ui.confirm({
-      message: `Забыть ключ хоста ${token}? Защита от MITM отключится до повторного доверия.`,
+      message: tr.actions.forgetConfirm(token),
       default: false,
     });
     if (!ok) {
-      ui.printInfo('Отменено.');
+      ui.printInfo(tr.common.cancelled);
       return 0;
     }
     return applyForget(token);
   }
 
-  ui.ensureInteractive('known_hosts');
+  ui.ensureInteractive(tr.actions.knownHostsEnsure);
   const entries = listKnownHosts();
   type Item = { kind: 'manual' } | { kind: 'entry'; entry: KnownHost };
   const items: Item[] = [
@@ -170,13 +171,13 @@ export async function forgetHostKeyFlow(name?: string): Promise<number> {
     ...entries.map((entry) => ({ kind: 'entry' as const, entry })),
   ];
   const picked = await ui.pickFromList<Item>({
-    message: '🧹 Запись known_hosts для удаления (ssh-keygen -R)',
+    message: tr.actions.forgetPick,
     items,
     render: (it) =>
       it.kind === 'manual'
-        ? ui.chalk.green('✏️ Ввести IP/хост вручную')
+        ? ui.chalk.green(tr.actions.manualEntry)
         : `${ui.chalk.bold(it.entry.host)}  ${ui.chalk.dim(it.entry.keyTypes.join(', '))}`,
-    search: (it) => (it.kind === 'manual' ? 'ручную manual ip host ввести' : it.entry.host),
+    search: (it) => (it.kind === 'manual' ? tr.actions.manualSearch : it.entry.host),
     pageSize: 14,
   });
   if (picked === ui.BACK) return 0;
@@ -185,8 +186,8 @@ export async function forgetHostKeyFlow(name?: string): Promise<number> {
   if (picked.kind === 'manual') {
     host = (
       await ui.text({
-        message: 'IP или хост (например 10.0.0.5 или [example.com]:2222)',
-        validate: (v) => v.trim().length > 0 || 'Не может быть пустым',
+        message: tr.actions.manualPrompt,
+        validate: (v) => v.trim().length > 0 || tr.common.notEmpty,
       })
     ).trim();
   } else {
@@ -208,10 +209,10 @@ export function groupListFlow(opts: { json?: boolean } = {}): void {
     return;
   }
   if (!rows.length) {
-    ui.printWarn('Тегов пока нет. Добавьте теги серверам/туннелям.');
+    ui.printWarn(tr.actions.groupsEmpty);
     return;
   }
-  ui.printSection('🏷', `Группы по тегам (${rows.length})`);
+  ui.printSection('🏷', tr.actions.groupsSection(rows.length));
   for (const [tag, n] of rows)
     console.log(`  ${ui.chalk.cyan('#' + tag)}  ${ui.chalk.dim(`${n}`)}`);
 }
@@ -219,14 +220,14 @@ export function groupListFlow(opts: { json?: boolean } = {}): void {
 /** Check every entity carrying a tag (parallel). */
 export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {}): Promise<number> {
   if (!tag.trim()) {
-    ui.printError('Укажите тег: wssh group check <tag>');
+    ui.printError(tr.actions.groupNeedsTag);
     return 1;
   }
   return statusFlow({ tag: tag.trim(), json: opts.json });
 }
 
 export async function copyIdFlow(name?: string): Promise<number> {
-  const server = await resolveServerLike(name, '📋 Сервер для копирования ключа (ssh-copy-id)');
+  const server = await resolveServerLike(name, tr.actions.copyIdPick);
   if (!server) return 0;
 
   // Pick a public/identity key to install. A server with a known IdentityFile
@@ -236,21 +237,21 @@ export async function copyIdFlow(name?: string): Promise<number> {
   if (!keyPath && found.length) {
     const DEFAULT = '__default__';
     const choice = await ui.choose<string>({
-      message: '🗝 Какой ключ установить на сервер?',
+      message: tr.actions.copyIdKeyQuestion,
       choices: [
         ...found.map((k) => ({ name: `${tilde(k)}`, value: k })),
-        { name: 'По умолчанию (ssh-copy-id сам выберет)', value: DEFAULT },
+        { name: tr.actions.copyIdDefaultChoice, value: DEFAULT },
       ],
     });
     keyPath = choice === DEFAULT ? null : choice;
   }
 
   const password = await resolvePassword(server);
-  ui.printSection('📋', `ssh-copy-id → ${targetSummary(server)}`);
+  ui.printSection('📋', tr.actions.copyIdSection(targetSummary(server)));
   try {
     const code = await copyId(server, keyPath, password);
-    if (code === 0) ui.printOk('Ключ установлен. Теперь можно подключаться без пароля.');
-    else ui.printError(`ssh-copy-id завершился с кодом ${code}.`);
+    if (code === 0) ui.printOk(tr.actions.copyIdOk);
+    else ui.printError(tr.actions.copyIdFailed(code));
     return code;
   } catch (e) {
     ui.printError((e as Error).message);
@@ -259,77 +260,77 @@ export async function copyIdFlow(name?: string): Promise<number> {
 }
 
 export async function runFlow(name: string | undefined, command: string[]): Promise<number> {
-  const server = await resolveServerLike(name, '⚡ Сервер для команды');
+  const server = await resolveServerLike(name, tr.actions.runPick);
   if (!server) return 0;
   let cmd = command;
   if (!cmd.length) {
-    ui.ensureInteractive('Ввод команды');
+    ui.ensureInteractive(tr.actions.runEnsure);
     const line = await ui.text({
-      message: '⚡ Команда для выполнения на сервере',
-      validate: (v) => v.trim().length > 0 || 'Пусто',
+      message: tr.actions.runPrompt,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
     });
     cmd = ['sh', '-lc', line];
   }
   const password = await resolvePassword(server);
   servers.touch(server.id);
-  ui.printSection('⚡', `Выполняю на → ${targetSummary(server)}`);
+  ui.printSection('⚡', tr.actions.runSection(targetSummary(server)));
   return runCommand(server, cmd, password);
 }
 
 export async function transferFlow(name?: string): Promise<number> {
-  const server = await resolveServerLike(name, '📂 Сервер для передачи файлов');
+  const server = await resolveServerLike(name, tr.actions.transferPick);
   if (!server) return 0;
-  ui.ensureInteractive('Передача файлов');
+  ui.ensureInteractive(tr.actions.transferEnsure);
 
   const toolChoices: Array<{ name: string; value: TransferTool }> = [
-    { name: 'scp — простое копирование', value: 'scp' },
+    { name: tr.actions.scpChoice, value: 'scp' },
   ];
   if (commandExists('rsync')) {
     toolChoices.unshift({
-      name: 'rsync — дельта-синхронизация (быстрее на повторных)',
+      name: tr.actions.rsyncChoice,
       value: 'rsync',
     });
   }
   const tool =
     toolChoices.length > 1
-      ? await ui.choose<TransferTool>({ message: '🛠 Чем передавать?', choices: toolChoices })
+      ? await ui.choose<TransferTool>({ message: tr.actions.toolQuestion, choices: toolChoices })
       : 'scp';
 
   const direction = await ui.choose<'upload' | 'download'>({
-    message: '📂 Направление',
+    message: tr.actions.directionQuestion,
     choices: [
-      { name: 'Загрузить на сервер (upload)', value: 'upload' },
-      { name: 'Скачать с сервера (download)', value: 'download' },
+      { name: tr.actions.uploadChoice, value: 'upload' },
+      { name: tr.actions.downloadChoice, value: 'download' },
     ],
   });
   const localPath = await ui.text({
-    message: '🖥 Локальный путь',
-    validate: (v) => v.trim().length > 0 || 'Пусто',
+    message: tr.actions.localPath,
+    validate: (v) => v.trim().length > 0 || tr.common.empty,
   });
   const remotePath = await ui.text({
-    message: '☁️ Путь на сервере',
-    validate: (v) => v.trim().length > 0 || 'Пусто',
+    message: tr.actions.remotePath,
+    validate: (v) => v.trim().length > 0 || tr.common.empty,
   });
 
   const opts: TransferOptions = { direction, localPath, remotePath, tool };
   if (tool === 'rsync') {
     opts.archive = true;
-    opts.compress = await ui.confirm({ message: '🗜 Сжимать в пути (-z)?', default: true });
+    opts.compress = await ui.confirm({ message: tr.actions.rsyncCompress, default: true });
     opts.delete = await ui.confirm({
-      message: '🧹 Удалять лишнее на приёмнике (--delete)?',
+      message: tr.actions.rsyncDelete,
       default: false,
     });
-    opts.dryRun = await ui.confirm({ message: '👀 Пробный прогон (--dry-run)?', default: false });
+    opts.dryRun = await ui.confirm({ message: tr.actions.rsyncDryRun, default: false });
   } else {
-    opts.recursive = await ui.confirm({ message: '📁 Рекурсивно (папка)?', default: false });
+    opts.recursive = await ui.confirm({ message: tr.actions.scpRecursive, default: false });
   }
 
   const password = await resolvePassword(server);
-  ui.printSection('📂', `${tool} ${direction} → ${targetSummary(server)}`);
+  ui.printSection('📂', tr.actions.transferSection(tool, direction, targetSummary(server)));
   try {
     const code = await transfer(server, opts, password);
-    if (code === 0) ui.printOk('Готово.');
-    else ui.printError(`${tool} завершился с кодом ${code}.`);
+    if (code === 0) ui.printOk(tr.actions.transferOk);
+    else ui.printError(tr.actions.transferFailed(tool, code));
     return code;
   } catch (e) {
     ui.printError((e as Error).message);
