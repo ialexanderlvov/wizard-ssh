@@ -1,6 +1,6 @@
 {
   "name": "wizard-ssh",
-  "version": "1.3.4",
+  "version": "1.4.0",
   "description": "Wizard SSH — beautiful interactive CLI to manage SSH servers, tunnels and ~/.ssh/config: CRUD, fuzzy search, instant connect, forward & reverse tunnels, encrypted password vault. (English / Russian UI)",
   "type": "module",
   "author": "Aleksandr Lvov <ijullic@yandex.ru>",
