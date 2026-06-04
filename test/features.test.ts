@@ -69,7 +69,7 @@ describe('runCommand', () => {
   it('delegates to runSshInherit with a -- command', async () => {
     expect(await runCommand(server(), ['uptime'])).toBe(0);
     const args = h.runSshInherit.mock.calls[0]?.[0] as string[];
-    expect(args.slice(-2)).toEqual(['--', 'uptime']);
+    expect(args.slice(-3)).toEqual(['--', 'deploy@1.2.3.4', 'uptime']);
   });
 });
 

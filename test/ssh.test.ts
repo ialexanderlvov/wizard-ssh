@@ -33,9 +33,17 @@ describe('args extras', () => {
     expect(targetOptions(manual({ sshPort: 2222 }))).toContain('2222');
   });
 
-  it('buildRunArgs appends -- command', () => {
-    const a = buildRunArgs(manual(), ['uptime', '-p']);
-    expect(a.slice(-3)).toEqual(['--', 'uptime', '-p']);
+  it('buildRunArgs puts -- before the destination, then the command', () => {
+    const a = buildRunArgs(manual({ user: 'deploy', host: 'h' }), ['uptime', '-p']);
+    expect(a.slice(-4)).toEqual(['--', 'deploy@h', 'uptime', '-p']);
+  });
+
+  it('a leading-dash destination is guarded by -- (no ssh option injection)', () => {
+    const a = buildRunArgs(manual({ hostMode: 'sshconfig', sshHost: '-oProxyCommand=evil' }), [
+      'id',
+    ]);
+    expect(a).toContain('--');
+    expect(a.indexOf('--')).toBeLessThan(a.indexOf('-oProxyCommand=evil'));
   });
 
   it('forwardFlags remote defaults localhost', () => {

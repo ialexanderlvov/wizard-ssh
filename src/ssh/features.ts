@@ -150,7 +150,7 @@ export async function copyId(
   if (server.hostMode !== 'sshconfig' && server.sshPort && server.sshPort !== 22) {
     args.push('-p', String(server.sshPort));
   }
-  args.push(destination(server));
+  args.push('--', destination(server)); // end options: a leading-dash dest stays an operand
   return runProgram('ssh-copy-id', args, password);
 }
 
@@ -188,7 +188,7 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
   const args: string[] = ['-o', 'ConnectTimeout=15'];
   if (opts.recursive) args.push('-r');
   if (t.hostMode !== 'sshconfig') {
-    args.push('-o', 'StrictHostKeyChecking=accept-new');
+    if (t.auth !== 'password') args.push('-o', 'StrictHostKeyChecking=accept-new'); // see targetOptions
     if (t.sshPort && t.sshPort !== 22) args.push('-P', String(t.sshPort)); // scp uses -P
   }
   if (t.auth === 'key' && t.keyPath)
@@ -197,9 +197,10 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
     args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
 
   const remoteSpec = `${destination(t)}:${opts.remotePath}`;
+  // `--` so a local path beginning with `-` is a file operand, not an scp option.
   return opts.direction === 'upload'
-    ? [...args, expandHome(opts.localPath), remoteSpec]
-    : [...args, remoteSpec, expandHome(opts.localPath)];
+    ? [...args, '--', expandHome(opts.localPath), remoteSpec]
+    : [...args, '--', remoteSpec, expandHome(opts.localPath)];
 }
 
 /** rsync over SSH. The SSH transport (port/key/auth) is passed via `-e`, so
@@ -215,9 +216,10 @@ function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
   args.push('--progress');
 
   const remoteSpec = `${destination(t)}:${opts.remotePath}`;
+  // `--` so a local path beginning with `-` is a file operand, not an rsync option.
   return opts.direction === 'upload'
-    ? [...args, expandHome(opts.localPath), remoteSpec]
-    : [...args, remoteSpec, expandHome(opts.localPath)];
+    ? [...args, '--', expandHome(opts.localPath), remoteSpec]
+    : [...args, '--', remoteSpec, expandHome(opts.localPath)];
 }
 
 /** Transfer files via scp or rsync (uses the same auth as a connect). */
