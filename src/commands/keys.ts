@@ -311,8 +311,9 @@ export async function keysMenu(crumbs: string[] = [tr.keys.mainMenuCrumb]): Prom
       else if (action === 'install') await installKeyOnServer(key);
       else if (action === 'delete') await deleteKeyFlow(key);
     } catch (e) {
-      if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
-      else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
+      // Esc / Ctrl+C out of a key action → straight back to the key list, no pause.
+      if (e instanceof PromptAbortError) continue;
+      ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
     }
     await ui.pause();
   }
