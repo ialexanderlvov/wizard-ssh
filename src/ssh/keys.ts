@@ -1,8 +1,13 @@
-/** Private SSH key discovery (no prompts — the picker lives in the UI layer). */
+/** SSH key discovery, inspection, generation and deletion. Pure filesystem +
+ *  `ssh-keygen` wrapper — no prompts (the picker/menus live in the UI/command
+ *  layers) and no store coupling (reference lookup lives in commands/keys.ts). */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { capture, commandExists } from '../utils/exec.js';
+import { expandHome } from '../utils/strings.js';
 
 function looksPrivate(file: string): boolean {
   try {
@@ -39,4 +44,141 @@ export function findSshKeys(): string[] {
   };
   scan(path.join(os.homedir(), '.ssh'), 1);
   return found;
+}
+
+/** `~/.ssh/id_ed25519` → `~/.ssh/id_ed25519.pub`. */
+export function pubPathFor(privPath: string): string {
+  return `${privPath}.pub`;
+}
+
+/** The public-key text (`ssh-ed25519 AAAA… comment`), or null if no `.pub`. */
+export function publicKeyText(privPath: string): string | null {
+  const pub = pubPathFor(expandHome(privPath));
+  try {
+    return fs.readFileSync(pub, 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export interface KeyFingerprint {
+  bits: number;
+  hash: string;
+  comment: string;
+  type: string;
+}
+
+/** Parse `ssh-keygen -l -f <file>` for a key's fingerprint. Reads the `.pub`
+ *  when present so a passphrase-protected key never triggers a prompt. */
+export function keyFingerprint(privPath: string): KeyFingerprint | null {
+  if (!commandExists('ssh-keygen')) return null;
+  const abs = expandHome(privPath);
+  const target = fs.existsSync(pubPathFor(abs)) ? pubPathFor(abs) : abs;
+  const res = capture('ssh-keygen', ['-l', '-f', target]);
+  if (res.status !== 0) return null;
+  // e.g. "256 SHA256:nThbg6… user@host (ED25519)"
+  const m = res.stdout.trim().match(/^(\d+)\s+(\S+)\s+(.*)\s+\(([^)]+)\)\s*$/);
+  if (!m) return null;
+  return {
+    bits: Number(m[1]) || 0,
+    hash: m[2] ?? '',
+    comment: (m[3] ?? '').trim(),
+    type: m[4] ?? '',
+  };
+}
+
+export interface KeyInfo {
+  /** absolute private-key path */
+  path: string;
+  /** absolute `.pub` path */
+  pubPath: string;
+  hasPub: boolean;
+  /** key algorithm (ED25519, RSA, …) or '?' when unknown */
+  type: string;
+  bits: number;
+  /** SHA256:… fingerprint, or '' when ssh-keygen is unavailable */
+  fingerprint: string;
+  comment: string;
+}
+
+/** Every private key under ~/.ssh, enriched with fingerprint metadata. */
+export function listKeys(): KeyInfo[] {
+  return findSshKeys().map((p) => {
+    const fp = keyFingerprint(p);
+    return {
+      path: p,
+      pubPath: pubPathFor(p),
+      hasPub: fs.existsSync(pubPathFor(p)),
+      type: fp?.type ?? '?',
+      bits: fp?.bits ?? 0,
+      fingerprint: fp?.hash ?? '',
+      comment: fp?.comment ?? '',
+    };
+  });
+}
+
+export type KeyType = 'ed25519' | 'rsa' | 'ecdsa';
+
+export interface GenerateKeyOptions {
+  /** private-key path to create (its `.pub` is written alongside) */
+  path: string;
+  type?: KeyType;
+  /** RSA only — key size in bits (default 4096) */
+  bits?: number;
+  comment?: string;
+  /** when true, ssh-keygen prompts for a passphrase; else the key is passphraseless */
+  withPassphrase?: boolean;
+}
+
+/** A sensible default key comment: `user@host-YYYY-MM-DD`. */
+export function defaultKeyComment(): string {
+  const user = (() => {
+    try {
+      return os.userInfo().username;
+    } catch {
+      return 'user';
+    }
+  })();
+  return `${user}@${os.hostname()}-${new Date().toISOString().slice(0, 10)}`;
+}
+
+/** Build the ssh-keygen argument vector (exposed for testing). */
+export function buildKeygenArgs(opts: GenerateKeyOptions): string[] {
+  const type = opts.type ?? 'ed25519';
+  const args = ['-t', type];
+  if (type === 'rsa') args.push('-b', String(opts.bits ?? 4096));
+  args.push('-f', expandHome(opts.path), '-C', opts.comment ?? defaultKeyComment());
+  if (!opts.withPassphrase) args.push('-N', '');
+  return args;
+}
+
+/** Generate a key pair via ssh-keygen (stdio inherited so it can prompt for a
+ *  passphrase and print the randomart). Resolves with the exit code. */
+export function generateKey(opts: GenerateKeyOptions): Promise<number> {
+  if (!commandExists('ssh-keygen')) {
+    return Promise.reject(new Error('ssh-keygen не найден в PATH.'));
+  }
+  const args = buildKeygenArgs(opts);
+  return new Promise((resolve) => {
+    const child = spawn('ssh-keygen', args, { stdio: 'inherit' });
+    child.on('error', () => resolve(1));
+    child.on('close', (code) => resolve(code ?? 0));
+  });
+}
+
+/** Delete a private key and its `.pub` sibling. Returns the paths removed. */
+export function deleteKey(privPath: string): { removed: string[] } {
+  const abs = expandHome(privPath);
+  const removed: string[] = [];
+  for (const f of [abs, pubPathFor(abs)]) {
+    try {
+      if (fs.existsSync(f)) {
+        fs.rmSync(f, { force: true });
+        removed.push(f);
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+  return { removed };
 }

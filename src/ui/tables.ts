@@ -2,9 +2,13 @@
 
 import Table from 'cli-table3';
 import type { Entity, SshConfigHost, Tunnel } from '../core/types.js';
+import type { FleetStatus } from '../ssh/features.js';
+import type { KeyInfo } from '../ssh/keys.js';
+import type { TunnelSession } from '../store/sessions.store.js';
 import { chalk, TYPE_BADGE } from './theme.js';
 import { targetSummary, forwardSummary } from './format.js';
 import { relativeTime } from '../utils/time.js';
+import { tilde } from '../utils/strings.js';
 
 const ROUND = {
   top: '─',
@@ -45,6 +49,67 @@ export function renderEntityTable(items: Entity[]): string {
       e.tags.length ? chalk.dim(e.tags.join(', ')) : chalk.dim('—'),
     ]);
   });
+  return table.toString();
+}
+
+export function renderStatusTable(rows: FleetStatus[]): string {
+  const table = new Table({
+    head: ['', 'Имя', 'Тип', 'Адрес', 'Состояние', 'Задержка'].map((h) => chalk.cyan.bold(h)),
+    style: { head: [], border: ['grey'] },
+    chars: ROUND,
+  });
+  for (const r of rows) {
+    const up = r.result.open;
+    table.push([
+      up ? chalk.green('●') : chalk.red('○'),
+      chalk.bold.white(r.name),
+      r.kind === 'tunnel' ? chalk.gray('туннель') : chalk.gray('сервер'),
+      chalk.dim(`${r.result.host}:${r.result.port}`),
+      up ? chalk.green('доступен') : chalk.red('недоступен'),
+      up ? chalk.yellow(`${r.result.ms} мс`) : chalk.dim('—'),
+    ]);
+  }
+  return table.toString();
+}
+
+export function renderKeysTable(keys: KeyInfo[]): string {
+  const table = new Table({
+    head: ['#', 'Файл', 'Тип', 'Биты', 'Отпечаток', 'Комментарий', '.pub'].map((h) =>
+      chalk.cyan.bold(h),
+    ),
+    style: { head: [], border: ['grey'] },
+    chars: ROUND,
+  });
+  keys.forEach((k, i) => {
+    table.push([
+      chalk.dim(String(i + 1)),
+      chalk.white(tilde(k.path)),
+      chalk.magenta(k.type),
+      k.bits ? chalk.dim(String(k.bits)) : chalk.dim('—'),
+      k.fingerprint ? chalk.dim(k.fingerprint) : chalk.dim('—'),
+      k.comment ? chalk.dim(k.comment) : chalk.dim('—'),
+      k.hasPub ? chalk.green('есть') : chalk.red('нет'),
+    ]);
+  });
+  return table.toString();
+}
+
+export function renderSessionsTable(rows: TunnelSession[]): string {
+  const table = new Table({
+    head: ['', 'Туннель', 'Проброс', 'Цель', 'PID', 'Запущен'].map((h) => chalk.cyan.bold(h)),
+    style: { head: [], border: ['grey'] },
+    chars: ROUND,
+  });
+  for (const s of rows) {
+    table.push([
+      chalk.green('●'),
+      chalk.bold.white(s.name) + (s.store === 'temp' ? chalk.dim(' (врем.)') : ''),
+      chalk.gray(s.forward),
+      chalk.dim(s.target),
+      chalk.yellow(String(s.pid)),
+      relativeTime(s.startedAt),
+    ]);
+  }
   return table.toString();
 }
 

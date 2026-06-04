@@ -1,8 +1,31 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 export const isMac = process.platform === 'darwin';
 export const isWindows = process.platform === 'win32';
 export const isLinux = process.platform === 'linux';
+
+/** Copy text to the system clipboard. Returns the tool used, or null if none
+ *  worked (no pbcopy/clip/xclip/wl-copy, or the write failed). Best-effort. */
+export function copyToClipboard(text: string): string | null {
+  const candidates: Array<[string, string[]]> = isMac
+    ? [['pbcopy', []]]
+    : isWindows
+      ? [['clip', []]]
+      : [
+          ['wl-copy', []],
+          ['xclip', ['-selection', 'clipboard']],
+          ['xsel', ['--clipboard', '--input']],
+        ];
+  for (const [cmd, args] of candidates) {
+    try {
+      const res = spawnSync(cmd, args, { input: text, stdio: ['pipe', 'ignore', 'ignore'] });
+      if (res.status === 0) return cmd;
+    } catch {
+      /* try the next tool */
+    }
+  }
+  return null;
+}
 
 export function openInBrowser(url: string): void {
   try {
