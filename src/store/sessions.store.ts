@@ -4,6 +4,7 @@
 
 import { FILES } from '../core/paths.js';
 import { nowIso } from '../utils/time.js';
+import { capture } from '../utils/exec.js';
 import { readJson, writeJson } from './json-file.js';
 
 export interface TunnelSession {
@@ -18,6 +19,18 @@ export interface TunnelSession {
   target: string;
   logFile: string;
   startedAt: string;
+  /** the process start-time captured at launch — a PID-reuse guard so we never
+   *  treat (or kill) an unrelated process that recycled our ssh's PID. */
+  startToken?: string;
+}
+
+/** A stable per-process identity token (its start time, via `ps`) to tell OUR
+ *  ssh apart from a foreign process that later reused the same PID. Empty when
+ *  ps is unavailable — callers then fall back to a plain liveness check. */
+function processStartToken(pid: number): string {
+  if (!Number.isInteger(pid) || pid <= 0) return '';
+  const res = capture('ps', ['-o', 'lstart=', '-p', String(pid)]);
+  return res.status === 0 ? res.stdout.trim() : '';
 }
 
 interface SessionsFile {
@@ -25,16 +38,26 @@ interface SessionsFile {
   sessions: TunnelSession[];
 }
 
-/** True if a process with `pid` is currently alive (signal 0 probes liveness). */
+/** True if a process with `pid` is currently alive (signal 0 probes liveness).
+ *  EPERM (exists but not signalable) is treated as NOT-ours: our own detached
+ *  ssh always runs as the same user and is signalable, so EPERM means a foreign
+ *  process — better to drop the stale session than risk signalling a stranger. */
 export function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
-  } catch (e) {
-    // EPERM means it exists but we may not signal it — still alive.
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  } catch {
+    return false;
   }
+}
+
+/** A session is live only if its PID is alive AND still the same process we
+ *  launched (start-time token matches) — guards against PID reuse. */
+function sessionAlive(s: TunnelSession): boolean {
+  if (!pidAlive(s.pid)) return false;
+  if (!s.startToken) return true; // legacy session without a token — best effort
+  return processStartToken(s.pid) === s.startToken;
 }
 
 class SessionsStore {
@@ -53,10 +76,11 @@ class SessionsStore {
     writeJson(FILES.sessions, f);
   }
 
-  /** Live sessions only — prunes any whose PID is gone, persisting the result. */
+  /** Live sessions only — prunes any whose PID is gone or was reused by another
+   *  process, persisting the result. */
   list(): TunnelSession[] {
     const f = this.load();
-    const alive = f.sessions.filter((s) => pidAlive(s.pid));
+    const alive = f.sessions.filter((s) => sessionAlive(s));
     if (alive.length !== f.sessions.length) this.persist({ version: 1, sessions: alive });
     return alive.slice();
   }
@@ -65,10 +89,14 @@ class SessionsStore {
     return this.list().find((s) => s.tunnelId === tunnelId) ?? null;
   }
 
-  add(session: Omit<TunnelSession, 'startedAt'>): TunnelSession {
+  add(session: Omit<TunnelSession, 'startedAt' | 'startToken'>): TunnelSession {
     const f = this.load();
     const next = f.sessions.filter((s) => s.tunnelId !== session.tunnelId);
-    const full: TunnelSession = { ...session, startedAt: nowIso() };
+    const full: TunnelSession = {
+      ...session,
+      startedAt: nowIso(),
+      startToken: processStartToken(session.pid),
+    };
     next.push(full);
     this.persist({ version: 1, sessions: next });
     return full;

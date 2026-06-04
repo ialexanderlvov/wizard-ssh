@@ -31,10 +31,22 @@ export function readJson<T>(file: string, fallback: T): ReadResult<T> {
   }
 }
 
-/** Atomic write (tmp + rename) with restrictive permissions. */
+let tmpCounter = 0;
+
+/** Atomic write (tmp + fsync + rename) with restrictive permissions. The tmp
+ *  name is unique per process+call so two concurrent writers (e.g. a background
+ *  tunnel and a foreground edit) can't clobber each other's tmp file and corrupt
+ *  the target; fsync flushes the bytes to disk before the rename so a crash
+ *  right after can't leave a half-written file. */
 export function writeJson(file: string, data: unknown): void {
   ensureDir(path.dirname(file));
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+  const tmp = `${file}.${process.pid}.${tmpCounter++}.tmp`;
+  const fd = fs.openSync(tmp, 'w', 0o600);
+  try {
+    fs.writeFileSync(fd, JSON.stringify(data, null, 2));
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, file);
 }
