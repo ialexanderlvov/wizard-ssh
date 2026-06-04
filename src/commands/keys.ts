@@ -19,6 +19,7 @@ import {
   publicKeyText,
   keyFingerprint,
   pubPathFor,
+  isSkKeyType,
 } from '../ssh/keys.js';
 import { copyId } from '../ssh/features.js';
 import { commandExists } from '../utils/exec.js';
@@ -122,11 +123,27 @@ export async function generateKeyFlow(): Promise<string | null> {
       { name: 'ed25519 — современный, короткий (рекомендуется)', value: 'ed25519' },
       { name: 'rsa — максимальная совместимость (4096 бит)', value: 'rsa' },
       { name: 'ecdsa', value: 'ecdsa' },
+      {
+        name: 'ed25519-sk — на аппаратном ключе (FIDO2/U2F)',
+        value: 'ed25519-sk',
+        description: 'нужен подключённый аппаратный ключ (касание/PIN)',
+      },
+      {
+        name: 'ecdsa-sk — на аппаратном ключе (FIDO2/U2F)',
+        value: 'ecdsa-sk',
+        description: 'нужен подключённый аппаратный ключ (касание/PIN)',
+      },
     ],
     default: 'ed25519',
   });
+  if (isSkKeyType(type)) {
+    ui.printInfo(
+      'Для -sk нужен подключённый аппаратный ключ (FIDO2/U2F). ssh-keygen попросит касание/PIN.',
+    );
+  }
   const sshDir = path.join(os.homedir(), '.ssh');
-  const suggested = path.join(sshDir, `id_${type}`);
+  // ssh convention names sk keys with an underscore: id_ed25519_sk
+  const suggested = path.join(sshDir, `id_${type.replace('-sk', '_sk')}`);
   const keyPath = expandHome(
     (
       await ui.text({

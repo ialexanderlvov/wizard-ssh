@@ -117,7 +117,12 @@ export function listKeys(): KeyInfo[] {
   });
 }
 
-export type KeyType = 'ed25519' | 'rsa' | 'ecdsa';
+export type KeyType = 'ed25519' | 'rsa' | 'ecdsa' | 'ed25519-sk' | 'ecdsa-sk';
+
+/** FIDO/U2F security-key backed types — require a hardware authenticator. */
+export const SK_KEY_TYPES: readonly KeyType[] = ['ed25519-sk', 'ecdsa-sk'];
+
+export const isSkKeyType = (type: KeyType): boolean => SK_KEY_TYPES.includes(type);
 
 export interface GenerateKeyOptions {
   /** private-key path to create (its `.pub` is written alongside) */

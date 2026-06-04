@@ -84,4 +84,15 @@ describe('buildKeygenArgs', () => {
     expect(buildKeygenArgs({ path: '/tmp/k', type: 'rsa' }).join(' ')).toContain('-b 4096');
     expect(buildKeygenArgs({ path: '/tmp/k', withPassphrase: true })).not.toContain('-N');
   });
+
+  it('security-key types pass -t <type>-sk without -b', () => {
+    const a = buildKeygenArgs({ path: '/tmp/k', type: 'ed25519-sk' });
+    expect(a.slice(0, 2)).toEqual(['-t', 'ed25519-sk']);
+    expect(a).not.toContain('-b');
+    expect(a).toContain('-N');
+    expect(buildKeygenArgs({ path: '/tmp/k', type: 'ecdsa-sk' }).slice(0, 2)).toEqual([
+      '-t',
+      'ecdsa-sk',
+    ]);
+  });
 });
