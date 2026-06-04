@@ -1,13 +1,15 @@
 # 🧙 Wizard SSH (`wssh`)
 
+**English** · [Русский](./README.ru.md)
+
 [![npm version](https://img.shields.io/npm/v/wizard-ssh.svg)](https://www.npmjs.com/package/wizard-ssh)
 [![ci](https://github.com/ialexanderlvov/wizard-ssh/actions/workflows/ci.yml/badge.svg)](https://github.com/ialexanderlvov/wizard-ssh/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/npm/l/wizard-ssh.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/wizard-ssh.svg)](https://nodejs.org)
 
-Красивый интерактивный CLI для управления **SSH-серверами, туннелями и `~/.ssh/config`**:
-полный CRUD, нечёткий поиск по всему сразу, мгновенное подключение, прямые и
-обратные туннели и **зашифрованное хранилище паролей** (мастер-фраза или Touch ID).
+A beautiful interactive CLI for managing **SSH servers, tunnels, and `~/.ssh/config`**:
+full CRUD, fuzzy search across everything at once, instant connect, forward and
+reverse tunnels, and an **encrypted password vault** (master passphrase or Touch ID).
 
 ```
  ██╗    ██╗██╗███████╗ █████╗ ██████╗ ██████╗     ███████╗███████╗██╗  ██╗
@@ -18,151 +20,153 @@
   ╚══╝╚══╝ ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝     ╚══════╝╚══════╝╚═╝  ╚═╝
 ```
 
-> Преемник прежнего «SSH Tunnel Manager» — переписан на TypeScript, с серверами,
-> управлением `~/.ssh/config`, обратными туннелями и шифрованием паролей.
-> Данные прежней версии импортируются автоматически.
+> Successor to the former "SSH Tunnel Manager" — rewritten in TypeScript, with
+> servers, `~/.ssh/config` management, reverse tunnels, and password encryption.
+> Data from the previous version is imported automatically.
 
-## ✨ Возможности
+## ✨ Features
 
-- 🖥 **Серверы = `~/.ssh/config`** — серверы хранятся прямо в `~/.ssh/config` (единый
-  источник правды): каждый сервер — это `Host`-блок, а описание/теги/способ авторизации
-  и ссылка на сохранённый пароль лежат в комментарии `#wssh {…}` над блоком. Полный CRUD
-  с авто-бэкапом конфига перед каждой записью; мульти-алиасные блоки и `Include` доступны
-  для подключения, но не редактируются автоматически. Меню «Серверы» и «~/.ssh/config»
-  объединены в одно.
-- 🚇 **Туннели** — прямой `-L`, **обратный `-R`** и динамический `-D` (SOCKS5). Полный CRUD,
-  **авто-переподключение** при обрыве (autossh-стиль, с бэкоффом, до `Ctrl+C`) и **фоновый
-  режим** — `wssh tunnel start` поднимает туннель в фоне, `tunnel sessions` показывает живые,
-  `tunnel down` останавливает.
-- 🔌 **Мгновенное подключение** — `wssh connect <имя>` или нечёткий выбор из общего списка;
-  `--tmux` входит в постоянную tmux-сессию на сервере.
-- 🗝 **Управление SSH-ключами** — отдельный пункт меню (`wssh keys`): список с отпечатками,
-  генерация (`ssh-keygen`: ed25519/rsa/ecdsa и аппаратные **ed25519-sk/ecdsa-sk** на FIDO2/U2F),
-  показ/копирование публичного ключа, установка на сервер,
-  **удаление с предупреждением о том, кто на ключ ссылается**.
-- 📡 **Статус-дашборд** — `wssh status` массово и параллельно проверяет доступность всех
-  серверов и туннелей; фильтры `--servers/--tunnels/--tag`, `--json`, exit-код для скриптов.
-- 🔍 **Единый поиск** — fuzzy по серверам, туннелям и хостам конфига одновременно.
-- 🕘 **История** — дата последнего использования и счётчик; сортировки по `recent / name / uses / created / updated`.
-- 🔐 **Зашифрованные пароли** — AES-256-GCM, ключ из мастер-фразы (scrypt), вводится
-  раз за сессию. На macOS — опциональная разблокировка по **Touch ID**. Для скриптов —
-  фраза из окружения (`WSSH_VAULT_PASSPHRASE[_FILE|_CMD]`). Можно удалить отдельный
-  сохранённый пароль или **сбросить хранилище** (забыл фразу) — серверы и туннели остаются.
-- 🛠 **Действия по SSH** — проверка доступности, `ssh-copy-id`, выполнение команды,
-  передача файлов (`scp` или `rsync`), **группы по тегам**, **управление `known_hosts`** —
-  показать записи и удалить выбранную или по IP (`ssh-keygen -R`).
-- 🤖 **Скриптуемость** — неинтерактивное создание серверов/туннелей флагами, сквозной
-  `--json`, глобальные `--yes`/`--non-interactive`, `wssh doctor` (диагностика окружения)
-  и `wssh info` (сводка путей и инвентаря).
-- 📦 **Экспорт/импорт** — бэкап всех списков (и зашифрованного хранилища) в один файл.
-- ⌨️ **Списки с хоткеями** — везде один и тот же выбор: начни печатать — фильтр на лету,
-  `Tab` — смена сортировки, `↑/↓` — навигация, `Enter` — выбрать, `Esc` или «← Назад» —
-  вернуться/выйти (из любого меню можно уйти, ничего не выбирая).
-- 🎨 Единый визуальный стиль: градиентный баннер, рамки и секции (со смайликами),
-  ровные строки без иконок в самих списках, понятные ошибки. RU-интерфейс.
+- 🖥 **Servers = `~/.ssh/config`** — servers live right inside `~/.ssh/config` (a single
+  source of truth): each server is a `Host` block, while its description/tags/auth method
+  and the reference to a saved password sit in a `#wssh {…}` comment above the block. Full
+  CRUD with an automatic config backup before every write; multi-alias blocks and `Include`
+  are connectable but not edited automatically. The "Servers" and "~/.ssh/config" menus are
+  merged into one.
+- 🚇 **Tunnels** — forward `-L`, **reverse `-R`**, and dynamic `-D` (SOCKS5). Full CRUD,
+  **auto-reconnect** on drop (autossh-style, with backoff, until `Ctrl+C`), and a **background
+  mode** — `wssh tunnel start` brings a tunnel up in the background, `tunnel sessions` lists
+  the live ones, `tunnel down` stops them.
+- 🔌 **Instant connect** — `wssh connect <name>` or fuzzy-pick from the combined list;
+  `--tmux` attaches a persistent tmux session on the server.
+- 🗝 **SSH key management** — a dedicated menu (`wssh keys`): list with fingerprints,
+  generation (`ssh-keygen`: ed25519/rsa/ecdsa and hardware **ed25519-sk/ecdsa-sk** on FIDO2/U2F),
+  show/copy the public key, install it on a server,
+  **deletion with a warning about what still references the key**.
+- 📡 **Status dashboard** — `wssh status` checks the reachability of all servers and tunnels
+  in bulk and in parallel; `--servers/--tunnels/--tag` filters, `--json`, and a script-friendly exit code.
+- 🔍 **Unified search** — fuzzy across servers, tunnels, and config hosts at once.
+- 🕘 **History** — last-used timestamp and a use counter; sorts by `recent / name / uses / created / updated`.
+- 🔐 **Encrypted passwords** — AES-256-GCM, key derived from a master passphrase (scrypt),
+  entered once per session. On macOS — optional unlock via **Touch ID**. For scripts — the
+  passphrase from the environment (`WSSH_VAULT_PASSPHRASE[_FILE|_CMD]`). You can delete a single
+  saved password or **reset the vault** (forgot the passphrase) — servers and tunnels stay.
+- 🛠 **SSH actions** — reachability check, `ssh-copy-id`, run a command, transfer files
+  (`scp` or `rsync`), **tag groups**, **`known_hosts` management** — list entries and remove
+  a selected one or by IP (`ssh-keygen -R`).
+- 🤖 **Scriptable** — non-interactive server/tunnel creation via flags, end-to-end `--json`,
+  global `--yes`/`--non-interactive`, `wssh doctor` (environment diagnostics), and
+  `wssh info` (a summary of paths and inventory).
+- 📦 **Export/import** — back up all lists (and the encrypted vault) into a single file.
+- ⌨️ **Hotkey lists** — the same picker everywhere: start typing to filter live, `Tab` to cycle
+  the sort, `↑/↓` to navigate, `Enter` to select, `Esc` or "← Back" to go back/exit (you can
+  leave any menu without choosing anything).
+- 🎨 A consistent look: a gradient banner, framed sections (with emoji), tidy rows with no
+  icons inside the lists themselves, and clear errors. English and Russian UI.
 
-## 🚀 Быстрый старт
+## 🚀 Quick start
 
 ```bash
 pnpm install
 pnpm build
-pnpm link --global   # делает доступными команды `wssh` и `wizard-ssh`
+pnpm link --global   # makes the `wssh` and `wizard-ssh` commands available
 
-wssh                 # интерактивное меню
+wssh                 # interactive menu
 ```
 
-Подробнее в [docs/INSTALL.md](docs/INSTALL.md) и [docs/USAGE.md](docs/USAGE.md).
+More in [docs/INSTALL.md](docs/INSTALL.md) and [docs/USAGE.md](docs/USAGE.md).
 
-## 🧭 Команды
+## 🧭 Commands
 
-| Команда                                                 | Назначение                                          |
-| ------------------------------------------------------- | --------------------------------------------------- |
-| `wssh`                                                  | интерактивное меню                                  |
-| `wssh connect [имя]` (`up`, `go`) `[--tmux [сессия]]`   | подключиться к серверу/туннелю/алиасу из конфига    |
-| `wssh server <add\|edit\|rm\|ls\|connect>` (`srv`, `s`) | CRUD серверов = хостов `~/.ssh/config`              |
-| `wssh tunnel <add\|edit\|rm\|ls\|connect>` (`tun`, `t`) | CRUD + поднятие туннелей                            |
-| `wssh tunnel <start\|sessions\|down>`                   | фоновые туннели: поднять / список / остановить      |
-| `wssh keys <ls\|gen\|rm>` (`key`)                       | SSH-ключи: список/отпечатки, генерация, удаление    |
-| `wssh status` `[--servers\|--tunnels\|--tag\|--json]`   | массовая параллельная проверка доступности          |
-| `wssh config <ls\|add\|edit\|rm\|connect>` (`cfg`)      | то же, «сырой» доступ к `~/.ssh/config`             |
-| `wssh search <запрос>` (`find`) `[--json]`              | единый нечёткий поиск                               |
-| `wssh check [имя]` `[--json]`                           | проверка доступности (ping порта)                   |
-| `wssh copy-id [имя]`                                    | установить ключ на сервер (`ssh-copy-id`)           |
-| `wssh run <имя> -- <cmd>`                               | выполнить команду на сервере                        |
-| `wssh transfer [имя]` (`scp`)                           | передача файлов по scp или rsync                    |
-| `wssh group <ls\|check <tag>>`                          | группы по тегам: размеры и массовая проверка        |
-| `wssh forget-host [имя\|ip]` (`known-hosts`) `[--list]` | известные хосты: удалить (`ssh-keygen -R`) / список |
-| `wssh doctor` · `wssh info` (`env`)                     | диагностика окружения · сводка путей/инвентаря      |
-| `wssh vault`                                            | управление хранилищем паролей                       |
-| `wssh settings`                                         | значения по умолчанию                               |
-| `wssh export [файл]` · `wssh import <файл> [--replace]` | бэкап / восстановление                              |
-| `wssh path`                                             | путь к директории данных                            |
+| Command                                                  | Purpose                                           |
+| -------------------------------------------------------- | ------------------------------------------------- |
+| `wssh`                                                   | interactive menu                                  |
+| `wssh connect [name]` (`up`, `go`) `[--tmux [session]]`  | connect to a server / tunnel / config alias       |
+| `wssh server <add\|edit\|rm\|ls\|connect>` (`srv`, `s`)  | CRUD for servers = `~/.ssh/config` hosts          |
+| `wssh tunnel <add\|edit\|rm\|ls\|connect>` (`tun`, `t`)  | CRUD + bringing tunnels up                        |
+| `wssh tunnel <start\|sessions\|down>`                    | background tunnels: start / list / stop           |
+| `wssh keys <ls\|gen\|rm>` (`key`)                        | SSH keys: list/fingerprints, generate, delete     |
+| `wssh status` `[--servers\|--tunnels\|--tag\|--json]`    | bulk parallel reachability check                  |
+| `wssh config <ls\|add\|edit\|rm\|connect>` (`cfg`)       | the same, "raw" access to `~/.ssh/config`         |
+| `wssh search <query>` (`find`) `[--json]`                | unified fuzzy search                              |
+| `wssh check [name]` `[--json]`                           | reachability check (port ping)                    |
+| `wssh copy-id [name]`                                    | install a key on a server (`ssh-copy-id`)         |
+| `wssh run <name> -- <cmd>`                               | run a command on a server                         |
+| `wssh transfer [name]` (`scp`)                           | transfer files over scp or rsync                  |
+| `wssh group <ls\|check <tag>>`                           | tag groups: sizes and bulk checks                 |
+| `wssh forget-host [name\|ip]` (`known-hosts`) `[--list]` | known hosts: remove (`ssh-keygen -R`) / list      |
+| `wssh doctor` · `wssh info` (`env`)                      | environment diagnostics · paths/inventory summary |
+| `wssh vault`                                             | manage the password vault                         |
+| `wssh settings`                                          | default values                                    |
+| `wssh export [file]` · `wssh import <file> [--replace]`  | backup / restore                                  |
+| `wssh path`                                              | path to the data directory                        |
 
-Списки сортируются: `wssh server ls --sort recent|name|uses|created|updated [--reverse] [--json]`.
+Lists are sortable: `wssh server ls --sort recent|name|uses|created|updated [--reverse] [--json]`.
 
-**Язык интерфейса.** Поддерживаются `ru` и `en` (на базе [`i18n-typed-store`](https://www.npmjs.com/package/i18n-typed-store)).
-Выбор: переменная `WSSH_LANG` (приоритет) → настройка «Язык интерфейса» в `wssh settings` → системная локаль
-(`LC_ALL`/`LANG`); по умолчанию определяется автоматически.
+**UI language.** `ru` and `en` are supported (built on [`i18n-typed-store`](https://www.npmjs.com/package/i18n-typed-store)).
+Resolution: the `WSSH_LANG` variable (highest priority) → the "UI language" setting in `wssh settings` → the system locale
+(`LC_ALL`/`LANG`); detected automatically by default.
 
 ```bash
-WSSH_LANG=en wssh           # запустить в английском
-WSSH_LANG=ru wssh doctor    # принудительно русский
+WSSH_LANG=en wssh           # run in English
+WSSH_LANG=ru wssh doctor    # force Russian
 ```
 
-**Скриптинг (без вопросов).** Серверы и туннели можно создавать флагами, а подтверждения —
-автоматизировать:
+**Scripting (no questions).** Servers and tunnels can be created with flags, and confirmations
+can be automated:
 
 ```bash
 wssh server add prod --host 10.0.0.5 --user deploy --auth key --key ~/.ssh/id_ed25519
 wssh tunnel add --alias prod --type local --local 8080 --remote-port 80
-wssh -y keys rm ~/.ssh/old_key          # -y / --yes — отвечать «да» на всё
-wssh --non-interactive status --json    # никаких подсказок; машинно-читаемый вывод
-WSSH_VAULT_PASSPHRASE=… wssh run prod -- uptime   # парольная фраза хранилища из env
+wssh -y keys rm ~/.ssh/old_key          # -y / --yes — answer "yes" to everything
+wssh --non-interactive status --json    # no prompts; machine-readable output
+WSSH_VAULT_PASSPHRASE=… wssh run prod -- uptime   # vault passphrase from the env
 ```
 
-## 🔐 Данные и безопасность
+## 🔐 Data & security
 
-- Все данные — в `~/.wizard-ssh/` (файлы с правами `0600`). Каталог можно переопределить
-  переменной `WIZARD_SSH_HOME`.
-- **Пароли не хранятся в открытом виде.** Они шифруются AES-256-GCM ключом, выведенным
-  из мастер-фразы (scrypt). Фраза вводится один раз за сессию и держится только в памяти.
-- На macOS можно включить **Touch ID** — биометрия разблокирует ключ, лежащий в Keychain
-  (нужны macOS + Xcode Command Line Tools для `swiftc`). Это слой удобства; корень доверия —
-  мастер-фраза. Подробности и компромисс — в [docs/USAGE.md](docs/USAGE.md#-хранилище-паролей).
-- Перед любой записью в `~/.ssh/config` создаётся бэкап в `~/.wizard-ssh/backups/`.
-- Повреждённый JSON не теряется: создаётся резервная копия, приложение стартует с чистого листа.
+- All data lives in `~/.wizard-ssh/` (files with `0600` permissions). The directory can be
+  overridden with the `WIZARD_SSH_HOME` variable.
+- **Passwords are never stored in the clear.** They are encrypted with AES-256-GCM using a key
+  derived from the master passphrase (scrypt). The passphrase is entered once per session and
+  kept only in memory.
+- On macOS you can enable **Touch ID** — biometrics unlock the key stored in the Keychain
+  (requires macOS + Xcode Command Line Tools for `swiftc`). This is a convenience layer; the
+  root of trust is the master passphrase. Details and the trade-off are in
+  [docs/USAGE.md](docs/USAGE.md).
+- A backup is created in `~/.wizard-ssh/backups/` before any write to `~/.ssh/config`.
+- Corrupt JSON is never lost: a backup copy is made and the app starts from a clean slate.
 
-## 🏗 Архитектура
+## 🏗 Architecture
 
 ```
 src/
-  cli.ts              точка входа (commander)
-  core/               типы, пути (~/.wizard-ssh), константы, ошибки
-  utils/              валидаторы, время, строки, exec, платформа
-  store/              серверы поверх ~/.ssh/config + usage.json (статистика), туннели/настройки (JSON), фоновые сессии, миграция
+  cli.ts              entry point (commander)
+  core/               types, paths (~/.wizard-ssh), constants, errors
+  utils/              validators, time, strings, exec, platform
+  store/              servers over ~/.ssh/config + usage.json (stats), tunnels/settings (JSON), background sessions, migration
   vault/              crypto (AES-GCM/scrypt), Touch ID, vault
-  ssh-config/         парсер + writer (CRUD по ~/.ssh/config) с аннотациями #wssh
-  ssh/                сборка ssh-аргументов, runner (+ авто-reconnect, фоновые туннели), фичи (check/статус/copy-id/run/scp/rsync), ключи, known_hosts
-  ui/                 тема, баннер, сообщения, таблицы, prompts, list-prompt (выбор с фильтром/сортировкой), rows (единые строки)
-  search/             единый нечёткий поиск
-  commands/           CRUD-флоу, действия, меню, wiring commander
+  ssh-config/         parser + writer (CRUD over ~/.ssh/config) with #wssh annotations
+  ssh/                ssh-argument building, runner (+ auto-reconnect, background tunnels), features (check/status/copy-id/run/scp/rsync), keys, known_hosts
+  ui/                 theme, banner, messages, tables, prompts, list-prompt (picker with filter/sort), rows (shared rows)
+  search/             unified fuzzy search
+  commands/           CRUD flows, actions, menu, commander wiring
 ```
 
-## 🛠 Разработка
+## 🛠 Development
 
 ```bash
-pnpm dev             # запуск через tsx без сборки
+pnpm dev             # run via tsx without a build
 pnpm typecheck       # tsc --noEmit
 pnpm lint            # eslint
 pnpm format          # prettier --write
 pnpm test            # vitest
-pnpm test:coverage   # vitest + покрытие
+pnpm test:coverage   # vitest + coverage
 pnpm build           # tsup → dist/
 ```
 
-Коммиты — по [Conventional Commits](https://www.conventionalcommits.org/) (проверяется
-commitlint через husky; перед коммитом — lint-staged: eslint --fix + prettier).
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (enforced by
+commitlint via husky; before each commit — lint-staged: eslint --fix + prettier).
 
-## Лицензия
+## License
 
 MIT.
