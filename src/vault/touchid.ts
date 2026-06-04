@@ -81,17 +81,19 @@ export function authenticate(reason = 'разблокировать пароли
 
 export function storeKey(keyBase64: string): boolean {
   if (!isMac) return false;
-  const res = capture('security', [
-    'add-generic-password',
-    '-U', // update if it exists
-    '-s',
-    KEYCHAIN_SERVICE,
-    '-a',
-    KEYCHAIN_ACCOUNT,
-    '-w',
-    keyBase64,
-  ]);
-  return res.status === 0;
+  const common = ['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT];
+  // Prefer feeding the key over stdin so the 32-byte master key never appears as
+  // an argv token (which is visible in the process table to other processes). A
+  // trailing `-w` with no value reads the password from stdin; on a tty it also
+  // asks for a retype, so we send it twice. `security` returns 0 even on a retype
+  // mismatch, so confirm the value actually landed via loadKey() before trusting.
+  const viaStdin = capture('security', [...common, '-w'], `${keyBase64}\n${keyBase64}\n`);
+  if (viaStdin.status === 0 && loadKey() === keyBase64) return true;
+  // Fallback: if a given macOS build won't take the key from stdin here, use the
+  // argv form so Touch ID keeps working. The brief argv exposure is no worse than
+  // the documented same-user readability of the keychain item itself.
+  const viaArg = capture('security', [...common, '-w', keyBase64]);
+  return viaArg.status === 0;
 }
 
 export function loadKey(): string | null {
