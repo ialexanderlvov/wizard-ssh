@@ -12,6 +12,7 @@ import { detailBox } from '../ui/format.js';
 import * as serverCmd from './servers.js';
 import * as tunnelCmd from './tunnels.js';
 import * as actions from './actions.js';
+import * as keysCmd from './keys.js';
 import { quickConnect } from './connect.js';
 import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
@@ -152,12 +153,14 @@ const tunnelsMenu = (): Promise<void> =>
     [
       { label: 'Список / поднять', value: 'list' },
       { label: 'Создать и сразу поднять (из ~/.ssh/config)', value: 'quick' },
+      { label: 'Фоновые сессии ▸', value: 'bg' },
       { label: 'Временные туннели (на любой хост) ▸', value: 'temp' },
       { label: 'Добавить', value: 'add' },
     ],
     async (a) => {
       if (a === 'add') await tunnelCmd.addTunnel();
       else if (a === 'quick') await tunnelCmd.createAndRaiseTunnel();
+      else if (a === 'bg') await backgroundTunnelsMenu();
       else if (a === 'temp') await tempTunnelsMenu();
       else if (a === 'list')
         await browseEntities(
@@ -191,21 +194,45 @@ const tempTunnelsMenu = (): Promise<void> =>
     },
   );
 
+const backgroundTunnelsMenu = (): Promise<void> =>
+  loop(
+    'Фоновые туннели',
+    [ROOT, 'Туннели'],
+    [
+      { label: 'Список запущенных', value: 'list' },
+      { label: 'Поднять в фоне', value: 'up' },
+      { label: 'Остановить', value: 'down' },
+      { label: 'Остановить все', value: 'downAll' },
+    ],
+    async (a) => {
+      if (a === 'list') tunnelCmd.listSessions();
+      else if (a === 'up') await tunnelCmd.tunnelUpFlow();
+      else if (a === 'down') await tunnelCmd.tunnelDownFlow();
+      else if (a === 'downAll') await tunnelCmd.tunnelDownFlow(undefined, { all: true });
+    },
+  );
+
 const actionsMenu = (): Promise<void> =>
   loop(
     'Действия по SSH',
     [ROOT],
     [
+      { label: 'Статус — проверить всё', value: 'status' },
       { label: 'Проверка доступности', value: 'check' },
       { label: 'ssh-copy-id (ключ на сервер)', value: 'copyId' },
       { label: 'Выполнить команду', value: 'run' },
       { label: 'Передача файлов', value: 'transfer' },
+      { label: 'Группы по тегам', value: 'groups' },
+      { label: 'Забыть host-key (known_hosts)', value: 'forget' },
     ],
     async (a) => {
-      if (a === 'check') await actions.checkFlow();
+      if (a === 'status') await actions.statusFlow();
+      else if (a === 'check') await actions.checkFlow();
       else if (a === 'copyId') await actions.copyIdFlow();
       else if (a === 'run') await actions.runFlow(undefined, []);
       else if (a === 'transfer') await actions.transferFlow();
+      else if (a === 'groups') actions.groupListFlow();
+      else if (a === 'forget') await actions.forgetHostKeyFlow();
     },
   );
 
@@ -226,6 +253,7 @@ export async function mainMenu(): Promise<void> {
         { label: 'Серверы / ~/.ssh/config ▸', value: 'servers' },
         { label: 'Туннели ▸', value: 'tunnels' },
         { label: 'Действия ▸', value: 'actions' },
+        { label: 'SSH-ключи ▸', value: 'keys' },
         { label: 'Поиск по всему', value: 'search' },
         { label: 'Хранилище паролей', value: 'vault' },
         { label: 'Настройки', value: 'settings' },
@@ -252,6 +280,7 @@ export async function mainMenu(): Promise<void> {
       } else if (action === 'servers') await serversMenu();
       else if (action === 'tunnels') await tunnelsMenu();
       else if (action === 'actions') await actionsMenu();
+      else if (action === 'keys') await keysCmd.keysMenu([ROOT]);
       else if (action === 'search') {
         await searchFlow();
         await ui.pause();
