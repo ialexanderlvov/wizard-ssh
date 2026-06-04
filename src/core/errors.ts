@@ -19,11 +19,22 @@ export class NotInteractiveError extends WizardError {
   }
 }
 
-/** Thrown when the user cancels a prompt (Ctrl+C / ESC). */
+/** Thrown when the user force-quits a prompt (Ctrl+C). */
 export class PromptAbortError extends WizardError {
   constructor() {
     super(tr.errors.cancelled, 130);
     this.name = 'PromptAbortError';
+  }
+}
+
+/** Thrown when the user presses Esc to back out of a value-edit prompt — a softer
+ *  "cancel this edit" than Ctrl+C. Subclasses PromptAbortError so every existing
+ *  abort catch already treats Esc as "cancelled / go back"; editing menus may
+ *  catch it specifically to stay on their own screen instead of unwinding. */
+export class PromptCancelError extends PromptAbortError {
+  constructor() {
+    super();
+    this.name = 'PromptCancelError';
   }
 }
 

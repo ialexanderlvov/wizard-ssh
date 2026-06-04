@@ -75,7 +75,9 @@ async function loop(
     try {
       navigated = (await run(action)) === true;
     } catch (e) {
-      if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
+      // Esc / Ctrl+C out of an action → return straight to this menu, no extra
+      // press-Enter pause (a real error still pauses so it can be read).
+      if (e instanceof PromptAbortError) navigated = true;
       else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
     }
     if (!navigated) await ui.pause();
@@ -318,9 +320,12 @@ export async function mainMenu(): Promise<void> {
       else if (action === 'settings') await settingsFlow();
       else if (action === 'io') await importExportMenu();
     } catch (e) {
-      if (e instanceof PromptAbortError) ui.printInfo(tr.common.cancelled);
-      else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
-      await ui.pause();
+      // Esc / Ctrl+C out of a top-level flow → straight back to the main menu;
+      // only a genuine error is worth pausing on.
+      if (!(e instanceof PromptAbortError)) {
+        ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
+        await ui.pause();
+      }
     }
   }
 }

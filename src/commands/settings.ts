@@ -1,6 +1,7 @@
 /** Default settings (as an editable menu) + password-vault management. */
 
 import type { AuthMethod, Entity, LanguageSetting, SortKey } from '../core/types.js';
+import { PromptCancelError } from '../core/errors.js';
 import { settings } from '../store/settings.store.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
@@ -170,7 +171,12 @@ export async function settingsFlow(): Promise<void> {
     ];
     const key = await pick(tr.settings.settingsMenuPrompt, rows);
     if (key === ui.BACK) return;
-    await editSetting(key);
+    try {
+      await editSetting(key);
+    } catch (e) {
+      // Esc out of a field prompt → back to the settings list, nothing saved.
+      if (!(e instanceof PromptCancelError)) throw e;
+    }
   }
 }
 
@@ -356,48 +362,54 @@ export async function vaultFlow(): Promise<void> {
     ]);
     if (action === ui.BACK) return;
 
-    if (action === 'setup') {
-      await ensureVaultSetup();
-    } else if (action === 'unlock') {
-      ui.printInfo((await unlockVault()) ? tr.settings.unlocked : tr.settings.unlockFailed);
-    } else if (action === 'lock') {
-      vault.lock();
-      ui.printOk(tr.settings.sessionCleared);
-    } else if (action === 'rekey') {
-      if (!(await unlockVault())) {
-        ui.printWarn(tr.settings.needUnlockFirst);
-      } else {
-        const p1 = await ui.secret({
-          message: tr.settings.rekeyNewPassphrase,
-          validate: (v) => v.length >= 4 || tr.settings.rekeyMinLength,
-        });
-        const p2 = await ui.secret({ message: tr.settings.rekeyRepeat });
-        if (p1 !== p2) ui.printError(tr.settings.rekeyMismatch);
-        else {
-          try {
-            vault.rekey(p1);
-            ui.printOk(tr.settings.rekeyDone);
-          } catch (e) {
-            ui.printError(e instanceof Error ? e.message : String(e));
+    try {
+      if (action === 'setup') {
+        await ensureVaultSetup();
+      } else if (action === 'unlock') {
+        ui.printInfo((await unlockVault()) ? tr.settings.unlocked : tr.settings.unlockFailed);
+      } else if (action === 'lock') {
+        vault.lock();
+        ui.printOk(tr.settings.sessionCleared);
+      } else if (action === 'rekey') {
+        if (!(await unlockVault())) {
+          ui.printWarn(tr.settings.needUnlockFirst);
+        } else {
+          const p1 = await ui.secret({
+            message: tr.settings.rekeyNewPassphrase,
+            validate: (v) => v.length >= 4 || tr.settings.rekeyMinLength,
+          });
+          const p2 = await ui.secret({ message: tr.settings.rekeyRepeat });
+          if (p1 !== p2) ui.printError(tr.settings.rekeyMismatch);
+          else {
+            try {
+              vault.rekey(p1);
+              ui.printOk(tr.settings.rekeyDone);
+            } catch (e) {
+              ui.printError(e instanceof Error ? e.message : String(e));
+            }
           }
         }
+      } else if (action === 'revealSecret') {
+        await revealSavedPassword();
+      } else if (action === 'deleteSecret') {
+        await deleteSavedPassword();
+      } else if (action === 'enableTouch') {
+        if (!(await unlockVault())) ui.printWarn(tr.settings.needUnlockTouch);
+        else if (vault.enableTouchId()) {
+          settings.update({ vault: { ...settings.get().vault, touchId: true } });
+          ui.printOk(tr.settings.touchIdOn);
+        } else ui.printError(tr.settings.touchIdOnFailed);
+      } else if (action === 'disableTouch') {
+        vault.disableTouchId();
+        settings.update({ vault: { ...settings.get().vault, touchId: false } });
+        ui.printOk(tr.settings.touchIdOff);
+      } else if (action === 'reset') {
+        await resetVault();
       }
-    } else if (action === 'revealSecret') {
-      await revealSavedPassword();
-    } else if (action === 'deleteSecret') {
-      await deleteSavedPassword();
-    } else if (action === 'enableTouch') {
-      if (!(await unlockVault())) ui.printWarn(tr.settings.needUnlockTouch);
-      else if (vault.enableTouchId()) {
-        settings.update({ vault: { ...settings.get().vault, touchId: true } });
-        ui.printOk(tr.settings.touchIdOn);
-      } else ui.printError(tr.settings.touchIdOnFailed);
-    } else if (action === 'disableTouch') {
-      vault.disableTouchId();
-      settings.update({ vault: { ...settings.get().vault, touchId: false } });
-      ui.printOk(tr.settings.touchIdOff);
-    } else if (action === 'reset') {
-      await resetVault();
+    } catch (e) {
+      // Esc out of a vault action → return to the vault menu, nothing applied.
+      if (e instanceof PromptCancelError) continue;
+      throw e;
     }
     await ui.pause();
   }

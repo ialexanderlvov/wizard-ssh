@@ -265,6 +265,43 @@ describe('servers: create writes config params + listServers default sort', () =
     expect(servers.findByName('srv')).toBeTruthy();
   });
 
+  it('editServer: Esc on the editor menu cancels cleanly, leaving the server intact', async () => {
+    // PromptCancelError must come from the same (post-resetModules) graph the flow
+    // imports, or `instanceof` in editServer would miss it.
+    const { PromptCancelError } = await import('../src/core/errors.js');
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'srv', host: '1.1.1.1', user: 'root', kind: 'server' });
+    q.choose = [new PromptCancelError()]; // Esc on the field picker → __cancel__ path
+    const { editServer } = await import('../src/commands/servers.js');
+    await editServer('srv');
+    const srv = servers.findByName('srv');
+    expect(srv?.name).toBe('srv');
+    expect(srv?.user).toBe('root');
+  });
+
+  it('editServer: Esc on a field returns to the editor; nothing is saved', async () => {
+    const { PromptCancelError } = await import('../src/core/errors.js');
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'srv', host: '1.1.1.1', kind: 'server' });
+    // open the name field → Esc on the text prompt → back to editor → cancel
+    q.choose = ['name', '__cancel__'];
+    q.text = [new PromptCancelError()];
+    const { editServer } = await import('../src/commands/servers.js');
+    await editServer('srv');
+    expect(servers.findByName('srv')?.name).toBe('srv'); // field edit was discarded
+  });
+
+  it('editTunnel: Esc on a field returns to the editor; nothing is saved', async () => {
+    const { PromptCancelError } = await import('../src/core/errors.js');
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    tunnels.create({ name: 'tnl', type: 'local', localPort: 8080, remotePort: 80, kind: 'tunnel' });
+    q.choose = ['name', '__cancel__'];
+    q.text = [new PromptCancelError()];
+    const { editTunnel } = await import('../src/commands/tunnels.js');
+    await editTunnel('tnl');
+    expect(tunnels.findByName('tnl')?.name).toBe('tnl');
+  });
+
   it('listServers uses the default (recent) sort when none given', async () => {
     const { servers } = await import('../src/store/servers.store.js');
     servers.create({ name: 'a', host: '1.1.1.1', kind: 'server' });

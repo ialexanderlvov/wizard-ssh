@@ -21,7 +21,7 @@ import {
   isInteractive,
   ensureInteractive,
 } from '../src/ui/prompts.js';
-import { NotInteractiveError, PromptAbortError } from '../src/core/errors.js';
+import { NotInteractiveError, PromptAbortError, PromptCancelError } from '../src/core/errors.js';
 
 const mock = inq as unknown as Record<string, Mock>;
 
@@ -72,6 +72,15 @@ describe('guard converts abort errors', () => {
   it('ExitPromptError → PromptAbortError', async () => {
     mock.input.mockRejectedValue(Object.assign(new Error('closed'), { name: 'ExitPromptError' }));
     await expect(text({ message: 'm' })).rejects.toBeInstanceOf(PromptAbortError);
+  });
+  it('AbortPromptError (Esc) → PromptCancelError', async () => {
+    // Esc aborts the prompt's signal; @inquirer rejects with AbortPromptError.
+    mock.input.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortPromptError' }));
+    await expect(text({ message: 'm' })).rejects.toBeInstanceOf(PromptCancelError);
+  });
+  it('PromptCancelError is a PromptAbortError (existing abort catches still fire)', async () => {
+    mock.select.mockRejectedValue(Object.assign(new Error('x'), { name: 'AbortPromptError' }));
+    await expect(choose({ message: 'm', choices: [] })).rejects.toBeInstanceOf(PromptAbortError);
   });
   it('ERR_USE_AFTER_CLOSE → PromptAbortError', async () => {
     mock.select.mockRejectedValue(Object.assign(new Error('x'), { code: 'ERR_USE_AFTER_CLOSE' }));

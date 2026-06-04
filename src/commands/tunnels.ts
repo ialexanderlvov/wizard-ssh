@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
+import { PromptCancelError } from '../core/errors.js';
 import type { EntityCollection } from '../store/collection.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { sessions, type TunnelSession } from '../store/sessions.store.js';
@@ -307,10 +308,17 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
       { name: tr.tunnels.editSave, value: '__save__' },
       { name: tr.tunnels.editCancel, value: '__cancel__' },
     ];
-    const field = await ui.choose<string>({
-      message: dirty ? tr.tunnels.editDirty : tr.tunnels.editClean,
-      choices,
-    });
+    let field: string;
+    try {
+      field = await ui.choose<string>({
+        message: dirty ? tr.tunnels.editDirty : tr.tunnels.editClean,
+        choices,
+      });
+    } catch (e) {
+      // Esc on the editor menu = cancel the edit (still runs the unsaved guard).
+      if (!(e instanceof PromptCancelError)) throw e;
+      field = '__cancel__';
+    }
 
     if (field === '__save__') {
       if (dirty) {
@@ -327,47 +335,52 @@ export async function editTunnel(name?: string, store: TunnelStore = tunnels): P
       ui.printInfo(tr.common.cancelled);
       return;
     }
-    if (field === 'name') {
-      working.name = (
-        await ui.text({
-          message: tr.tunnels.editNewName,
-          default: working.name,
-          validate: (v) =>
-            !isValidName(v.trim())
-              ? tr.tunnels.editInvalidName
-              : store.nameExists(v.trim(), tunnel.id)
-                ? tr.tunnels.editNameTaken
-                : true,
-        })
-      ).trim();
-      dirty = true;
-    } else if (field === 'description') {
-      working.description = await ui.text({
-        message: tr.tunnels.editDescription,
-        default: working.description,
-      });
-      dirty = true;
-    } else if (field === 'tags') {
-      working.tags = parseTags(
-        await ui.text({ message: tr.tunnels.editTags, default: working.tags.join(', ') }),
-      );
-      dirty = true;
-    } else if (field === 'connection') {
-      const target = await askConnectionTarget(working);
-      const prevPending = working.secretId;
-      const secretId = await handlePasswordSecret(target, prevPending);
-      // drop a superseded *pending* blob from an earlier edit this session.
-      if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
-        rollbackSecretChange(originalSecretId, prevPending);
-      working = { ...working, ...target, secretId };
-      dirty = true;
-    } else if (field === 'forward') {
-      const fwd = await askForward(working);
-      working = { ...working, ...fwd };
-      dirty = true;
-    } else if (field === 'browser') {
-      working.openBrowser = !working.openBrowser;
-      dirty = true;
+    try {
+      if (field === 'name') {
+        working.name = (
+          await ui.text({
+            message: tr.tunnels.editNewName,
+            default: working.name,
+            validate: (v) =>
+              !isValidName(v.trim())
+                ? tr.tunnels.editInvalidName
+                : store.nameExists(v.trim(), tunnel.id)
+                  ? tr.tunnels.editNameTaken
+                  : true,
+          })
+        ).trim();
+        dirty = true;
+      } else if (field === 'description') {
+        working.description = await ui.text({
+          message: tr.tunnels.editDescription,
+          default: working.description,
+        });
+        dirty = true;
+      } else if (field === 'tags') {
+        working.tags = parseTags(
+          await ui.text({ message: tr.tunnels.editTags, default: working.tags.join(', ') }),
+        );
+        dirty = true;
+      } else if (field === 'connection') {
+        const target = await askConnectionTarget(working);
+        const prevPending = working.secretId;
+        const secretId = await handlePasswordSecret(target, prevPending);
+        // drop a superseded *pending* blob from an earlier edit this session.
+        if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
+          rollbackSecretChange(originalSecretId, prevPending);
+        working = { ...working, ...target, secretId };
+        dirty = true;
+      } else if (field === 'forward') {
+        const fwd = await askForward(working);
+        working = { ...working, ...fwd };
+        dirty = true;
+      } else if (field === 'browser') {
+        working.openBrowser = !working.openBrowser;
+        dirty = true;
+      }
+    } catch (e) {
+      // Esc out of a single field → discard that field's input, back to the editor.
+      if (!(e instanceof PromptCancelError)) throw e;
     }
   }
 }

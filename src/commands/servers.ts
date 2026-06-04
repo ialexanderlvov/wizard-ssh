@@ -2,6 +2,7 @@
  *  the alias); app-only extras live in the `#wssh {...}` comment. */
 
 import type { Server, SortKey } from '../core/types.js';
+import { PromptCancelError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
 import { vault } from '../vault/vault.js';
 import { runInteractive, runMosh } from '../ssh/runner.js';
@@ -155,20 +156,27 @@ export async function editServer(name?: string): Promise<void> {
     ui.printSection('✏️', tr.servers.editSection(working.name));
     console.log(detailBox(working) + '\n');
 
-    const field = await ui.choose<string>({
-      message: dirty ? tr.servers.editWhatDirty : tr.servers.editWhat,
-      choices: [
-        { name: tr.servers.fieldName(working.name), value: 'name' },
-        {
-          name: tr.servers.fieldDescription(working.description || tr.common.dash),
-          value: 'description',
-        },
-        { name: tr.servers.fieldTags(working.tags.join(', ') || tr.common.dash), value: 'tags' },
-        { name: tr.servers.fieldConnection, value: 'connection' },
-        { name: tr.servers.actionSave, value: '__save__' },
-        { name: tr.servers.actionCancel, value: '__cancel__' },
-      ],
-    });
+    let field: string;
+    try {
+      field = await ui.choose<string>({
+        message: dirty ? tr.servers.editWhatDirty : tr.servers.editWhat,
+        choices: [
+          { name: tr.servers.fieldName(working.name), value: 'name' },
+          {
+            name: tr.servers.fieldDescription(working.description || tr.common.dash),
+            value: 'description',
+          },
+          { name: tr.servers.fieldTags(working.tags.join(', ') || tr.common.dash), value: 'tags' },
+          { name: tr.servers.fieldConnection, value: 'connection' },
+          { name: tr.servers.actionSave, value: '__save__' },
+          { name: tr.servers.actionCancel, value: '__cancel__' },
+        ],
+      });
+    } catch (e) {
+      // Esc on the editor menu = cancel the edit (still runs the unsaved guard).
+      if (!(e instanceof PromptCancelError)) throw e;
+      field = '__cancel__';
+    }
 
     if (field === '__save__') {
       if (dirty) {
@@ -185,41 +193,46 @@ export async function editServer(name?: string): Promise<void> {
       ui.printInfo(tr.common.cancelled);
       return;
     }
-    if (field === 'name') {
-      working.name = (
-        await ui.text({
-          message: tr.servers.newAlias,
-          default: working.name,
-          validate: (v) =>
-            !isValidSshAlias(v.trim())
-              ? tr.servers.aliasInvalid
-              : servers.nameExists(v.trim(), server.id)
-                ? tr.servers.aliasTaken
-                : true,
-        })
-      ).trim();
-      dirty = true;
-    } else if (field === 'description') {
-      working.description = await ui.text({
-        message: tr.servers.descriptionPrompt,
-        default: working.description,
-      });
-      dirty = true;
-    } else if (field === 'tags') {
-      working.tags = parseTags(
-        await ui.text({ message: tr.servers.tagsPrompt, default: working.tags.join(', ') }),
-      );
-      dirty = true;
-    } else if (field === 'connection') {
-      const target = await askServerConnection(working);
-      const prevPending = working.secretId;
-      const secretId = await handlePasswordSecret(target, prevPending);
-      // a repeated connection edit may have minted a blob earlier this session;
-      // drop that superseded *pending* one (never the committed original).
-      if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
-        rollbackSecretChange(originalSecretId, prevPending);
-      working = { ...working, ...target, secretId };
-      dirty = true;
+    try {
+      if (field === 'name') {
+        working.name = (
+          await ui.text({
+            message: tr.servers.newAlias,
+            default: working.name,
+            validate: (v) =>
+              !isValidSshAlias(v.trim())
+                ? tr.servers.aliasInvalid
+                : servers.nameExists(v.trim(), server.id)
+                  ? tr.servers.aliasTaken
+                  : true,
+          })
+        ).trim();
+        dirty = true;
+      } else if (field === 'description') {
+        working.description = await ui.text({
+          message: tr.servers.descriptionPrompt,
+          default: working.description,
+        });
+        dirty = true;
+      } else if (field === 'tags') {
+        working.tags = parseTags(
+          await ui.text({ message: tr.servers.tagsPrompt, default: working.tags.join(', ') }),
+        );
+        dirty = true;
+      } else if (field === 'connection') {
+        const target = await askServerConnection(working);
+        const prevPending = working.secretId;
+        const secretId = await handlePasswordSecret(target, prevPending);
+        // a repeated connection edit may have minted a blob earlier this session;
+        // drop that superseded *pending* one (never the committed original).
+        if (prevPending && prevPending !== originalSecretId && prevPending !== secretId)
+          rollbackSecretChange(originalSecretId, prevPending);
+        working = { ...working, ...target, secretId };
+        dirty = true;
+      }
+    } catch (e) {
+      // Esc out of a single field → discard that field's input, back to the editor.
+      if (!(e instanceof PromptCancelError)) throw e;
     }
   }
 }

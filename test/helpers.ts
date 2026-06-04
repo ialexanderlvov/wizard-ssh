@@ -39,18 +39,30 @@ export function promptMock(q: PromptQueues) {
   return {
     isInteractive: () => true,
     ensureInteractive: () => {},
+    // A queued Error is thrown rather than returned, so a test can enqueue a
+    // PromptCancelError to simulate the user pressing Esc to back out of a prompt.
     text: async (o?: { validate?: (v: string) => unknown }) => {
       const v = q.text.shift();
+      if (v instanceof Error) throw v;
       o?.validate?.(String(v ?? ''));
       return v;
     },
     secret: async (o?: { validate?: (v: string) => unknown }) => {
       const v = q.secret.shift();
+      if (v instanceof Error) throw v;
       o?.validate?.(String(v ?? ''));
       return v;
     },
-    choose: async () => q.choose.shift(),
-    confirm: async () => q.confirm.shift(),
+    choose: async () => {
+      const v = q.choose.shift();
+      if (v instanceof Error) throw v;
+      return v;
+    },
+    confirm: async () => {
+      const v = q.confirm.shift();
+      if (v instanceof Error) throw v;
+      return v;
+    },
     multiChoose: async () => q.multi.shift(),
     searchChoose: async (o?: { source?: (t: string | undefined) => unknown }) => {
       await o?.source?.('');

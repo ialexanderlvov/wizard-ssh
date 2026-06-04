@@ -10,7 +10,7 @@ import {
   checkbox as _checkbox,
   search as _search,
 } from '@inquirer/prompts';
-import { NotInteractiveError, PromptAbortError } from '../core/errors.js';
+import { NotInteractiveError, PromptAbortError, PromptCancelError } from '../core/errors.js';
 import { runtime } from './runtime.js';
 import { tr } from '../i18n/index.js';
 
@@ -26,9 +26,12 @@ async function guard<T>(p: Promise<T>): Promise<T> {
     return await p;
   } catch (e) {
     const err = e as { name?: string; code?: string; message?: string };
+    // Esc cancels via the AbortSignal we wire in askWithEscape → AbortPromptError.
+    // Surface it as a soft PromptCancelError so editing menus can return to their
+    // own screen, distinct from Ctrl+C below (which force-quits the prompt).
+    if (err?.name === 'AbortPromptError') throw new PromptCancelError();
     if (
       err?.name === 'ExitPromptError' ||
-      err?.name === 'AbortPromptError' ||
       err?.code === 'ERR_USE_AFTER_CLOSE' ||
       /force closed|SIGINT|readline was closed/i.test(err?.message ?? '')
     ) {
@@ -36,6 +39,32 @@ async function guard<T>(p: Promise<T>): Promise<T> {
     }
     throw e;
   }
+}
+
+/** Context handed to an @inquirer prompt — carries the AbortSignal we cancel on. */
+type PromptContext = { signal?: AbortSignal };
+
+/** Run an @inquirer prompt with Esc-to-cancel wired in. While the prompt is open
+ *  we watch stdin for a lone ESC byte and abort the prompt's AbortSignal, so the
+ *  user can leave a value-edit prompt without submitting a value (→ guard turns
+ *  the resulting AbortPromptError into PromptCancelError). A bare 0x1b is the
+ *  Escape key; escape SEQUENCES (arrows, Alt-combos, …) start with 0x1b but carry
+ *  more bytes, so only a single-byte chunk counts — arrows never cancel. Without a
+ *  TTY there is no raw key stream to watch, so we just run the prompt as-is. */
+function askWithEscape<T>(factory: (ctx: PromptContext) => Promise<T>): Promise<T> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) return guard(factory({}));
+  const controller = new AbortController();
+  const onData = (chunk: Buffer | string): void => {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+    if (buf.length === 1 && buf[0] === 0x1b) controller.abort();
+  };
+  // A parallel 'data' listener only observes the bytes (Node fans each chunk out
+  // to every listener); inquirer's own readline still receives and parses them.
+  stdin.on('data', onData);
+  return guard(factory({ signal: controller.signal })).finally(() => {
+    stdin.removeListener('data', onData);
+  });
 }
 
 export interface Choice<V> {
@@ -50,20 +79,24 @@ export function text(opts: {
   default?: string;
   validate?: (v: string) => boolean | string;
 }): Promise<string> {
-  return guard(_input({ message: opts.message, default: opts.default, validate: opts.validate }));
+  return askWithEscape((ctx) =>
+    _input({ message: opts.message, default: opts.default, validate: opts.validate }, ctx),
+  );
 }
 
 export function secret(opts: {
   message: string;
   validate?: (v: string) => boolean | string;
 }): Promise<string> {
-  return guard(_password({ message: opts.message, mask: '•', validate: opts.validate }));
+  return askWithEscape((ctx) =>
+    _password({ message: opts.message, mask: '•', validate: opts.validate }, ctx),
+  );
 }
 
 export function confirm(opts: { message: string; default?: boolean }): Promise<boolean> {
   // `--yes` assumes "yes" to every confirmation (for unattended/scripted runs).
   if (runtime.assumeYes) return Promise.resolve(true);
-  return guard(_confirm({ message: opts.message, default: opts.default }));
+  return askWithEscape((ctx) => _confirm({ message: opts.message, default: opts.default }, ctx));
 }
 
 export function choose<V>(opts: {
@@ -72,13 +105,16 @@ export function choose<V>(opts: {
   pageSize?: number;
   default?: V;
 }): Promise<V> {
-  return guard(
-    _select<V>({
-      message: opts.message,
-      choices: opts.choices,
-      pageSize: opts.pageSize ?? 12,
-      ...(opts.default !== undefined ? { default: opts.default } : {}),
-    }),
+  return askWithEscape((ctx) =>
+    _select<V>(
+      {
+        message: opts.message,
+        choices: opts.choices,
+        pageSize: opts.pageSize ?? 12,
+        ...(opts.default !== undefined ? { default: opts.default } : {}),
+      },
+      ctx,
+    ),
   );
 }
 
@@ -87,8 +123,11 @@ export function multiChoose<V>(opts: {
   choices: Array<Choice<V>>;
   pageSize?: number;
 }): Promise<V[]> {
-  return guard(
-    _checkbox<V>({ message: opts.message, choices: opts.choices, pageSize: opts.pageSize ?? 14 }),
+  return askWithEscape((ctx) =>
+    _checkbox<V>(
+      { message: opts.message, choices: opts.choices, pageSize: opts.pageSize ?? 14 },
+      ctx,
+    ),
   );
 }
 
@@ -98,15 +137,25 @@ export function searchChoose<V>(opts: {
   source: (term: string | undefined) => Promise<Array<Choice<V>>> | Array<Choice<V>>;
   pageSize?: number;
 }): Promise<V> {
-  return guard(
-    _search<V>({
-      message: opts.message,
-      pageSize: opts.pageSize ?? 12,
-      source: async (term) => opts.source(term),
-    }),
+  return askWithEscape((ctx) =>
+    _search<V>(
+      {
+        message: opts.message,
+        pageSize: opts.pageSize ?? 12,
+        source: async (term) => opts.source(term),
+      },
+      ctx,
+    ),
   );
 }
 
 export async function pause(message = tr.ui.pause): Promise<void> {
-  await guard(_input({ message }));
+  // Esc dismisses the pause just like Enter — it only waits for acknowledgement,
+  // so a soft cancel means "go on", while Ctrl+C still aborts up the stack.
+  try {
+    await askWithEscape((ctx) => _input({ message }, ctx));
+  } catch (e) {
+    if (e instanceof PromptCancelError) return;
+    throw e;
+  }
 }
