@@ -3,7 +3,7 @@
 
 import net from 'node:net';
 import type { ConnectionTarget, Server } from '../core/types.js';
-import { capture, commandExists } from '../utils/exec.js';
+import { capture, captureAsync, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { destination, targetOptions, buildRunArgs } from './args.js';
 import { runProgram, runSshInherit } from './runner.js';
@@ -72,6 +72,68 @@ export function checkTcp(host: string, port: number, timeoutMs = 5000): Promise<
 export async function healthCheck(t: ConnectionTarget): Promise<CheckResult> {
   const ep = resolveEndpoint(t);
   return checkTcp(ep.host, ep.port);
+}
+
+/** Async endpoint resolution: never blocks the event loop, so many config hosts
+ *  can be resolved (and then checked) concurrently for a fleet dashboard. */
+export async function resolveEndpointAsync(t: ConnectionTarget): Promise<Endpoint> {
+  if (t.hostMode !== 'sshconfig') {
+    return { host: t.host, port: t.sshPort || 22 };
+  }
+  const res = await captureAsync('ssh', ['-G', t.sshHost], 10_000);
+  let host = t.sshHost;
+  let port = 22;
+  if (res.status === 0) {
+    for (const line of res.stdout.split('\n')) {
+      const [key, ...rest] = line.trim().split(/\s+/);
+      const value = rest.join(' ');
+      if (key === 'hostname' && value) host = value;
+      else if (key === 'port' && value) port = Number(value) || 22;
+    }
+  }
+  return { host, port };
+}
+
+export interface FleetTarget {
+  name: string;
+  kind: 'server' | 'tunnel';
+  target: ConnectionTarget;
+}
+
+export interface FleetStatus extends FleetTarget {
+  result: CheckResult;
+}
+
+/** Run an async mapper over items with a bounded concurrency, preserving order. */
+async function mapPool<I, O>(
+  items: readonly I[],
+  limit: number,
+  fn: (item: I, index: number) => Promise<O>,
+): Promise<O[]> {
+  const out: O[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i] as I, i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/** Check reachability of many targets at once (bounded concurrency). */
+export function healthCheckAll(
+  targets: readonly FleetTarget[],
+  opts: { concurrency?: number; timeoutMs?: number } = {},
+): Promise<FleetStatus[]> {
+  const concurrency = opts.concurrency ?? 8;
+  return mapPool(targets, concurrency, async (t) => {
+    const ep = await resolveEndpointAsync(t.target);
+    const result = await checkTcp(ep.host, ep.port, opts.timeoutMs ?? 5000);
+    return { ...t, result };
+  });
 }
 
 /** Copy a public key to the server (`ssh-copy-id`). */

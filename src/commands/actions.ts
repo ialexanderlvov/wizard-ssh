@@ -1,12 +1,16 @@
-/** Extra actions: reachability check, ssh-copy-id, remote command, file transfer. */
+/** Extra actions: reachability check, fleet status, ssh-copy-id, remote command,
+ *  file transfer, known_hosts, tag groups. */
 
 import type { ConnectionTarget, Server } from '../core/types.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { findSshKeys } from '../ssh/keys.js';
-import { healthCheck, copyId, runCommand, transfer } from '../ssh/features.js';
-import type { TransferOptions, TransferTool } from '../ssh/features.js';
+import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
+import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
+import { forgetHostKey } from '../ssh/hostkey.js';
+import { resolveEndpoint } from '../ssh/features.js';
 import * as ui from '../ui/index.js';
+import { renderStatusTable } from '../ui/tables.js';
 import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
@@ -32,16 +36,135 @@ export async function checkTarget(target: ConnectionTarget, label: string): Prom
   return result.open;
 }
 
-export async function checkFlow(name?: string): Promise<number> {
+export async function checkFlow(name?: string, opts: { json?: boolean } = {}): Promise<number> {
   // try servers first, then tunnels
   const server = name ? servers.findByName(name) : null;
-  if (server) return (await checkTarget(server, server.name)) ? 0 : 2;
-  const tunnel = name ? tunnels.findByName(name) : null;
-  if (tunnel) return (await checkTarget(tunnel, tunnel.name)) ? 0 : 2;
+  const tunnel = !server && name ? tunnels.findByName(name) : null;
+  const direct = server ?? tunnel;
+
+  if (opts.json) {
+    if (!direct) {
+      ui.printError(`«${name ?? ''}» не найдено (для --json нужно точное имя).`);
+      return 1;
+    }
+    const res = await healthCheck(direct);
+    console.log(JSON.stringify({ name: direct.name, ...res }, null, 2));
+    return res.open ? 0 : 2;
+  }
+
+  if (direct) return (await checkTarget(direct, direct.name)) ? 0 : 2;
 
   const picked = await resolveServerLike(name, '🔎 Выберите сервер для проверки');
   if (!picked) return 0;
   return (await checkTarget(picked, picked.name)) ? 0 : 2;
+}
+
+// ---------- fleet status (mass parallel check) ----------
+
+export interface StatusOptions {
+  json?: boolean;
+  /** restrict to servers only / tunnels only */
+  serversOnly?: boolean;
+  tunnelsOnly?: boolean;
+  /** restrict to entities carrying this tag */
+  tag?: string;
+}
+
+function fleetTargets(opts: StatusOptions): FleetTarget[] {
+  const out: FleetTarget[] = [];
+  const tagged = (tags: string[]): boolean => !opts.tag || tags.includes(opts.tag);
+  if (!opts.tunnelsOnly)
+    for (const s of servers.all())
+      if (tagged(s.tags)) out.push({ name: s.name, kind: 'server', target: s });
+  if (!opts.serversOnly)
+    for (const t of tunnels.all())
+      if (tagged(t.tags)) out.push({ name: t.name, kind: 'tunnel', target: t });
+  return out;
+}
+
+/** Check every server/tunnel (optionally filtered) at once and show a dashboard. */
+export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
+  const targets = fleetTargets(opts);
+  if (!targets.length) {
+    if (opts.json) console.log('[]');
+    else ui.printWarn('Нет целей для проверки.');
+    return 0;
+  }
+  if (!opts.json) ui.printSection('📡', `Статус — проверяю ${targets.length}…`);
+  const results = await healthCheckAll(targets, { concurrency: 10 });
+  if (opts.json) {
+    console.log(
+      JSON.stringify(
+        results.map((r) => ({
+          name: r.name,
+          kind: r.kind,
+          host: r.result.host,
+          port: r.result.port,
+          open: r.result.open,
+          ms: r.result.ms,
+        })),
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.log(renderStatusTable(results));
+    const down = results.filter((r) => !r.result.open).length;
+    if (down) ui.printWarn(`Недоступно: ${down} из ${results.length}.`);
+    else ui.printOk(`Все доступны (${results.length}).`);
+  }
+  return results.some((r) => !r.result.open) ? 2 : 0;
+}
+
+// ---------- known_hosts ----------
+
+/** Forget a host's saved key (after a legitimate server rebuild). */
+export async function forgetHostKeyFlow(name?: string): Promise<number> {
+  let host = '';
+  const server = name ? servers.findByName(name) : null;
+  if (server) {
+    host = resolveEndpoint(server).host;
+  } else if (name) {
+    host = name; // treat a non-matching argument as a literal host
+  } else {
+    const picked = await resolveServerLike(undefined, '🧹 У какого сервера забыть host-key?');
+    if (!picked) return 0;
+    host = resolveEndpoint(picked).host;
+  }
+  const res = forgetHostKey(host);
+  if (res.ok) ui.printOk(res.message);
+  else ui.printError(res.message);
+  return res.ok ? 0 : 1;
+}
+
+// ---------- tag groups ----------
+
+export function groupListFlow(opts: { json?: boolean } = {}): void {
+  const counts = new Map<string, number>();
+  for (const s of servers.all()) for (const t of s.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+  for (const t of tunnels.all())
+    for (const tag of t.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (opts.json) {
+    console.log(JSON.stringify(Object.fromEntries(rows), null, 2));
+    return;
+  }
+  if (!rows.length) {
+    ui.printWarn('Тегов пока нет. Добавьте теги серверам/туннелям.');
+    return;
+  }
+  ui.printSection('🏷', `Группы по тегам (${rows.length})`);
+  for (const [tag, n] of rows)
+    console.log(`  ${ui.chalk.cyan('#' + tag)}  ${ui.chalk.dim(`${n}`)}`);
+}
+
+/** Check every entity carrying a tag (parallel). */
+export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {}): Promise<number> {
+  if (!tag.trim()) {
+    ui.printError('Укажите тег: wssh group check <tag>');
+    return 1;
+  }
+  return statusFlow({ tag: tag.trim(), json: opts.json });
 }
 
 export async function copyIdFlow(name?: string): Promise<number> {
