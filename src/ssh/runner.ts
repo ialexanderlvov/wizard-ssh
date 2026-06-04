@@ -4,18 +4,20 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, type StdioOptions } from 'node:child_process';
 import boxen from 'boxen';
 import type { ConnectionTarget, Server, Tunnel } from '../core/types.js';
 import { FILES, ensureDir } from '../core/paths.js';
-import { commandExists } from '../utils/exec.js';
+import { capture, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { isValidPort } from '../utils/validators.js';
 import { openInBrowser } from '../utils/platform.js';
 import { chalk, accent } from '../ui/theme.js';
-import { printSection, printInfo, printWarn, printError } from '../ui/messages.js';
+import { printSection, printInfo, printOk, printWarn, printError } from '../ui/messages.js';
+import { confirm, isInteractive } from '../ui/prompts.js';
 import { targetSummary } from '../ui/format.js';
 import { buildConnectArgs, buildTunnelArgs, type ConnectOptions } from './args.js';
+import { forgetHostKey, isHostKeyError, knownHostsToken } from './hostkey.js';
 
 export interface PreflightOptions {
   /** tunnels need valid forward ports */
@@ -68,15 +70,21 @@ function writeTempPass(pw: string): { file: string; cleanup: () => void } {
 interface SpawnResult {
   code: number;
   startedAt: number;
+  /** ssh's stderr, captured only when `captureStderr` was requested (else ''). */
+  stderr: string;
 }
 
 /** Core spawn: wraps in sshpass when a password is given. stdio inherited.
- *  `program` is normally `ssh`, but `scp`/`ssh-copy-id` reuse this too. */
+ *  `program` is normally `ssh`, but `scp`/`ssh-copy-id` reuse this too.
+ *  With `captureStderr`, ssh's stderr is teed through to the terminal AND
+ *  collected (capped) so the caller can react to diagnostics like a host-key
+ *  mismatch — stdin/stdout stay attached to the tty so the shell works normally. */
 function spawnPass(
   program: string,
   programArgs: string[],
   password: string | undefined,
   onSpawn?: () => void,
+  captureStderr = false,
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
     let cmd = program;
@@ -90,9 +98,16 @@ function spawnPass(
       args = ['-f', tmp.file, program, ...programArgs];
     }
 
+    const stdio: StdioOptions = captureStderr ? ['inherit', 'inherit', 'pipe'] : 'inherit';
     const startedAt = Date.now();
-    const child = spawn(cmd, args, { stdio: 'inherit' });
+    const child = spawn(cmd, args, { stdio });
     onSpawn?.();
+
+    let stderr = '';
+    child.stderr?.on('data', (d: Buffer) => {
+      process.stderr.write(d); // keep the user seeing ssh's own output
+      if (stderr.length < 16_384) stderr += d.toString('utf8');
+    });
 
     const onSigint = (): void => {
       if (!child.killed) child.kill('SIGINT');
@@ -102,7 +117,7 @@ function spawnPass(
     const done = (code: number): void => {
       cleanup();
       process.removeListener('SIGINT', onSigint);
-      resolve({ code, startedAt });
+      resolve({ code, startedAt, stderr });
     };
 
     child.on('error', (e: Error) => {
@@ -111,6 +126,54 @@ function spawnPass(
     });
     child.on('close', (code) => done(code ?? 0));
   });
+}
+
+/** Resolve a target to the host:port that ssh records in known_hosts (follows
+ *  ~/.ssh/config via `ssh -G`). Kept local so the runner doesn't depend on the
+ *  features module (which depends back on the runner). */
+function knownHostsTarget(t: ConnectionTarget): string {
+  let host = t.host;
+  let port = t.sshPort || 22;
+  if (t.hostMode === 'sshconfig') {
+    host = t.sshHost;
+    port = 22;
+    const res = capture('ssh', ['-G', t.sshHost]);
+    if (res.status === 0) {
+      for (const line of res.stdout.split('\n')) {
+        const [key, ...rest] = line.trim().split(/\s+/);
+        const value = rest.join(' ');
+        if (key === 'hostname' && value) host = value;
+        else if (key === 'port' && value) port = Number(value) || 22;
+      }
+    }
+  }
+  return knownHostsToken(host, port);
+}
+
+/** After a host-key verification failure: offer to forget the stale key and
+ *  reconnect. Returns true when the key was removed (caller should retry). */
+async function offerForgetHostKey(target: ConnectionTarget): Promise<boolean> {
+  if (!isInteractive()) {
+    printWarn('Ключ хоста изменился. Удалить старый: wssh forget-host <host>.');
+    return false;
+  }
+  const token = knownHostsTarget(target);
+  printWarn('Ключ хоста изменился (Host key verification failed).');
+  const ok = await confirm({
+    message: `Забыть старый ключ для ${token} и переподключиться?`,
+    default: false,
+  });
+  if (!ok) {
+    printInfo('Оставлено как есть.');
+    return false;
+  }
+  const res = forgetHostKey(token);
+  if (!res.ok) {
+    printError(res.message);
+    return false;
+  }
+  printOk('Старый ключ удалён, переподключаюсь…');
+  return true;
 }
 
 /** Run ssh with the given args (stdio inherited); resolve with exit code. */
@@ -129,7 +192,9 @@ export async function runProgram(
   return code;
 }
 
-/** Interactive shell session to a server. Resolves with the exit code. */
+/** Interactive shell session to a server. Resolves with the exit code. On a
+ *  host-key verification failure it offers to forget the stale key and reconnect
+ *  once. */
 export async function runInteractive(
   server: Server,
   password?: string,
@@ -142,11 +207,23 @@ export async function runInteractive(
   }
   printSection('▶', `Подключение → ${server.name}`);
   console.log(chalk.dim('  ' + targetSummary(server)) + '\n');
-  const { code } = await spawnPass('ssh', buildConnectArgs(server, opts), password);
-  console.log('');
-  if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim('Сессия завершена.'));
-  else printError(`ssh завершился с кодом ${code}.`);
-  return code && code !== 130 ? code : 0;
+
+  const sshArgs = buildConnectArgs(server, opts);
+  let triedForget = false;
+  for (;;) {
+    const { code, stderr } = await spawnPass('ssh', sshArgs, password, undefined, true);
+    console.log('');
+
+    // Reactive recovery: a changed host key fails fast with code 255.
+    if (code !== 0 && !triedForget && isHostKeyError(stderr)) {
+      triedForget = true;
+      if (await offerForgetHostKey(server)) continue; // reconnect once
+    }
+
+    if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim('Сессия завершена.'));
+    else printError(`ssh завершился с кодом ${code}.`);
+    return code && code !== 130 ? code : 0;
+  }
 }
 
 export interface ReconnectDecision {
@@ -250,6 +327,7 @@ export async function runTunnel(
   let raises = 0;
   let attempt = 0;
   let stop = false;
+  let triedForget = false;
   let lastCode = 0;
   let lastStartedAt = Date.now();
 
@@ -263,22 +341,38 @@ export async function runTunnel(
   try {
     for (;;) {
       let upTimer: NodeJS.Timeout | undefined;
-      const { code, startedAt } = await spawnPass('ssh', sshArgs, password, () => {
-        upTimer = setTimeout(() => {
-          const restored = raises > 0;
-          console.log(tunnelUpBox(tunnel, restored));
-          raises++;
-          if (tunnel.type === 'local' && tunnel.openBrowser && !opened) {
-            opened = true;
-            openInBrowser(localUrl);
-          }
-        }, 1500);
-      });
+      const { code, startedAt, stderr } = await spawnPass(
+        'ssh',
+        sshArgs,
+        password,
+        () => {
+          upTimer = setTimeout(() => {
+            const restored = raises > 0;
+            console.log(tunnelUpBox(tunnel, restored));
+            raises++;
+            if (tunnel.type === 'local' && tunnel.openBrowser && !opened) {
+              opened = true;
+              openInBrowser(localUrl);
+            }
+          }, 1500);
+        },
+        true,
+      );
       if (upTimer) clearTimeout(upTimer);
       lastCode = code;
       lastStartedAt = startedAt;
 
       if (stop) break;
+      // A changed host key would just hot-loop the auto-reconnect — offer to
+      // forget the stale key and retry once instead.
+      if (code !== 0 && !triedForget && isHostKeyError(stderr)) {
+        triedForget = true;
+        if (await offerForgetHostKey(tunnel)) {
+          attempt = 0;
+          continue;
+        }
+        break;
+      }
       if (!autoReconnect) break;
       const decision = decideReconnect(code, Date.now() - startedAt, attempt);
       if (!decision.reconnect) {

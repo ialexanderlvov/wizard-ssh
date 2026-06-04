@@ -29,7 +29,14 @@ export {
   pubPathFor,
   type KeyInfo,
 } from './keys.js';
-export { forgetHostKey, listKnownHosts, KNOWN_HOSTS_FILE, type KnownHost } from './hostkey.js';
+export {
+  forgetHostKey,
+  listKnownHosts,
+  isHostKeyError,
+  knownHostsToken,
+  KNOWN_HOSTS_FILE,
+  type KnownHost,
+} from './hostkey.js';
 export {
   resolveEndpoint,
   resolveEndpointAsync,

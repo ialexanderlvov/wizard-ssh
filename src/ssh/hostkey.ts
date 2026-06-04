@@ -54,6 +54,21 @@ export function listKnownHosts(): KnownHost[] {
     .sort((a, b) => (lastLine.get(b.host) ?? 0) - (lastLine.get(a.host) ?? 0));
 }
 
+/** True when ssh's stderr indicates a host-key verification failure / change —
+ *  i.e. the server's key no longer matches the one saved in known_hosts. */
+export function isHostKeyError(stderr: string): boolean {
+  if (!stderr) return false;
+  return /Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED|POSSIBLE DNS SPOOFING/i.test(
+    stderr,
+  );
+}
+
+/** The known_hosts host token for a host:port. Non-default ports are stored in
+ *  the bracketed `[host]:port` form; port 22 is stored as the bare host. */
+export function knownHostsToken(host: string, port: number): string {
+  return port && port !== 22 ? `[${host}]:${port}` : host;
+}
+
 /** Remove every key for `host` from known_hosts (`ssh-keygen -R <host> -f file`).
  *  The file is passed explicitly so it edits exactly the known_hosts we list
  *  (ssh-keygen otherwise resolves ~ via the passwd db, not $HOME). */

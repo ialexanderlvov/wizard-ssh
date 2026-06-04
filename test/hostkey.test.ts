@@ -49,3 +49,23 @@ describe('listKnownHosts', () => {
     expect(listKnownHosts()).toEqual([]);
   });
 });
+
+describe('isHostKeyError', () => {
+  it('detects host-key verification failures', async () => {
+    const { isHostKeyError } = await import('../src/ssh/hostkey.js');
+    expect(isHostKeyError('Host key verification failed.')).toBe(true);
+    expect(isHostKeyError('@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@')).toBe(true);
+    expect(isHostKeyError('POSSIBLE DNS SPOOFING DETECTED')).toBe(true);
+    expect(isHostKeyError('Permission denied (publickey).')).toBe(false);
+    expect(isHostKeyError('')).toBe(false);
+  });
+});
+
+describe('knownHostsToken', () => {
+  it('uses the bracketed form only for non-default ports', async () => {
+    const { knownHostsToken } = await import('../src/ssh/hostkey.js');
+    expect(knownHostsToken('10.0.0.5', 22)).toBe('10.0.0.5');
+    expect(knownHostsToken('10.0.0.5', 2222)).toBe('[10.0.0.5]:2222');
+    expect(knownHostsToken('example.com', 0)).toBe('example.com');
+  });
+});
