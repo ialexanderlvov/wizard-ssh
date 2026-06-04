@@ -118,6 +118,56 @@ export function listKeys(): KeyInfo[] {
   });
 }
 
+/** Whether a private key is passphrase-protected. Uses `ssh-keygen -y -P ''`,
+ *  which exits 0 on a plaintext key and non-zero on an encrypted one — without
+ *  prompting. Returns null when undeterminable (no ssh-keygen, sk-key, or any
+ *  other error) so callers don't over-report. */
+export function isKeyEncrypted(privPath: string): boolean | null {
+  if (!commandExists('ssh-keygen')) return null;
+  const abs = expandHome(privPath);
+  const res = capture('ssh-keygen', ['-y', '-P', '', '-f', abs]);
+  if (res.status === 0) return false; // empty passphrase worked → not encrypted
+  if (/passphrase|incorrect|decrypt/i.test(res.stderr)) return true;
+  return null; // unparseable / unrelated error
+}
+
+/** Machine-readable weakness tags for a key. */
+export type KeyIssue = 'weak-rsa' | 'unencrypted' | 'no-pub' | 'orphan';
+
+export interface KeyAudit extends KeyInfo {
+  encrypted: boolean | null;
+  /** referenced by zero servers/tunnels (only set when some entity has keys) */
+  orphan: boolean;
+  issues: KeyIssue[];
+}
+
+/** Pure weakness classification (exposed for testing). */
+export function keyIssues(
+  info: Pick<KeyInfo, 'type' | 'bits' | 'hasPub'>,
+  encrypted: boolean | null,
+  orphan: boolean,
+): KeyIssue[] {
+  const issues: KeyIssue[] = [];
+  if (/rsa/i.test(info.type) && info.bits > 0 && info.bits < 2048) issues.push('weak-rsa');
+  if (encrypted === false) issues.push('unencrypted');
+  if (!info.hasPub) issues.push('no-pub');
+  if (orphan) issues.push('orphan');
+  return issues;
+}
+
+/** Audit every ~/.ssh key for weakness/hygiene issues. `referenced` is the set
+ *  of absolute key paths used by servers/tunnels; orphan flags are only emitted
+ *  when it's non-empty (so a fresh install doesn't mark everything orphan). */
+export function auditKeys(referenced: ReadonlySet<string> = new Set()): KeyAudit[] {
+  const track = referenced.size > 0;
+  return listKeys().map((k) => {
+    const isSk = /sk/i.test(k.type);
+    const encrypted = isSk ? null : isKeyEncrypted(k.path);
+    const orphan = track && !referenced.has(path.resolve(expandHome(k.path)));
+    return { ...k, encrypted, orphan, issues: keyIssues(k, encrypted, orphan) };
+  });
+}
+
 export type KeyType = 'ed25519' | 'rsa' | 'ecdsa' | 'ed25519-sk' | 'ecdsa-sk';
 
 /** FIDO/U2F security-key backed types — require a hardware authenticator. */

@@ -50,8 +50,9 @@ export function registerCommands(program: Command): void {
     .alias('go')
     .description(tr.cmd.connectDesc)
     .option('--tmux [session]', tr.cmd.optTmux)
-    .action(async (name: string | undefined, opts: { tmux?: string | boolean }) => {
-      const code = await quickConnectByName(name, { tmux: tmuxOpt(opts.tmux) });
+    .option('--mosh', tr.cmd.optMosh)
+    .action(async (name: string | undefined, opts: { tmux?: string | boolean; mosh?: boolean }) => {
+      const code = await quickConnectByName(name, { tmux: tmuxOpt(opts.tmux), mosh: opts.mosh });
       if (code) process.exitCode = code;
     });
 
@@ -66,8 +67,12 @@ export function registerCommands(program: Command): void {
     .alias('c')
     .description(tr.cmd.serverConnectDesc)
     .option('--tmux [session]', tr.cmd.optTmux)
-    .action(async (n: string | undefined, opts: { tmux?: string | boolean }) => {
-      const code = await serverCmd.connectServerFlow(n, { tmux: tmuxOpt(opts.tmux) });
+    .option('--mosh', tr.cmd.optMosh)
+    .action(async (n: string | undefined, opts: { tmux?: string | boolean; mosh?: boolean }) => {
+      const code = await serverCmd.connectServerFlow(n, {
+        tmux: tmuxOpt(opts.tmux),
+        mosh: opts.mosh,
+      });
       if (code) process.exitCode = code;
     });
   server
@@ -105,6 +110,11 @@ export function registerCommands(program: Command): void {
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       serverCmd.listServers({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
     });
+  server
+    .command('duplicate [name] [newName]')
+    .alias('dup')
+    .description(tr.cmd.serverDuplicateDesc)
+    .action((n?: string, nn?: string) => serverCmd.duplicateServerFlow(n, nn));
   server.action(() => server.help());
 
   // ---- tunnels ----
@@ -192,6 +202,24 @@ export function registerCommands(program: Command): void {
     .option('--json', tr.cmd.optOutputJson)
     .action((o: { sort?: string; reverse?: boolean; json?: boolean }) => {
       tunnelCmd.listTunnels({ sort: parseSort(o.sort), reverse: o.reverse, json: o.json });
+    });
+  tunnel
+    .command('clone [name] [newName]')
+    .alias('cp')
+    .description(tr.cmd.tunnelCloneDesc)
+    .action((n?: string, nn?: string) => tunnelCmd.cloneTunnelFlow(n, nn));
+  tunnel
+    .command('logs [name]')
+    .alias('log')
+    .description(tr.cmd.tunnelLogsDesc)
+    .option('--tail <n>', tr.cmd.tunnelLogsOptTail)
+    .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
+    .action(async (n: string | undefined, o: { tail?: string; follow?: boolean }) => {
+      const code = await tunnelCmd.tunnelLogsFlow(n, {
+        tail: o.tail !== undefined ? Number(o.tail) : undefined,
+        follow: o.follow,
+      });
+      if (code) process.exitCode = code;
     });
   tunnel.action(() => tunnel.help());
 
@@ -357,7 +385,8 @@ export function registerCommands(program: Command): void {
     .command('doctor')
     .description(tr.cmd.doctorDesc)
     .option('--json', tr.cmd.optOutputJson)
-    .action((o: { json?: boolean }) => {
+    .option('--list-stale-keys', tr.cmd.doctorOptListStale)
+    .action((o: { json?: boolean; listStaleKeys?: boolean }) => {
       const code = doctor(o);
       if (code) process.exitCode = code;
     });

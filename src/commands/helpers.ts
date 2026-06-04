@@ -67,6 +67,9 @@ export async function ensureVaultSetup(): Promise<boolean> {
   }
   let touchId = false;
   if (vault.touchIdSupported()) {
+    // Be honest about the trade-off: enabling Touch ID adds a same-user-readable
+    // copy of the master key to the Keychain, so the user decides on a true model.
+    ui.printInfo(tr.helpers.touchIdNote);
     touchId = await ui.confirm({
       message: tr.helpers.enableTouchId,
       default: true,

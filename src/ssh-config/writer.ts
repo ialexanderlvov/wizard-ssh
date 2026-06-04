@@ -7,8 +7,9 @@ import path from 'node:path';
 import { SSH_CONFIG_FILE, SSH_DIR, FILES, ensureDir } from '../core/paths.js';
 import { WizardError } from '../core/errors.js';
 import { hasUnsafeChars } from '../utils/validators.js';
+import { atomicWrite } from '../utils/atomic.js';
 import type { SshConfigEntry } from './types.js';
-import { blocksFromLines } from './parser.js';
+import { blocksFromLines, getHost } from './parser.js';
 import { parseWsshComment, serializeWssh } from './wssh.js';
 import { tr } from '../i18n/index.js';
 
@@ -61,10 +62,25 @@ function readLines(): string[] {
   }
 }
 
+/** Atomic write (tmp + fsync + rename) so a concurrent run or a crash mid-write
+ *  can't tear the file (last-writer-wins is still possible, but never a
+ *  half-written ~/.ssh/config). Resolves through a symlink so a symlinked config
+ *  (dotfiles repo) is updated in place, not replaced by a regular file. The tmp
+ *  is created with an unpredictable name and an exclusive, no-follow open so a
+ *  pre-planted symlink (e.g. if the resolved dir is group/world-writable) can't
+ *  redirect the write. */
 function writeLines(lines: string[]): void {
   let text = lines.join('\n');
   if (!text.endsWith('\n')) text += '\n';
-  fs.writeFileSync(SSH_CONFIG_FILE, text.replace(/\n{3,}/g, '\n\n'), { mode: 0o600 });
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  let target = SSH_CONFIG_FILE;
+  try {
+    target = fs.realpathSync(SSH_CONFIG_FILE);
+  } catch {
+    /* file may not exist yet — write at the canonical path */
+  }
+  atomicWrite(target, text);
 }
 
 export function formatBlock(entry: SshConfigEntry): string[] {
@@ -91,7 +107,10 @@ function findManaged(
   alias: string,
 ): { start: number; contentEnd: number; metaStart: number } | null {
   for (const block of blocksFromLines(lines, SSH_CONFIG_FILE)) {
-    if (block.aliases.length === 1 && block.aliases[0] === alias) {
+    // Single-PATTERN only: `block.aliases` filters out wildcards/negations, so a
+    // `Host * prod` block would otherwise look like it manages "prod" and a
+    // rewrite/remove would silently drop the `*`. patternCount guards that.
+    if (block.patternCount === 1 && block.aliases.length === 1 && block.aliases[0] === alias) {
       // Trim trailing blank/comment lines so we preserve the gap before the next block.
       let contentEnd = block.end;
       while (contentEnd > block.start + 1) {
@@ -114,10 +133,25 @@ function findManaged(
 export function upsertHost(entry: SshConfigEntry): { backup: string | null; created: boolean } {
   if (!entry.alias.trim()) throw new WizardError(tr.vault.writerAliasEmpty);
   ensureConfigFile();
-  const backup = backupConfig();
   const lines = readLines();
-  const block = formatBlock(entry);
   const existing = findManaged(lines, entry.alias);
+
+  // No managed block in the MAIN file, but the alias resolves through an Include
+  // (i.e. it is defined in a DIFFERENT file). Appending a fresh block to the main
+  // file would create a cross-file split-brain duplicate that ssh silently
+  // shadows. Refuse, mirroring the interactive update path which declines
+  // unmanageable hosts. (A non-manageable block in the MAIN file — e.g.
+  // `Host * prod` — is intentionally left to the append path below, which adds a
+  // sibling managed block without clobbering the wildcard defaults.) Checked
+  // before the backup so a refusal leaves no spurious backup.
+  if (!existing) {
+    const resolved = getHost(entry.alias);
+    if (resolved && path.resolve(resolved.source) !== path.resolve(SSH_CONFIG_FILE))
+      throw new WizardError(tr.vault.writerAliasInInclude(entry.alias));
+  }
+
+  const backup = backupConfig();
+  const block = formatBlock(entry);
 
   if (existing) {
     lines.splice(existing.metaStart, existing.contentEnd - existing.metaStart, ...block);

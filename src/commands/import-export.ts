@@ -2,7 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Server, Settings, Tunnel } from '../core/types.js';
+import type { AuthMethod, Server, Settings, SortKey, Tunnel } from '../core/types.js';
 import { DATA_DIR, FILES } from '../core/paths.js';
 import { readJson, writeJson } from '../store/json-file.js';
 import { servers } from '../store/servers.store.js';
@@ -14,6 +14,8 @@ import {
   isValidForwardHost,
   isValidHostOrIp,
   isValidName,
+  isValidPort,
+  isValidProxyJump,
   isValidSshAlias,
   isValidUser,
 } from '../utils/validators.js';
@@ -30,6 +32,10 @@ function serverIsSafe(s: Partial<Server>): boolean {
   if (s.host && !isValidHostOrIp(String(s.host))) return false;
   if (s.user && !isValidUser(String(s.user))) return false;
   if (s.keyPath && !isSafeKeyPath(String(s.keyPath))) return false;
+  // proxyJump becomes a `ProxyJump` directive in ~/.ssh/config and silently
+  // routes every later connection to that alias — reject an attacker-controlled
+  // bastion (an MITM redirect) the same way the other fields are validated.
+  if (s.proxyJump && !isValidProxyJump(String(s.proxyJump))) return false;
   return true;
 }
 
@@ -44,6 +50,33 @@ function tunnelIsSafe(t: Partial<Tunnel>): boolean {
   if (t.keyPath && !isSafeKeyPath(String(t.keyPath))) return false;
   if (t.remoteHost && !isValidForwardHost(String(t.remoteHost))) return false;
   return true;
+}
+
+const SORTS: readonly SortKey[] = ['recent', 'name', 'uses', 'created', 'updated'];
+const AUTHS: readonly AuthMethod[] = ['agent', 'key', 'password'];
+
+/** Pick only well-typed, in-range fields from an imported settings object so a
+ *  crafted bundle can't poison defaults (vault flags are deliberately NOT taken
+ *  from a bundle — they reflect the real local vault, not an exporter's claim). */
+function sanitizeImportedSettings(raw: unknown): Partial<Settings> {
+  if (!raw || typeof raw !== 'object') return {};
+  const r = raw as Record<string, unknown>;
+  const out: Partial<Settings> = {};
+  if (r.language === 'system' || r.language === 'ru' || r.language === 'en')
+    out.language = r.language;
+  if (typeof r.defaultUser === 'string' && (r.defaultUser === '' || isValidUser(r.defaultUser)))
+    out.defaultUser = r.defaultUser;
+  if (isValidPort(r.defaultSshPort)) out.defaultSshPort = Number(r.defaultSshPort);
+  if (AUTHS.includes(r.defaultAuth as AuthMethod)) out.defaultAuth = r.defaultAuth as AuthMethod;
+  if (
+    typeof r.defaultRemoteHost === 'string' &&
+    (r.defaultRemoteHost === '' || isValidForwardHost(r.defaultRemoteHost))
+  )
+    out.defaultRemoteHost = r.defaultRemoteHost;
+  if (typeof r.openBrowser === 'boolean') out.openBrowser = r.openBrowser;
+  if (SORTS.includes(r.defaultSort as SortKey)) out.defaultSort = r.defaultSort as SortKey;
+  if (typeof r.tunnelAutoReconnect === 'boolean') out.tunnelAutoReconnect = r.tunnelAutoReconnect;
+  return out;
 }
 
 interface Bundle {
@@ -115,25 +148,41 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
     rawServers.length - importedServers.length + (rawTunnels.length - importedTunnels.length);
   if (skipped > 0) ui.printWarn(tr.importExport.skippedRecords(skipped));
 
+  let failed = 0;
   if (replace) {
     servers.replaceAll(importedServers);
     tunnels.replaceAll(importedTunnels);
   } else {
     for (const s of importedServers) {
-      let name = s.name;
-      let i = 2;
-      while (servers.nameExists(name)) name = `${s.name}-${i++}`;
-      servers.create({ ...s, name });
+      // serverIsSafe validates `name ?? sshHost`, so a record can pass with no
+      // `name`; derive the alias the same way (and never call nameExists with
+      // undefined). Wrap create so one bad record can't abort the whole import.
+      const base = (s.name ?? s.sshHost ?? '').trim();
+      try {
+        let name = base;
+        let i = 2;
+        while (servers.nameExists(name)) name = `${base}-${i++}`;
+        servers.create({ ...s, name });
+      } catch {
+        failed++;
+      }
     }
     for (const t of importedTunnels) {
-      let name = t.name;
-      let i = 2;
-      while (tunnels.nameExists(name)) name = `${t.name}-${i++}`;
-      tunnels.create({ ...t, name });
+      const base = (t.name ?? '').trim();
+      try {
+        let name = base;
+        let i = 2;
+        while (tunnels.nameExists(name)) name = `${base}-${i++}`;
+        tunnels.create({ ...t, name });
+      } catch {
+        failed++;
+      }
     }
   }
+  if (failed > 0) ui.printWarn(tr.importExport.skippedRecords(failed));
 
-  if (data.settings) settings.update(data.settings);
+  const safeSettings = sanitizeImportedSettings(data.settings);
+  if (Object.keys(safeSettings).length) settings.update(safeSettings);
 
   // Restore the encrypted vault only when there is none locally (never clobber).
   // The bundle is untrusted: validate the vault's shape AND KDF bounds before

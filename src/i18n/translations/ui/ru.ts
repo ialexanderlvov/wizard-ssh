@@ -6,6 +6,8 @@ const ru = {
     sshPort: 'SSH-порт   ',
     auth: 'Авторизация ',
     source: 'Источник   ',
+    jump: 'Прыжки     ',
+    jumpYou: 'вы',
     forward: 'Проброс    ',
     open: 'Открыть    ',
     tags: 'Теги       ',

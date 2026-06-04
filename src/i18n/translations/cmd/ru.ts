@@ -10,6 +10,7 @@ const ru = {
   optOutputJsonWithList: 'вывести JSON (с --list)',
   optReverseOrder: 'обратный порядок',
   optTmux: 'открыть/переподключиться к tmux-сессии на сервере',
+  optMosh: 'подключиться через mosh (UDP, для нестабильных каналов)',
   optSshUser: 'SSH-пользователь',
   optSshPort: 'SSH-порт',
   optAuthMethod: 'способ авторизации',
@@ -28,6 +29,7 @@ const ru = {
   serverEditDesc: 'редактировать сервер',
   serverRemoveDesc: 'удалить сервер(ы)',
   serverListDesc: 'список серверов',
+  serverDuplicateDesc: 'дублировать сервер под новым алиасом',
 
   // tunnel group
   tunnelGroupDesc: 'управление туннелями (-L/-R/-D)',
@@ -50,6 +52,10 @@ const ru = {
   tunnelEditDesc: 'редактировать туннель',
   tunnelRemoveDesc: 'удалить туннель(и)',
   tunnelListDesc: 'список туннелей',
+  tunnelCloneDesc: 'клонировать туннель (свободный локальный порт подберётся сам)',
+  tunnelLogsDesc: 'показать лог фонового туннеля',
+  tunnelLogsOptTail: 'сколько последних строк (по умолчанию 40)',
+  tunnelLogsOptFollow: 'следить за логом в реальном времени',
 
   // config group
   configGroupDesc: 'управление ~/.ssh/config',
@@ -91,6 +97,7 @@ const ru = {
 
   // diagnostics / info
   doctorDesc: 'диагностика окружения (бинари, права, конфиг)',
+  doctorOptListStale: 'показать только проблемные SSH-ключи',
   infoDesc: 'сводка окружения, путей и инвентаря',
 
   // vault / settings / io

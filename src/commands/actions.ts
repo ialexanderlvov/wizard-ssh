@@ -7,7 +7,7 @@ import { tunnels } from '../store/tunnels.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
 import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
-import { forgetHostKey, listKnownHosts } from '../ssh/hostkey.js';
+import { forgetHostKey, knownHostsToken, listKnownHosts } from '../ssh/hostkey.js';
 import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
 import * as ui from '../ui/index.js';
@@ -149,7 +149,14 @@ export function knownHostsListFlow(opts: { json?: boolean } = {}): void {
 export async function forgetHostKeyFlow(name?: string): Promise<number> {
   if (name) {
     const server = servers.findByName(name);
-    const token = server ? resolveEndpoint(server).host : name;
+    // A non-default port is stored in known_hosts as `[host]:port`, so resolve the
+    // full token (not just the host) — otherwise `ssh-keygen -R host` matches
+    // nothing for a custom-port server yet still reports success.
+    let token = name;
+    if (server) {
+      const ep = resolveEndpoint(server);
+      token = knownHostsToken(ep.host, ep.port);
+    }
     // Destructive: drops the pinned key, disabling MITM protection for this host
     // until it is trusted again. Confirm first (auto-yes under --yes for scripts).
     const ok = await ui.confirm({

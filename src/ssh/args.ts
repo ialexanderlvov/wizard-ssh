@@ -4,6 +4,7 @@
 import type { ConnectionTarget, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
+import { shJoin } from '../utils/shell.js';
 import { isValidTmuxSession } from '../utils/validators.js';
 import { tr } from '../i18n/index.js';
 
@@ -14,6 +15,22 @@ const ROBUST_OPTS = [
   'ServerAliveInterval=30',
   '-o',
   'ServerAliveCountMax=3',
+];
+
+/** For PASSWORD auth: the plaintext password is handed to ssh via sshpass's
+ *  SSHPASS env var, which ssh would otherwise pass on to any helper it spawns —
+ *  a ProxyCommand, a ProxyJump's `ssh -W`, or a PermitLocalCommand script —
+ *  leaking the secret into those children's environment. Disabling proxying and
+ *  local commands keeps it from escaping sshpass→ssh. Exported as ONE source of
+ *  truth so every password-auth spawn (connect, scp, ssh-copy-id) applies the
+ *  exact same defense and the paths can't drift. */
+export const PASSWORD_NO_PROXY_OPTS = [
+  '-o',
+  'ProxyCommand=none',
+  '-o',
+  'ProxyJump=none',
+  '-o',
+  'PermitLocalCommand=no',
 ];
 
 /** Options shared by connect & tunnel (everything except the destination). */
@@ -38,14 +55,10 @@ export function targetOptions(t: ConnectionTarget): string[] {
     args.push('-i', expandHome(t.keyPath), '-o', 'IdentitiesOnly=yes');
   } else if (t.auth === 'password') {
     args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
-    // The password is handed to ssh via sshpass's SSHPASS env var, which ssh
-    // would otherwise pass on to any helper process it spawns — a ProxyCommand,
-    // a ProxyJump's `ssh -W`, or a PermitLocalCommand script — leaking the
-    // plaintext password into those children's environment. Disable proxying and
-    // local commands for password auth so the secret never escapes sshpass→ssh.
+    // Stop SSHPASS leaking into a ProxyCommand/ProxyJump/LocalCommand child.
     // (Direct IP/manual hosts have no proxy anyway, so this is a no-op there; use
     // key/agent auth if you genuinely need a jump host.)
-    args.push('-o', 'ProxyCommand=none', '-o', 'ProxyJump=none', '-o', 'PermitLocalCommand=no');
+    args.push(...PASSWORD_NO_PROXY_OPTS);
   }
   return args;
 }
@@ -75,6 +88,23 @@ export function forwardFlags(t: Tunnel): string[] {
 export interface ConnectOptions {
   /** attach/create a tmux session on the remote (true → "wssh", string → name) */
   tmux?: string | boolean;
+  /** launch via mosh instead of ssh (interactive server shells only) */
+  mosh?: boolean;
+}
+
+/** Build the `mosh` argv from a target. mosh wraps ssh for the handshake, so ssh
+ *  options (port, identity, robustness) ride along via `--ssh`; the destination
+ *  is the ~/.ssh/config alias or user@host. Password auth is unsupported. */
+export function buildMoshArgs(t: ConnectionTarget): string[] {
+  // mosh re-splits (and may shell-evaluate) the --ssh value, so quote each token
+  // — an unquoted key path could word-split or inject ssh options (ProxyCommand).
+  const sshCmd = shJoin(['ssh', ...targetOptions(t)]);
+  const dest = destination(t);
+  // mosh has no portable `--` end-of-options marker (unlike every ssh builder),
+  // so guard the destination directly: a leading-dash alias — only reachable via
+  // a hand-edited ~/.ssh/config — would otherwise be parsed by mosh as an option.
+  if (dest.startsWith('-')) throw new WizardError(tr.ssh.argsBadMoshDest);
+  return ['--ssh', sshCmd, dest];
 }
 
 // A literal `--` ends ssh option parsing, so a destination/alias that begins

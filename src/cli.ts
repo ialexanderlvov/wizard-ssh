@@ -62,9 +62,12 @@ main().then(
       ui.printError(err.message);
       process.exit(err.exitCode);
     }
-    ui.printError(
-      tr.errors.unexpected(err instanceof Error ? (err.stack ?? err.message) : String(err)),
-    );
+    // Show only the message by default; the full stack (file paths / internals)
+    // is gated behind WSSH_DEBUG so it isn't leaked in normal use.
+    const debug = Boolean(process.env.WSSH_DEBUG);
+    const detail =
+      err instanceof Error ? (debug ? (err.stack ?? err.message) : err.message) : String(err);
+    ui.printError(tr.errors.unexpected(detail));
     process.exit(1);
   },
 );

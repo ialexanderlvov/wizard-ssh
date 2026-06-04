@@ -132,6 +132,21 @@ describe('ssh-config writer', () => {
     expect(cfg.removeHost('a').removed).toBe(false);
   });
 
+  it('a wildcard+alias block (Host * prod) is never spliced/clobbered', async () => {
+    // The `*` is filtered from the alias list, leaving a single alias "prod" — the
+    // old single-alias check would have rewritten the block and dropped the `Host *`
+    // global defaults. patternCount must keep it non-manageable.
+    writeConfig('Host * prod\n    ForwardAgent yes\n    User admin\n');
+    const cfg = await load();
+    expect(cfg.getHost('prod')?.manageable).toBe(false);
+    expect(cfg.isManageable('prod')).toBe(false);
+    expect(cfg.removeHost('prod').removed).toBe(false);
+    cfg.upsertHost({ alias: 'prod', params: [{ key: 'HostName', value: '9.9.9.9' }] });
+    // The global block is preserved (a fresh single-alias block is appended instead).
+    expect(readConfig()).toContain('Host * prod');
+    expect(readConfig()).toContain('ForwardAgent yes');
+  });
+
   it('backupConfig returns null without a config, path with one', async () => {
     const cfg = await load();
     expect(cfg.backupConfig()).toBeNull();

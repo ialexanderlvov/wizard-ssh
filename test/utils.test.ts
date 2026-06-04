@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
-import { expandHome, tilde, slugify, parseTags } from '../src/utils/strings.js';
+import { expandHome, tilde, slugify, parseTags, stripControl } from '../src/utils/strings.js';
+import { isValidProxyJump } from '../src/utils/validators.js';
 import { relativeTime, absoluteTime, safeIso, ts, nowIso } from '../src/utils/time.js';
 import { commandExists, capture } from '../src/utils/exec.js';
 import { isMac, isWindows, isLinux } from '../src/utils/platform.js';
@@ -42,6 +43,30 @@ describe('strings', () => {
     expect(parseTags('#prod #db')).toEqual(['prod', 'db']);
     expect(parseTags('')).toEqual([]);
     expect(parseTags('  ')).toEqual([]);
+  });
+
+  it('stripControl removes control/escape bytes but keeps printable text', () => {
+    expect(stripControl('ok')).toBe('ok');
+    expect(stripControl('a\x1b]0;evil\x07b')).toBe('a]0;evilb'); // ESC + BEL gone
+    expect(stripControl('line\nbreak\ttab')).toBe('linebreaktab');
+    expect(stripControl(null)).toBe('');
+  });
+});
+
+describe('isValidProxyJump', () => {
+  it('accepts real jump specs and none', () => {
+    expect(isValidProxyJump('bastion')).toBe(true);
+    expect(isValidProxyJump('user@bastion:2222')).toBe(true);
+    expect(isValidProxyJump('a,b@h:22')).toBe(true);
+    expect(isValidProxyJump('[2001:db8::1]:22')).toBe(true);
+    expect(isValidProxyJump('none')).toBe(true);
+  });
+  it('rejects option-injecting / malformed values', () => {
+    expect(isValidProxyJump('-oProxyCommand=evil')).toBe(false); // leading dash
+    expect(isValidProxyJump('a b')).toBe(false); // whitespace
+    expect(isValidProxyJump('a\nb')).toBe(false); // control char
+    expect(isValidProxyJump('')).toBe(false);
+    expect(isValidProxyJump(42)).toBe(false);
   });
 });
 

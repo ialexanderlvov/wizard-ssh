@@ -1,14 +1,16 @@
 /** Tunnel CRUD + connect flows. Mirrors servers.ts, with forward config. */
 
+import fs from 'node:fs';
 import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
 import type { EntityCollection } from '../store/collection.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
-import { sessions } from '../store/sessions.store.js';
+import { sessions, type TunnelSession } from '../store/sessions.store.js';
 import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import * as sshConfig from '../ssh-config/index.js';
 import { runTunnel, startTunnelDetached, preflight } from '../ssh/runner.js';
 import { isWindows } from '../utils/platform.js';
+import { isPortFree, findFreePort } from '../utils/net.js';
 import * as ui from '../ui/index.js';
 import { detailBox, forwardSummary, targetSummary } from '../ui/format.js';
 import { renderEntityTable, renderSessionsTable } from '../ui/tables.js';
@@ -30,11 +32,47 @@ type TunnelStore = EntityCollection<Tunnel>;
 const storeKind = (store: TunnelStore): 'main' | 'temp' =>
   store === tempTunnels ? 'temp' : 'main';
 
+/** Local `-L`/`-D` tunnels bind `localPort` on this machine; `-R` binds on the
+ *  server, so only forward/dynamic types can clash locally. Catch a busy port
+ *  before ssh fails with EADDRINUSE: non-interactively it's a hard error (exit
+ *  1); interactively offer a free port (optionally persisted), an override, or
+ *  cancel. Returns the (possibly re-ported) tunnel, or an abort with exit code. */
+type PortCheck = { ok: true; tunnel: Tunnel } | { ok: false; code: number };
+
+async function ensureLocalPortAvailable(tunnel: Tunnel, store: TunnelStore): Promise<PortCheck> {
+  if (tunnel.type === 'remote') return { ok: true, tunnel };
+  if (await isPortFree(tunnel.localPort)) return { ok: true, tunnel };
+
+  if (!ui.isInteractive()) {
+    ui.printError(tr.tunnels.portBusy(tunnel.localPort));
+    return { ok: false, code: 1 };
+  }
+  const free = await findFreePort(tunnel.localPort + 1, 200);
+  const choice = await ui.choose<'auto' | 'override' | 'cancel'>({
+    message: tr.tunnels.portBusyPrompt(tunnel.localPort),
+    choices: [
+      ...(free ? [{ name: tr.tunnels.portUseFree(free), value: 'auto' as const }] : []),
+      { name: tr.tunnels.portOverride, value: 'override' as const },
+      { name: tr.tunnels.portCancel, value: 'cancel' as const },
+    ],
+  });
+  if (choice === 'cancel') return { ok: false, code: 0 };
+  if (choice === 'override' || !free) return { ok: true, tunnel };
+  // Use the free port for this run; offer to persist it on the saved tunnel.
+  if (await ui.confirm({ message: tr.tunnels.portSave(free), default: true })) {
+    store.update(tunnel.id, { localPort: free });
+  }
+  return { ok: true, tunnel: { ...tunnel, localPort: free } };
+}
+
 export async function connectTunnel(tunnel: Tunnel, store: TunnelStore = tunnels): Promise<number> {
-  console.log('\n' + detailBox(tunnel));
-  const password = await resolvePassword(tunnel);
-  store.touch(tunnel.id);
-  return runTunnel(tunnel, password, { autoReconnect: settings.get().tunnelAutoReconnect });
+  const check = await ensureLocalPortAvailable(tunnel, store);
+  if (!check.ok) return check.code;
+  const t = check.tunnel;
+  console.log('\n' + detailBox(t));
+  const password = await resolvePassword(t);
+  store.touch(t.id);
+  return runTunnel(t, password, { autoReconnect: settings.get().tunnelAutoReconnect });
 }
 
 // ---------- background sessions ----------
@@ -61,24 +99,27 @@ export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels):
     ui.printError(err);
     return 1;
   }
+  const check = await ensureLocalPortAvailable(tunnel, store);
+  if (!check.ok) return check.code;
+  const running = check.tunnel;
   if (isWindows) ui.printWarn(tr.tunnels.windowsUnstable);
 
-  const { pid, logFile } = startTunnelDetached(tunnel);
+  const { pid, logFile } = startTunnelDetached(running);
   if (pid <= 0) {
     ui.printError(tr.tunnels.bgStartFailed);
     return 1;
   }
-  store.touch(tunnel.id);
+  store.touch(running.id);
   sessions.add({
-    tunnelId: tunnel.id,
-    name: tunnel.name,
+    tunnelId: running.id,
+    name: running.name,
     pid,
     store: storeKind(store),
-    forward: forwardSummary(tunnel),
-    target: targetSummary(tunnel),
+    forward: forwardSummary(running),
+    target: targetSummary(running),
     logFile,
   });
-  ui.printOk(tr.tunnels.tunnelRaised(tunnel.name, pid));
+  ui.printOk(tr.tunnels.tunnelRaised(running.name, pid));
   ui.printInfo(tr.tunnels.tunnelLog(tilde(logFile), tunnel.name));
   return 0;
 }
@@ -367,6 +408,174 @@ export async function removeTunnelFlow(name?: string, store: TunnelStore = tunne
 function removeTunnelById(tunnel: Tunnel, store: TunnelStore): void {
   if (tunnel.secretId) vault.removeSecret(tunnel.secretId);
   store.remove(tunnel.id);
+}
+
+/** First "<base>", "<base>-2", … not already taken in the collection. */
+function uniqueName(store: TunnelStore, base: string): string {
+  if (!store.nameExists(base)) return base;
+  for (let i = 2; ; i++) if (!store.nameExists(`${base}-${i}`)) return `${base}-${i}`;
+}
+
+/** Clone a tunnel under a new name. Copies every field, auto-bumps a local/
+ *  dynamic forward to a free port, and never shares the source's vault secret
+ *  (a shared blob would be deleted when either tunnel is removed). */
+export async function cloneTunnelFlow(
+  name?: string,
+  newName?: string,
+  store: TunnelStore = tunnels,
+): Promise<void> {
+  const src = await resolveEntity(store, name, tr.tunnels.pickTunnelClone);
+  if (!src) return;
+
+  let target = (newName ?? '').trim();
+  if (target) {
+    if (!isValidName(target)) {
+      ui.printError(tr.tunnels.editInvalidName);
+      return;
+    }
+    if (store.nameExists(target)) {
+      ui.printError(tr.tunnels.editNameTaken);
+      return;
+    }
+  } else {
+    const suggestion = uniqueName(store, `${src.name}-copy`);
+    target = ui.isInteractive()
+      ? (
+          await ui.text({
+            message: tr.tunnels.cloneNamePrompt,
+            default: suggestion,
+            validate: (v) =>
+              !isValidName(v.trim())
+                ? tr.tunnels.editInvalidName
+                : store.nameExists(v.trim())
+                  ? tr.tunnels.editNameTaken
+                  : true,
+          })
+        ).trim()
+      : suggestion;
+  }
+
+  let localPort = src.localPort;
+  if (src.type !== 'remote' && src.localPort > 0) {
+    localPort = (await findFreePort(src.localPort, 200)) ?? src.localPort;
+  }
+
+  const clone = store.create({
+    hostMode: src.hostMode,
+    sshHost: src.sshHost,
+    host: src.host,
+    user: src.user,
+    sshPort: src.sshPort,
+    auth: src.auth,
+    keyPath: src.keyPath,
+    secretId: null, // a saved password is re-asked rather than sharing a vault blob
+    type: src.type,
+    localPort,
+    remoteHost: src.remoteHost,
+    remotePort: src.remotePort,
+    openBrowser: src.openBrowser,
+    description: src.description,
+    tags: [...src.tags],
+    name: target,
+    kind: 'tunnel',
+  });
+  ui.printOk(tr.tunnels.cloned(src.name, clone.name));
+  if (clone.localPort !== src.localPort) ui.printInfo(tr.tunnels.clonePortBumped(clone.localPort));
+  console.log(detailBox(clone));
+}
+
+/** Last `n` lines of `content` (drops a single trailing newline first). */
+export function tailLines(content: string, n: number): string[] {
+  const lines = content.split('\n');
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  return n > 0 ? lines.slice(-n) : lines;
+}
+
+/** Stream appended bytes of `file` to stdout until Ctrl+C. Handles truncation
+ *  (rotation) by rewinding to 0. Resolves on SIGINT so callers can return. */
+function followLog(file: string): Promise<void> {
+  return new Promise((resolve) => {
+    let pos = fs.statSync(file).size;
+    const flush = (): void => {
+      try {
+        const { size } = fs.statSync(file);
+        if (size < pos) pos = 0; // file was truncated / rotated
+        if (size <= pos) return;
+        const fd = fs.openSync(file, 'r');
+        try {
+          const buf = Buffer.alloc(size - pos);
+          fs.readSync(fd, buf, 0, buf.length, pos);
+          process.stdout.write(buf.toString('utf8'));
+          pos = size;
+        } finally {
+          fs.closeSync(fd);
+        }
+      } catch {
+        /* best-effort */
+      }
+    };
+    let watcher: fs.FSWatcher | undefined;
+    try {
+      watcher = fs.watch(file, flush);
+    } catch {
+      resolve();
+      return;
+    }
+    const onSigint = (): void => {
+      watcher?.close();
+      resolve();
+    };
+    process.once('SIGINT', onSigint);
+  });
+}
+
+/** Show (and optionally follow) a background tunnel's log, resolved from the
+ *  sessions registry so users never hunt PIDs or log paths. */
+export async function tunnelLogsFlow(
+  name?: string,
+  opts: { tail?: number; follow?: boolean } = {},
+): Promise<number> {
+  const live = sessions.list();
+  if (!live.length) {
+    ui.printWarn(tr.tunnels.noBackground);
+    return 0;
+  }
+  let target: TunnelSession;
+  if (name) {
+    const found = live.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (!found) {
+      ui.printError(tr.tunnels.bgNotFound(name));
+      return 1;
+    }
+    target = found;
+  } else if (live.length === 1) {
+    target = live[0]!;
+  } else {
+    ui.ensureInteractive(tr.tunnels.logsEnsure);
+    const picked = await ui.pickFromList<TunnelSession>({
+      message: tr.tunnels.pickTunnelLogs,
+      items: live,
+      render: (s) => `${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.forward)}  pid ${s.pid}`,
+      search: (s) => s.name,
+      pageSize: 14,
+    });
+    if (picked === ui.BACK) return 0;
+    target = picked;
+  }
+
+  if (!fs.existsSync(target.logFile)) {
+    ui.printWarn(tr.tunnels.logMissing(tilde(target.logFile)));
+    return 1;
+  }
+  ui.printSection('📜', tr.tunnels.logsSection(target.name, tilde(target.logFile)));
+  const body = fs.readFileSync(target.logFile, 'utf8');
+  const lines = tailLines(body, opts.tail ?? 40);
+  if (lines.length) console.log(lines.join('\n'));
+  if (opts.follow) {
+    ui.printInfo(ui.chalk.dim(tr.tunnels.logFollowHint));
+    await followLog(target.logFile);
+  }
+  return 0;
 }
 
 export function listTunnels(opts: { sort?: SortKey; reverse?: boolean; json?: boolean }): Tunnel[] {

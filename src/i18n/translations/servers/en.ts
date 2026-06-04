@@ -42,6 +42,16 @@ const en: Dict = {
   removedMany: (n) => `Deleted: ${n}.`,
   emptyList: 'No servers yet. Add one: wssh server add',
   listSection: (count, sort, dir) => `Servers (${count}) · sort: ${sort}${dir}`,
+
+  // mosh
+  moshNoPassword: 'mosh does not support password auth — connecting via ssh.',
+  moshUnavailable: 'mosh not found — connecting via ssh.',
+
+  // duplicate
+  pickServerDuplicate: '🧬 Which server to duplicate',
+  duplicateNotManageable: 'This host (multi-alias / Match / Include) cannot be duplicated.',
+  duplicateNamePrompt: '🏷 Alias for the copy',
+  duplicated: (src, dst) => `Server “${src}” duplicated as “${dst}”.`,
 };
 
 export default en;

@@ -14,6 +14,7 @@ import {
   isValidName,
   isValidPort,
   isValidSshAlias,
+  isValidUser,
 } from '../utils/validators.js';
 import { expandHome, parseTags, slugify, tilde } from '../utils/strings.js';
 
@@ -114,7 +115,7 @@ export async function askConnectionTarget(
   const user = await ui.text({
     message: tr.wizard.userPrompt,
     default: defaults.user || s.defaultUser,
-    validate: (v) => v.trim().length > 0 || tr.common.notEmpty,
+    validate: (v) => !v.trim() || isValidUser(v.trim()) || tr.wizard.userInvalid,
   });
   const sshPortStr = await ui.text({
     message: tr.wizard.sshPortPrompt,
@@ -167,7 +168,7 @@ export async function askServerConnection(
   const user = await ui.text({
     message: tr.wizard.userPrompt,
     default: defaults.user || s.defaultUser,
-    validate: (v) => v.trim().length > 0 || tr.common.notEmpty,
+    validate: (v) => !v.trim() || isValidUser(v.trim()) || tr.wizard.userInvalid,
   });
   const sshPortStr = await ui.text({
     message: tr.wizard.sshPortPrompt,

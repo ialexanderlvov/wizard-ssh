@@ -11,6 +11,7 @@ const en: Dict = {
   optOutputJsonWithList: 'output JSON (with --list)',
   optReverseOrder: 'reverse order',
   optTmux: 'open/reattach to a tmux session on the server',
+  optMosh: 'connect via mosh (UDP, for flaky links)',
   optSshUser: 'SSH user',
   optSshPort: 'SSH port',
   optAuthMethod: 'auth method',
@@ -29,6 +30,7 @@ const en: Dict = {
   serverEditDesc: 'edit server',
   serverRemoveDesc: 'remove server(s)',
   serverListDesc: 'list servers',
+  serverDuplicateDesc: 'duplicate a server under a new alias',
 
   // tunnel group
   tunnelGroupDesc: 'manage tunnels (-L/-R/-D)',
@@ -51,6 +53,10 @@ const en: Dict = {
   tunnelEditDesc: 'edit tunnel',
   tunnelRemoveDesc: 'remove tunnel(s)',
   tunnelListDesc: 'list tunnels',
+  tunnelCloneDesc: 'clone a tunnel (a free local port is auto-picked)',
+  tunnelLogsDesc: 'show a background tunnel log',
+  tunnelLogsOptTail: 'how many trailing lines (default 40)',
+  tunnelLogsOptFollow: 'follow the log in real time',
 
   // config group
   configGroupDesc: 'manage ~/.ssh/config',
@@ -92,6 +98,7 @@ const en: Dict = {
 
   // diagnostics / info
   doctorDesc: 'diagnose environment (binaries, permissions, config)',
+  doctorOptListStale: 'list only flagged SSH keys',
   infoDesc: 'environment, paths and inventory summary',
 
   // vault / settings / io

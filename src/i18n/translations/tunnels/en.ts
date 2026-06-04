@@ -80,6 +80,27 @@ const en: Dict = {
   // listTunnels
   listEmpty: 'No tunnels yet. Add one: wssh tunnel add',
   listSection: (count, sort, dir) => `Tunnels (${count}) · sort: ${sort}${dir}`,
+
+  // local port-conflict guard
+  portBusy: (port) => `Local port ${port} is already in use. Free it or pick another (--local).`,
+  portBusyPrompt: (port) => `Local port ${port} is busy. What now?`,
+  portUseFree: (port) => `Use free port ${port}`,
+  portOverride: 'Raise anyway (ssh may fail)',
+  portCancel: 'Cancel',
+  portSave: (port) => `Save port ${port} on the tunnel?`,
+
+  // clone
+  pickTunnelClone: '🧬 Which tunnel to clone',
+  cloneNamePrompt: '🏷 Name for the copy',
+  cloned: (src, dst) => `Tunnel “${src}” cloned as “${dst}”.`,
+  clonePortBumped: (port) => `Local port changed to a free one: ${port}.`,
+
+  // logs
+  logsEnsure: 'Background session logs',
+  pickTunnelLogs: '📜 Whose log to show',
+  logsSection: (name, file) => `Tunnel log “${name}” · ${file}`,
+  logMissing: (file) => `Log file not found: ${file}`,
+  logFollowHint: 'Ctrl+C — exit follow mode.',
 };
 
 export default en;

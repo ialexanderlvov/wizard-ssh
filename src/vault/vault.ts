@@ -261,16 +261,24 @@ class Vault {
     const secrets: Record<string, Cipher> = {};
     for (const [id, pw] of Object.entries(plain)) secrets[id] = encrypt(key, pw);
 
+    // Re-stash the NEW key in the keychain before recording touchId=true. If the
+    // store fails we'd otherwise leave the OLD key behind a NEW check blob —
+    // silently breaking every future Touch ID unlock — so drop the keychain entry
+    // and persist touchId=false instead of advertising a Touch ID that can't work.
+    let keepTouchId = file.touchId;
+    if (file.touchId && touchid.isSupported() && !touchid.storeKey(key.toString('base64'))) {
+      touchid.deleteKey();
+      keepTouchId = false;
+    }
     this.write({
       version: 1,
       kdf,
       check: encrypt(key, CHECK_PLAINTEXT),
       secrets,
-      touchId: file.touchId,
+      touchId: keepTouchId,
     });
     this.wipeKey(); // scrub the old master key before swapping in the new one
     this.key = key;
-    if (file.touchId && touchid.isSupported()) touchid.storeKey(key.toString('base64'));
   }
 }
 

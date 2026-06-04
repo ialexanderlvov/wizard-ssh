@@ -28,6 +28,7 @@ const en: Dict = {
     title: 'Servers / ~/.ssh/config',
     list: 'List / connect',
     add: 'Add',
+    duplicate: 'Duplicate',
   },
   tunnels: {
     title: 'Tunnels',
@@ -36,6 +37,7 @@ const en: Dict = {
     bg: 'Background sessions ▸',
     temp: 'Temporary tunnels (to any host) ▸',
     add: 'Add',
+    clone: 'Clone',
   },
   temp: {
     title: 'Temporary tunnels',
@@ -49,6 +51,7 @@ const en: Dict = {
     up: 'Start in background',
     down: 'Stop',
     downAll: 'Stop all',
+    logs: 'Show log',
   },
   actions: {
     title: 'SSH actions',

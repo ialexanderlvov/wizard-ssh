@@ -3,9 +3,27 @@ import { freshHome } from './helpers.js';
 
 const DEAD_PID = 2_147_483_646; // astronomically unlikely to be live
 
+// Controllable `ps` probe so we can simulate a transient failure at check time.
+const psMock = vi.hoisted(() => ({
+  status: 0 as number | null,
+  stdout: 'Mon Jan  1 00:00:00 2024',
+}));
+vi.mock('../src/utils/exec.js', async (orig) => {
+  const actual = await orig<typeof import('../src/utils/exec.js')>();
+  return {
+    ...actual,
+    capture: (cmd: string, args: string[], input?: string) =>
+      cmd === 'ps'
+        ? { status: psMock.status, stdout: psMock.stdout, stderr: '' }
+        : actual.capture(cmd, args, input),
+  };
+});
+
 beforeEach(() => {
   vi.resetModules();
   freshHome();
+  psMock.status = 0;
+  psMock.stdout = 'Mon Jan  1 00:00:00 2024';
 });
 
 describe('sessions store', () => {
@@ -43,6 +61,25 @@ describe('sessions store', () => {
     expect(sessions.find('dead')).toBeNull();
     sessions.remove('alive');
     expect(sessions.list()).toEqual([]);
+  });
+
+  it('keeps a live session when the ps probe is inconclusive at check time', async () => {
+    const { sessions } = await import('../src/store/sessions.store.js');
+    // ps works at launch → a real start token is recorded…
+    sessions.add({
+      tunnelId: 't',
+      name: 't',
+      pid: process.pid, // alive
+      store: 'main',
+      forward: 'f',
+      target: 'tg',
+      logFile: 'l',
+    });
+    // …but fails at check time (missing/timeout) → empty token. The PID is still
+    // alive, so the session must NOT be pruned (no false PID-reuse mismatch).
+    psMock.status = 1;
+    psMock.stdout = '';
+    expect(sessions.list().map((s) => s.tunnelId)).toEqual(['t']);
   });
 
   it('adding the same tunnel twice keeps a single (latest) session', async () => {

@@ -45,6 +45,18 @@ const en: Dict = {
   sectionTitle: 'wssh diagnostics',
   hasCritical: 'Critical issues found (✖). Please fix them.',
   allOk: 'Everything looks good.',
+
+  // ssh keys audit
+  keysLabel: 'keys',
+  keysOk: (total) => `${total} found · no issues`,
+  keysIssues: (flagged, total) => `flagged: ${flagged} of ${total}`,
+  keyIssueWeakRsa: 'RSA <2048',
+  keyIssueUnencrypted: 'no passphrase',
+  keyIssueNoPub: 'no .pub',
+  keyIssueOrphan: 'unused',
+  staleKeysSection: (count) => `Flagged keys (${count})`,
+  staleKeyLine: (file, issues) => `${file} — ${issues}`,
+  noStaleKeys: 'No flagged keys found.',
 };
 
 export default en;

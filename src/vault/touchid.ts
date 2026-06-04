@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { FILES, ensureDir } from '../core/paths.js';
 import { isMac } from '../utils/platform.js';
@@ -27,6 +28,9 @@ const KEYCHAIN_SERVICE = 'wizard-ssh';
 const KEYCHAIN_ACCOUNT = 'vault-master-key';
 const HELPER_BIN = path.join(FILES.binDir, 'wssh-touchid');
 const HELPER_SRC = path.join(FILES.binDir, 'wssh-touchid.swift');
+/** SHA-256 of the compiled helper, written next to it so a cached binary can be
+ *  integrity-checked before it is ever executed. */
+const HELPER_HASH = path.join(FILES.binDir, 'wssh-touchid.sha256');
 
 const SWIFT_SOURCE = `import LocalAuthentication
 import Foundation
@@ -54,18 +58,44 @@ export function isSupported(): boolean {
   return isMac && commandExists('swiftc');
 }
 
-/** Compile (once) and cache the biometric helper binary. */
+function sha256(file: string): string | null {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+/** Compile (once) and cache the biometric helper binary. A cached binary is
+ *  executed with the user's biometric session, so before reusing it we verify it
+ *  matches the SHA-256 we recorded at compile time — if it was swapped/tampered
+ *  (or the hash is missing), recompile from our known-good source rather than run
+ *  an unverified binary. */
 function ensureHelper(): boolean {
-  if (fs.existsSync(HELPER_BIN)) return true;
+  const cachedHash = sha256(HELPER_BIN);
+  if (cachedHash) {
+    let recorded = '';
+    try {
+      recorded = fs.readFileSync(HELPER_HASH, 'utf8').trim();
+    } catch {
+      /* no recorded hash → fall through and recompile */
+    }
+    if (recorded && recorded === cachedHash) return true;
+  }
   if (!isSupported()) return false;
   try {
     ensureDir(FILES.binDir);
+    fs.rmSync(HELPER_BIN, { force: true }); // drop any stale/tampered binary first
     fs.writeFileSync(HELPER_SRC, SWIFT_SOURCE, { mode: 0o600 });
     const res = spawnSync('swiftc', ['-O', '-o', HELPER_BIN, HELPER_SRC], {
       encoding: 'utf8',
       timeout: 60_000,
     });
-    return res.status === 0 && fs.existsSync(HELPER_BIN);
+    if (res.status !== 0 || !fs.existsSync(HELPER_BIN)) return false;
+    const fresh = sha256(HELPER_BIN);
+    if (!fresh) return false;
+    fs.writeFileSync(HELPER_HASH, fresh, { mode: 0o600 });
+    return true;
   } catch {
     return false;
   }
@@ -83,18 +113,16 @@ export function authenticate(reason = tr.vault.touchidReason): boolean {
 export function storeKey(keyBase64: string): boolean {
   if (!isMac) return false;
   const common = ['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT];
-  // Prefer feeding the key over stdin so the 32-byte master key never appears as
-  // an argv token (which is visible in the process table to other processes). A
-  // trailing `-w` with no value reads the password from stdin; on a tty it also
-  // asks for a retype, so we send it twice. `security` returns 0 even on a retype
-  // mismatch, so confirm the value actually landed via loadKey() before trusting.
+  // Feed the key over stdin so the 32-byte master key NEVER appears as an argv
+  // token (which is visible in the process table to other processes). A trailing
+  // `-w` with no value reads the password from stdin; on a tty it also asks for a
+  // retype, so we send it twice. `security` returns 0 even on a retype mismatch,
+  // so confirm the value actually landed via loadKey() before trusting it. Fail
+  // closed (no argv fallback): Touch ID is an optional convenience and the
+  // passphrase still works, so a build that won't take the key over stdin simply
+  // leaves Touch ID disabled rather than leaking the key through argv.
   const viaStdin = capture('security', [...common, '-w'], `${keyBase64}\n${keyBase64}\n`);
-  if (viaStdin.status === 0 && loadKey() === keyBase64) return true;
-  // Fallback: if a given macOS build won't take the key from stdin here, use the
-  // argv form so Touch ID keeps working. The brief argv exposure is no worse than
-  // the documented same-user readability of the keychain item itself.
-  const viaArg = capture('security', [...common, '-w', keyBase64]);
-  return viaArg.status === 0;
+  return viaStdin.status === 0 && loadKey() === keyBase64;
 }
 
 export function loadKey(): string | null {

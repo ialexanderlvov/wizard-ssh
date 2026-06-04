@@ -24,6 +24,7 @@ const ru = {
   hostPrompt: '🖥 IP или домен',
   hostValidate: 'Введите валидный IP или домен',
   userPrompt: '👤 SSH-пользователь',
+  userInvalid: 'Только латиница, цифры, точка, дефис, подчёркивание (до 64)',
   sshPortPrompt: '🔌 SSH-порт',
   authPrompt: '🔐 Как авторизуемся?',
   authAgent: 'ssh-agent / по умолчанию',

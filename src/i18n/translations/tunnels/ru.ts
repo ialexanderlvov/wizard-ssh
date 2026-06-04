@@ -79,6 +79,28 @@ const ru = {
   listEmpty: 'Туннелей пока нет. Добавьте: wssh tunnel add',
   listSection: (count: number, sort: string, dir: string) =>
     `Туннели (${count}) · сортировка: ${sort}${dir}`,
+
+  // local port-conflict guard
+  portBusy: (port: number) =>
+    `Локальный порт ${port} уже занят. Освободите его или укажите другой (--local).`,
+  portBusyPrompt: (port: number) => `Локальный порт ${port} занят. Что делать?`,
+  portUseFree: (port: number) => `Взять свободный порт ${port}`,
+  portOverride: 'Всё равно поднять (ssh может упасть)',
+  portCancel: 'Отмена',
+  portSave: (port: number) => `Сохранить порт ${port} в туннеле?`,
+
+  // clone
+  pickTunnelClone: '🧬 Какой туннель клонировать',
+  cloneNamePrompt: '🏷 Имя для копии',
+  cloned: (src: string, dst: string) => `Туннель «${src}» склонирован как «${dst}».`,
+  clonePortBumped: (port: number) => `Локальный порт изменён на свободный ${port}.`,
+
+  // logs
+  logsEnsure: 'Логи фоновой сессии',
+  pickTunnelLogs: '📜 Чей лог показать',
+  logsSection: (name: string, file: string) => `Лог туннеля «${name}» · ${file}`,
+  logMissing: (file: string) => `Файл лога не найден: ${file}`,
+  logFollowHint: 'Ctrl+C — выйти из режима слежения.',
 };
 
 export default ru;

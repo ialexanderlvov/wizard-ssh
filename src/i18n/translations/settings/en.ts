@@ -67,6 +67,10 @@ const en: Dict = {
   secretNotFound: 'Saved password not found.',
   revealHeader: (name) => `Password for "${name}":`,
   revealHint: 'Will hide when you return to the menu.',
+  revealCopied: (name, tool) => `Password for “${name}” copied to clipboard (${tool}).`,
+  revealCopiedHint: 'The clipboard will be overwritten by your next copy.',
+  revealStdoutWarning:
+    'Clipboard unavailable — printing to screen. Clear your terminal scrollback afterwards.',
 
   // deleteSavedPassword
   pickDeletePrompt: 'Which connection to delete the saved password for?',
