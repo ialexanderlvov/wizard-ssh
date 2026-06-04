@@ -7,6 +7,13 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.3.1](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.0...wizard-ssh-v1.3.1) (2026-06-04)
+
+
+### Documentation
+
+* **readme:** make README English and link the Russian one ([d9abd23](https://github.com/ialexanderlvov/wizard-ssh/commit/d9abd23525ca09b72bf7bc72942e2433a676db90))
+
 ## [1.3.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.2.0...wizard-ssh-v1.3.0) (2026-06-04)
 
 
