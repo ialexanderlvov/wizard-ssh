@@ -35,10 +35,25 @@ export const LEGACY_TUNNELS_FILE = path.join(os.homedir(), '.ssh-tunnel-manager'
 export const SSH_DIR = path.join(os.homedir(), '.ssh');
 export const SSH_CONFIG_FILE = path.join(SSH_DIR, 'config');
 
+/** Tighten a directory to at most 0o700 (tighten-only — never loosens a stricter
+ *  mode the user chose). mkdir's `mode` only applies on CREATION, so a dir that
+ *  pre-exists from an older build, another tool, or a permissive umask would
+ *  otherwise stay group/world-listable indefinitely. */
+function tightenDir(dir: string): void {
+  try {
+    const mode = fs.statSync(dir).mode & 0o777;
+    if (mode & ~0o700) fs.chmodSync(dir, mode & 0o700);
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function ensureDataDir(): void {
   fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+  tightenDir(DATA_DIR);
 }
 
 export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  tightenDir(dir);
 }

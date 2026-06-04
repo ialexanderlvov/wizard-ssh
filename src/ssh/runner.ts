@@ -397,7 +397,15 @@ export interface DetachedTunnel {
 export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
   ensureDir(FILES.logsDir);
   const logFile = path.join(FILES.logsDir, `tunnel-${tunnel.id}.log`);
-  const fd = fs.openSync(logFile, 'a');
+  // 0o600: tunnel logs can carry ssh's verbose diagnostics — keep them readable
+  // only by the owner (the mode arg applies on creation; tighten a pre-existing
+  // world-readable log too).
+  const fd = fs.openSync(logFile, 'a', 0o600);
+  try {
+    fs.chmodSync(logFile, 0o600);
+  } catch {
+    /* best-effort */
+  }
   try {
     const child = spawn('ssh', buildTunnelArgs(tunnel), {
       stdio: ['ignore', fd, fd],
