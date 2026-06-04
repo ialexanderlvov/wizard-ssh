@@ -51,16 +51,25 @@ describe('touchid', () => {
   });
 
   it('keychain store/load/delete go through `security`', async () => {
-    const { touch, capture } = await loadTouchid({ captureStatus: 0, captureStdout: 'thekey\n' });
+    // storeKey now fails closed: it confirms the value round-trips via loadKey
+    // (no argv fallback), so the mocked `security` must echo back the stored key.
+    const { touch, capture } = await loadTouchid({ captureStatus: 0, captureStdout: 'k\n' });
     if (!onMac) {
       expect(touch.storeKey('k')).toBe(false);
       expect(touch.loadKey()).toBeNull();
       return;
     }
     expect(touch.storeKey('k')).toBe(true);
-    expect(touch.loadKey()).toBe('thekey');
+    expect(touch.loadKey()).toBe('k');
     touch.deleteKey();
     expect(capture).toHaveBeenCalled();
+  });
+
+  it('storeKey fails closed when the key does not round-trip (no argv fallback)', async () => {
+    const { touch } = await loadTouchid({ captureStatus: 0, captureStdout: 'different\n' });
+    // On non-mac storeKey is false anyway; on mac the loadKey() mismatch must fail
+    // it rather than silently falling back to the argv form.
+    expect(touch.storeKey('k')).toBe(false);
   });
 
   it('loadKey returns null on non-zero status', async () => {

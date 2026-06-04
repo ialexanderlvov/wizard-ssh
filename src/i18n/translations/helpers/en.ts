@@ -10,6 +10,8 @@ const en: Dict = {
   minChars: 'At least 4 characters',
   repeatPassphrase: '🔑 Repeat the passphrase',
   passphraseMismatch: 'Passphrases do not match.',
+  touchIdNote:
+    'Note: Touch ID is a convenience prompt inside the CLI, not hardware-enforced protection. The key is kept in the Keychain and readable by any process running as you without Touch ID; the passphrase stays the root of trust.',
   enableTouchId: '👆 Enable Touch ID unlock (macOS)?',
   vaultCreated: 'Vault created.',
   unlockEnsure: 'Vault passphrase entry',
