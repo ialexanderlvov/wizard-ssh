@@ -7,6 +7,37 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.2.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.1.0...wizard-ssh-v1.2.0) (2026-06-04)
+
+
+### Features
+
+* SSH key audit, ProxyJump visualization and mosh connect ([dda4992](https://github.com/ialexanderlvov/wizard-ssh/commit/dda49920544f0f465b8934fd918b6d8e8f810f78))
+* **tunnels:** port-conflict guard, clone/duplicate and tunnel logs ([0d8c5cf](https://github.com/ialexanderlvov/wizard-ssh/commit/0d8c5cfbf716dc5d75c06c6af1a284d731f50c92))
+
+
+### Bug Fixes
+
+* **config:** validate IdentityFile and ProxyJump in the host editor ([e507763](https://github.com/ialexanderlvov/wizard-ssh/commit/e50776359494832c0fec50f3fd9f6cff63ea9cec))
+* harden password reveal, config writes, validation and error output ([575f93b](https://github.com/ialexanderlvov/wizard-ssh/commit/575f93bd08e928a52f45f4d0edd33822c1c45024))
+* **hostkey:** forget the port-qualified known_hosts token for named hosts ([8ddd4db](https://github.com/ialexanderlvov/wizard-ssh/commit/8ddd4dbed6222a03531bc0255f2bc9a88d3e8727))
+* **import:** tolerate a nameless aliased server record ([ced84fa](https://github.com/ialexanderlvov/wizard-ssh/commit/ced84fa15db25c78dae6942104a7a45941e136f1))
+* **import:** validate proxyJump and neutralize untrusted metadata ([fc96158](https://github.com/ialexanderlvov/wizard-ssh/commit/fc96158faf18765d8dbddd88db0f1dfa936df09c))
+* **menu:** return straight back when leaving a sub-list ([4170a3d](https://github.com/ialexanderlvov/wizard-ssh/commit/4170a3d7cf111e5d8d422c0d50e1407fe037cbe1))
+* **security:** disable proxy/local-command for password-auth scp and ssh-copy-id ([944d144](https://github.com/ialexanderlvov/wizard-ssh/commit/944d144d2518109295fa221069b9acf361d069fa))
+* **security:** shell-quote keyPath in rsync/mosh transport strings ([a58307b](https://github.com/ialexanderlvov/wizard-ssh/commit/a58307bf7a4914994582227c245a018df01f6147))
+* **sessions:** keep a live tunnel when the ps liveness probe is inconclusive ([eaf491d](https://github.com/ialexanderlvov/wizard-ssh/commit/eaf491dbf38c34b94371ee926fcbe68546e9f1a8))
+* **ssh-config:** never treat multi-pattern Host blocks as managed ([28a9485](https://github.com/ialexanderlvov/wizard-ssh/commit/28a948592e30e3a85a216288e03f2b567c6aef94))
+* **ssh-config:** refuse to shadow an Include-only alias ([6c9ad7f](https://github.com/ialexanderlvov/wizard-ssh/commit/6c9ad7fec547a877334959745ae9b13a1da0d468))
+* **ssh-config:** strip terminal-escape bytes from parsed host fields ([b5eadea](https://github.com/ialexanderlvov/wizard-ssh/commit/b5eadeae67e55cb272af279931ea1b2cde19293b))
+* **ssh:** guard mosh destination and end ssh -G option parsing ([dd58f56](https://github.com/ialexanderlvov/wizard-ssh/commit/dd58f5647ee7a059b4926aeff1456c195be03599))
+* **ssh:** keep detached tunnel logs inside the logs dir ([f8b6268](https://github.com/ialexanderlvov/wizard-ssh/commit/f8b62682e03b1698571e3a8325b07f1550e2257d))
+* **store:** harden normalization of untrusted records ([64ed32b](https://github.com/ialexanderlvov/wizard-ssh/commit/64ed32bb478ced4a8c0311de8fb5505ad8c34a2d))
+* **store:** write temp files with O_EXCL|O_NOFOLLOW and a random name ([4a75ce2](https://github.com/ialexanderlvov/wizard-ssh/commit/4a75ce2e7187aadd5f74954dd368a8111dd3e594))
+* **validators:** tighten IP validation and empty-string port coercion ([8843105](https://github.com/ialexanderlvov/wizard-ssh/commit/88431059041fd3480582365f72e643a5829deada))
+* **vault:** bound scrypt work by the parallelism factor p ([a9e8219](https://github.com/ialexanderlvov/wizard-ssh/commit/a9e821924184745df488fdd7e7105ee536b70a49))
+* **vault:** integrity-check the Touch ID helper and harden key storage ([fa06083](https://github.com/ialexanderlvov/wizard-ssh/commit/fa06083ec2552959a76c19a1d8e20a2e04903a5a))
+
 ## [1.1.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.0.0...wizard-ssh-v1.1.0) (2026-06-04)
 
 
