@@ -9,7 +9,14 @@ import { WizardError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
-import { isValidHostOrIp, isValidPort, isValidSshAlias } from '../utils/validators.js';
+import {
+  isValidForwardHost,
+  isValidHostOrIp,
+  isValidPort,
+  isValidSshAlias,
+  isValidUser,
+  isSafeKeyPath,
+} from '../utils/validators.js';
 import { expandHome, parseTags, slugify } from '../utils/strings.js';
 import * as ui from '../ui/index.js';
 
@@ -21,6 +28,24 @@ export interface ServerAddFlags {
   key?: string;
   desc?: string;
   tags?: string;
+}
+
+/** A username that lands in ~/.ssh/config (User) or in `user@host` must be a
+ *  clean token — a newline would inject an arbitrary config directive. */
+function resolveUser(user: string | undefined, fallback: string): string {
+  const u = (user ?? fallback).trim();
+  if (u && !isValidUser(u))
+    throw new WizardError(`Некорректное имя пользователя: ${JSON.stringify(u)}`);
+  return u;
+}
+
+/** A key path becomes an IdentityFile directive — reject control chars before it
+ *  reaches ~/.ssh/config (the file-exists check happens separately). */
+function resolveKeyPath(key: string): string {
+  const p = expandHome(key.trim());
+  if (!isSafeKeyPath(p)) throw new WizardError('Недопустимый символ в пути к ключу.');
+  if (!fs.existsSync(p)) throw new WizardError(`SSH-ключ не найден: ${p}`);
+  return p;
 }
 
 function resolveAuth(auth: string | undefined, key: string | undefined): AuthMethod {
@@ -48,9 +73,9 @@ export function addServerNonInteractive(name: string | undefined, f: ServerAddFl
   let keyPath: string | null = null;
   if (auth === 'key') {
     if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
-    keyPath = expandHome(f.key.trim());
-    if (!fs.existsSync(keyPath)) throw new WizardError(`SSH-ключ не найден: ${keyPath}`);
+    keyPath = resolveKeyPath(f.key);
   }
+  const user = resolveUser(f.user, settings.get().defaultUser);
 
   const server = servers.create({
     name: alias,
@@ -58,7 +83,7 @@ export function addServerNonInteractive(name: string | undefined, f: ServerAddFl
     hostMode: 'sshconfig',
     sshHost: '',
     host: f.host.trim(),
-    user: (f.user ?? settings.get().defaultUser).trim(),
+    user,
     sshPort: Number(port),
     auth,
     keyPath,
@@ -101,6 +126,8 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     remotePort = Number(f.remotePort);
   }
   const remoteHost = (f.remoteHost ?? settings.get().defaultRemoteHost) || '127.0.0.1';
+  if (!isValidForwardHost(remoteHost))
+    throw new WizardError(`Некорректный --remote-host: ${JSON.stringify(remoteHost)}`);
 
   // connection: a config alias, or a manual host
   let conn: Pick<Tunnel, 'hostMode' | 'sshHost' | 'host' | 'user' | 'sshPort' | 'auth' | 'keyPath'>;
@@ -110,8 +137,7 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     let keyPath: string | null = null;
     if (auth === 'key') {
       if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
-      keyPath = expandHome(f.key.trim());
-      if (!fs.existsSync(keyPath)) throw new WizardError(`SSH-ключ не найден: ${keyPath}`);
+      keyPath = resolveKeyPath(f.key);
     }
     conn = {
       hostMode: 'sshconfig',
@@ -131,14 +157,13 @@ export function addTunnelNonInteractive(f: TunnelAddFlags): Tunnel {
     let keyPath: string | null = null;
     if (auth === 'key') {
       if (!f.key) throw new WizardError('--auth key требует --key <путь>.');
-      keyPath = expandHome(f.key.trim());
-      if (!fs.existsSync(keyPath)) throw new WizardError(`SSH-ключ не найден: ${keyPath}`);
+      keyPath = resolveKeyPath(f.key);
     }
     conn = {
       hostMode: 'manual',
       sshHost: '',
       host: f.host.trim(),
-      user: (f.user ?? settings.get().defaultUser).trim(),
+      user: resolveUser(f.user, settings.get().defaultUser),
       sshPort: Number(port),
       auth,
       keyPath,
