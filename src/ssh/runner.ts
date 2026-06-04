@@ -2,7 +2,6 @@
  *  for tunnels, with careful lifecycle + fast-fail diagnostics. */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn, type StdioOptions } from 'node:child_process';
 import boxen from 'boxen';
@@ -51,22 +50,6 @@ export function preflight(t: ConnectionTarget, opts: PreflightOptions = {}): str
   return null;
 }
 
-function writeTempPass(pw: string): { file: string; cleanup: () => void } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wssh-'));
-  const file = path.join(dir, 'pw');
-  fs.writeFileSync(file, pw, { mode: 0o600 });
-  const cleanup = (): void => {
-    try {
-      fs.unlinkSync(file);
-      fs.rmdirSync(dir);
-    } catch {
-      /* noop */
-    }
-  };
-  process.on('exit', cleanup);
-  return { file, cleanup };
-}
-
 interface SpawnResult {
   code: number;
   startedAt: number;
@@ -89,18 +72,21 @@ function spawnPass(
   return new Promise((resolve) => {
     let cmd = program;
     let args = programArgs;
-    let cleanup = (): void => {};
+    let env: NodeJS.ProcessEnv = process.env;
 
     if (password !== undefined) {
-      const tmp = writeTempPass(password);
-      cleanup = tmp.cleanup;
+      // sshpass -e reads the password from the child's SSHPASS env var. Unlike a
+      // temp file this never touches disk — so a SIGKILL/crash can't leave the
+      // plaintext password behind in /tmp — and needs no exit-time cleanup hook
+      // (the old `process.on('exit')` per-spawn leaked listeners on reconnects).
       cmd = 'sshpass';
-      args = ['-f', tmp.file, program, ...programArgs];
+      args = ['-e', program, ...programArgs];
+      env = { ...process.env, SSHPASS: password };
     }
 
     const stdio: StdioOptions = captureStderr ? ['inherit', 'inherit', 'pipe'] : 'inherit';
     const startedAt = Date.now();
-    const child = spawn(cmd, args, { stdio });
+    const child = spawn(cmd, args, { stdio, env });
     onSpawn?.();
 
     let stderr = '';
@@ -115,7 +101,6 @@ function spawnPass(
     process.on('SIGINT', onSigint);
 
     const done = (code: number): void => {
-      cleanup();
       process.removeListener('SIGINT', onSigint);
       resolve({ code, startedAt, stderr });
     };
@@ -410,8 +395,8 @@ export interface DetachedTunnel {
 }
 
 /** Start a tunnel as a detached background process, logging to a file. Only safe
- *  for agent/key auth (password tunnels need an sshpass temp-file lifecycle that
- *  can't outlive this process) — the caller must guard that. */
+ *  for agent/key auth (a password tunnel would need an sshpass/SSHPASS lifecycle
+ *  tied to this process) — the caller must guard that. */
 export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
   ensureDir(FILES.logsDir);
   const logFile = path.join(FILES.logsDir, `tunnel-${tunnel.id}.log`);
