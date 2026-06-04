@@ -308,6 +308,7 @@ export function registerCommands(program: Command): void {
     .option('--compress', tr.cmd.transferOptCompress)
     .option('--delete', tr.cmd.transferOptDelete)
     .option('--dry-run', tr.cmd.transferOptDryRun)
+    .option('--bg', tr.cmd.transferOptBg)
     .action(
       async (
         n: string | undefined,
@@ -321,6 +322,7 @@ export function registerCommands(program: Command): void {
           compress?: boolean;
           delete?: boolean;
           dryRun?: boolean;
+          bg?: boolean;
         },
       ) => {
         if (o.upload && o.download) throw new WizardError(tr.cmd.transferBothDirections);
@@ -335,10 +337,30 @@ export function registerCommands(program: Command): void {
           compress: o.compress,
           delete: o.delete,
           dryRun: o.dryRun,
+          bg: o.bg,
         });
         if (code) process.exitCode = code;
       },
     );
+  // background transfer monitoring (one-shot processes started with `transfer --bg`)
+  program
+    .command('transfers')
+    .description(tr.cmd.transfersDesc)
+    .option('--log <id>', tr.cmd.transfersOptLog)
+    .option('--tail <n>', tr.cmd.tunnelLogsOptTail)
+    .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
+    .option('--json', tr.cmd.optOutputJson)
+    .action(async (o: { log?: string; tail?: string; follow?: boolean; json?: boolean }) => {
+      if (o.log !== undefined || o.follow || o.tail !== undefined) {
+        const code = await actions.transferLogsFlow(o.log, {
+          tail: o.tail !== undefined ? Number(o.tail) : undefined,
+          follow: o.follow,
+        });
+        if (code) process.exitCode = code;
+        return;
+      }
+      actions.transferSessionsFlow({ json: o.json });
+    });
 
   // ---- fleet status ----
   program

@@ -64,6 +64,7 @@ const en: Dict = {
     copyId: 'ssh-copy-id (key to server)',
     run: 'Run a command',
     transfer: 'File transfer',
+    bgTransfers: 'Background transfers (log)',
     groups: 'Groups by tags',
   },
 };

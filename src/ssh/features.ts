@@ -228,18 +228,31 @@ function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
     : [...args, '--', remoteSpec, expandHome(opts.localPath)];
 }
 
+/** Resolve a transfer to the program + argv it would run — shared by the
+ *  foreground {@link transfer} and the background runner so both build identical
+ *  commands. */
+export function transferArgv(
+  server: Server,
+  opts: TransferOptions,
+): { program: TransferTool; args: string[] } {
+  return opts.tool === 'rsync'
+    ? { program: 'rsync', args: buildRsyncArgs(server, opts) }
+    : { program: 'scp', args: buildScpArgs(server, opts) };
+}
+
 /** Transfer files via scp or rsync (uses the same auth as a connect). */
 export async function transfer(
   server: Server,
   opts: TransferOptions,
   password?: string,
 ): Promise<number> {
-  if (opts.tool === 'rsync') {
-    if (!commandExists('rsync')) return Promise.reject(new Error(tr.ssh.featuresRsyncNotFound));
-    return runProgram('rsync', buildRsyncArgs(server, opts), password);
+  const { program, args } = transferArgv(server, opts);
+  if (!commandExists(program)) {
+    return Promise.reject(
+      new Error(program === 'rsync' ? tr.ssh.featuresRsyncNotFound : tr.ssh.featuresScpNotFound),
+    );
   }
-  if (!commandExists('scp')) return Promise.reject(new Error(tr.ssh.featuresScpNotFound));
-  return runProgram('scp', buildScpArgs(server, opts), password);
+  return runProgram(program, args, password);
 }
 
 export { targetOptions };

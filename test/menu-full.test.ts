@@ -37,6 +37,7 @@ const act = {
   copyIdFlow: vi.fn(async () => 0),
   runFlow: vi.fn(async () => 0),
   transferFlow: vi.fn(async () => 0),
+  transferLogsFlow: vi.fn(async () => 0),
 };
 const connectMod = { quickConnect: vi.fn(async () => 0), quickConnectByName: vi.fn(async () => 0) };
 const searchMod = { searchFlow: vi.fn(async () => {}) };
@@ -126,12 +127,13 @@ describe('mainMenu navigation', () => {
       PICK_BACK, // leave tunnels submenu
       // NOTE: the standalone '~/.ssh/config' submenu was removed — servers ARE
       // config hosts now, so there is no longer a 'config' main-menu entry.
-      // actions submenu: check, copyId, run, transfer, back
+      // actions submenu: check, copyId, run, transfer, bg-transfers, back
       'actions',
       'check',
       'copyId',
       'run',
       'transfer',
+      'bgTransfers',
       PICK_BACK,
       // leave main menu
       'exit',
@@ -167,6 +169,7 @@ describe('mainMenu navigation', () => {
     expect(act.copyIdFlow).toHaveBeenCalled();
     expect(act.runFlow).toHaveBeenCalled();
     expect(act.transferFlow).toHaveBeenCalled();
+    expect(act.transferLogsFlow).toHaveBeenCalled(); // Actions ▸ Background transfers
   });
 
   it('recovers from a flow error and keeps the menu alive', async () => {

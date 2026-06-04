@@ -85,6 +85,9 @@ const en: Dict = {
   transferOptDryRun: 'rsync: dry run (--dry-run)',
   transferBothDirections: 'Pick only one: --upload or --download.',
   transferBadTool: (tools) => `--tool must be one of: ${tools}.`,
+  transferOptBg: 'run in the background (agent/key)',
+  transfersDesc: 'background transfers: list (or a log via --log)',
+  transfersOptLog: 'show a transfer log by id/name',
 
   // status
   statusDesc: 'bulk availability check (dashboard)',

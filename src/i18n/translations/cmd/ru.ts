@@ -84,6 +84,9 @@ const ru = {
   transferOptDryRun: 'rsync: пробный прогон (--dry-run)',
   transferBothDirections: 'Укажите только одно: --upload или --download.',
   transferBadTool: (tools: string) => `--tool должно быть одним из: ${tools}.`,
+  transferOptBg: 'запустить в фоне (agent/key)',
+  transfersDesc: 'фоновые переносы: список (или лог через --log)',
+  transfersOptLog: 'показать лог переноса по id/имени',
 
   // status
   statusDesc: 'массовая проверка доступности (дашборд)',

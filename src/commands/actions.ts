@@ -1,22 +1,35 @@
 /** Extra actions: reachability check, fleet status, ssh-copy-id, remote command,
  *  file transfer, known_hosts, tag groups. */
 
+import fs from 'node:fs';
 import type { ConnectionTarget, Server } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
+import { transferSessions, type TransferSession } from '../store/transfer-sessions.store.js';
 import { findSshKeys } from '../ssh/keys.js';
-import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
+import {
+  healthCheck,
+  healthCheckAll,
+  copyId,
+  runCommand,
+  transfer,
+  transferArgv,
+} from '../ssh/features.js';
 import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
 import { forgetHostKey, knownHostsToken, listKnownHosts } from '../ssh/hostkey.js';
 import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
+import { startTransferDetached } from '../ssh/runner.js';
+import { destination } from '../ssh/args.js';
 import * as ui from '../ui/index.js';
 import { renderStatusTable } from '../ui/tables.js';
 import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
+import { newId } from '../utils/id.js';
+import { tailLines, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
 import { tr } from '../i18n/index.js';
 
@@ -298,6 +311,8 @@ export interface TransferCliOptions {
   compress?: boolean;
   delete?: boolean;
   dryRun?: boolean;
+  /** run detached in the background (key/agent auth only) */
+  bg?: boolean;
 }
 
 export async function transferFlow(name?: string, cli: TransferCliOptions = {}): Promise<number> {
@@ -378,6 +393,35 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
     opts.recursive = await ask(cli.recursive, tr.actions.scpRecursive, def.recursive);
   }
 
+  // Background: spawn detached, log to a file, register a session to monitor.
+  if (cli.bg) {
+    // A detached process can't carry the SSHPASS lifecycle safely (same reason
+    // background tunnels are key/agent-only), so refuse password auth here.
+    if (server.auth === 'password') {
+      ui.printError(tr.actions.transferBgNoPassword);
+      return 1;
+    }
+    const { program, args } = transferArgv(server, opts);
+    if (!commandExists(program)) {
+      ui.printError(
+        program === 'rsync' ? tr.ssh.featuresRsyncNotFound : tr.ssh.featuresScpNotFound,
+      );
+      return 1;
+    }
+    const id = newId();
+    const { pid, logFile } = startTransferDetached(program, args, id);
+    if (pid <= 0) {
+      ui.printError(tr.actions.transferBgFailed);
+      return 1;
+    }
+    const dest = `${destination(server)}:${remotePath}`;
+    const summary = direction === 'upload' ? `${localPath} → ${dest}` : `${dest} → ${localPath}`;
+    transferSessions.add({ id, name: server.name, tool, direction, summary, pid, logFile });
+    ui.printOk(tr.actions.transferBgStarted(pid));
+    ui.printInfo(tr.actions.transferBgMonitor(id));
+    return 0;
+  }
+
   const password = await resolvePassword(server);
   ui.printSection('📂', tr.actions.transferSection(tool, direction, targetSummary(server)));
   try {
@@ -389,4 +433,73 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
     ui.printError((e as Error).message);
     return 1;
   }
+}
+
+/** List the file transfers currently running in the background (reaps finished). */
+export function transferSessionsFlow(opts: { json?: boolean } = {}): void {
+  const live = transferSessions.list();
+  if (opts.json) {
+    console.log(JSON.stringify(live, null, 2));
+    return;
+  }
+  if (!live.length) {
+    ui.printWarn(tr.actions.transferBgNone);
+    return;
+  }
+  ui.printSection('🟢', tr.actions.transferBgSection(live.length));
+  for (const s of live) {
+    console.log(
+      `  ${ui.chalk.bold(s.name)}  ${ui.chalk.dim(`${s.tool} ${s.direction}`)}  ${s.summary}` +
+        `  ${ui.chalk.dim(`pid ${s.pid} · ${s.id.slice(0, 8)}`)}`,
+    );
+  }
+}
+
+/** Show (and optionally follow) a background transfer's log, picked by id/name. */
+export async function transferLogsFlow(
+  id?: string,
+  opts: { tail?: number; follow?: boolean } = {},
+): Promise<number> {
+  const live = transferSessions.list();
+  if (!live.length) {
+    ui.printWarn(tr.actions.transferBgNone);
+    return 0;
+  }
+  let target: TransferSession;
+  if (id) {
+    const found = live.find(
+      (s) => s.id === id || s.id.startsWith(id) || s.name.toLowerCase() === id.toLowerCase(),
+    );
+    if (!found) {
+      ui.printError(tr.actions.transferBgNotFound(id));
+      return 1;
+    }
+    target = found;
+  } else if (live.length === 1) {
+    target = live[0]!;
+  } else {
+    ui.ensureInteractive(tr.actions.transferBgLogsEnsure);
+    const picked = await ui.pickFromList<TransferSession>({
+      message: tr.actions.transferBgPick,
+      items: live,
+      render: (s) => `${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.summary)}  pid ${s.pid}`,
+      search: (s) => `${s.name} ${s.summary}`,
+      pageSize: 14,
+    });
+    if (picked === ui.BACK) return 0;
+    target = picked;
+  }
+
+  if (!fs.existsSync(target.logFile)) {
+    ui.printWarn(tr.actions.transferBgLogMissing(tilde(target.logFile)));
+    return 1;
+  }
+  ui.printSection('📜', tr.actions.transferBgLogsSection(target.name, tilde(target.logFile)));
+  const lines = tailLines(fs.readFileSync(target.logFile, 'utf8'), opts.tail ?? 40);
+  if (lines.length) console.log(lines.join('\n'));
+  if (opts.follow) {
+    ui.printInfo(ui.chalk.dim(tr.actions.transferBgFollowHint));
+    await followLog(target.logFile);
+  }
+  return 0;
 }

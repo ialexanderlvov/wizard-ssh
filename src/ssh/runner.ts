@@ -405,9 +405,47 @@ export async function runTunnel(
   return code && code !== 130 ? code : 0;
 }
 
-export interface DetachedTunnel {
+export interface DetachedProcess {
   pid: number;
   logFile: string;
+}
+export type DetachedTunnel = DetachedProcess;
+
+/** Spawn an scp/rsync (or any) program detached, with stdout+stderr appended to a
+ *  per-id log under logsDir (0600, O_NOFOLLOW). The caller records the returned
+ *  pid + logFile so the transfer can be listed and its log tailed later. Only
+ *  safe for key/agent auth — a password transfer would need an SSHPASS lifecycle
+ *  tied to this process (the caller must guard that, as it does for tunnels). */
+export function startTransferDetached(
+  program: string,
+  args: string[],
+  id: string,
+): DetachedProcess {
+  ensureDir(FILES.logsDir);
+  // Re-sanitize the id at the sink (defense in depth) so it can never escape
+  // logsDir via `../` even if a record reached here some other way.
+  const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : 'transfer';
+  const logFile = path.join(FILES.logsDir, `transfer-${safeId}.log`);
+  const fd = fs.openSync(
+    logFile,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_APPEND |
+      (fs.constants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
+  try {
+    fs.chmodSync(logFile, 0o600);
+  } catch {
+    /* best-effort */
+  }
+  try {
+    const child = spawn(program, args, { stdio: ['ignore', fd, fd], detached: true });
+    child.unref();
+    return { pid: child.pid ?? -1, logFile };
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /** Start a tunnel as a detached background process, logging to a file. Only safe

@@ -267,6 +267,7 @@ const actionsMenu = (): Promise<void> =>
       { label: tr.menu.actions.copyId, value: 'copyId' },
       { label: tr.menu.actions.run, value: 'run' },
       { label: tr.menu.actions.transfer, value: 'transfer' },
+      { label: tr.menu.actions.bgTransfers, value: 'bgTransfers' },
       { label: tr.menu.actions.groups, value: 'groups' },
     ],
     async (a) => {
@@ -275,6 +276,7 @@ const actionsMenu = (): Promise<void> =>
       else if (a === 'copyId') await actions.copyIdFlow();
       else if (a === 'run') await actions.runFlow(undefined, []);
       else if (a === 'transfer') await actions.transferFlow();
+      else if (a === 'bgTransfers') await actions.transferLogsFlow();
       else if (a === 'groups') actions.groupListFlow();
     },
   );

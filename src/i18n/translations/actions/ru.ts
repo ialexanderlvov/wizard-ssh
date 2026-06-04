@@ -58,6 +58,19 @@ const ru = {
   transferNeedDirection: 'Укажите направление: --upload или --download.',
   transferNeedLocal: 'Укажите локальный путь: --local <путь>.',
   transferNeedRemote: 'Укажите путь на сервере: --remote <путь>.',
+  transferBgNoPassword: 'Фоновый перенос работает только для agent/key (не для пароля).',
+  transferBgFailed: 'Не удалось запустить фоновый процесс.',
+  transferBgStarted: (pid: number) => `Перенос запущен в фоне (pid ${pid}).`,
+  transferBgMonitor: (id: string) =>
+    `Следить: wssh transfers   ·   лог: wssh transfers --log ${id.slice(0, 8)} -f`,
+  transferBgNone: 'Нет фоновых переносов.',
+  transferBgSection: (n: number) => `Фоновые переносы (${n})`,
+  transferBgNotFound: (id: string) => `Фоновый перенос «${id}» не найден.`,
+  transferBgLogsEnsure: 'Просмотр лога переноса',
+  transferBgPick: '📜 Выберите перенос',
+  transferBgLogMissing: (path: string) => `Лог не найден: ${path}`,
+  transferBgLogsSection: (name: string, path: string) => `Лог переноса ${name} — ${path}`,
+  transferBgFollowHint: 'Слежу за логом… Ctrl+C — выйти.',
 };
 
 export default ru;
