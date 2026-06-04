@@ -47,6 +47,14 @@ describe('pickFromList', () => {
     await expect(answer).resolves.toBe(BACK);
   });
 
+  it('a lone ESC byte backs out immediately (no escapeCodeTimeout wait)', async () => {
+    // The fast path resolves on the raw 0x1b byte rather than waiting ~500ms for
+    // readline to surface the keypress, so backing out of a menu is instant.
+    const { answer, events } = await render(pickFromList, base);
+    events.type('\u001b'); // a bare ESC byte
+    await expect(answer).resolves.toBe(BACK);
+  });
+
   it('under a TTY, ignores a byte-less Esc echo but honors a real (byte-backed) Esc', async () => {
     // In a real terminal a previous inquirer prompt can re-emit a held Esc as a
     // byte-less keypress after closing; that echo must NOT back this list out.

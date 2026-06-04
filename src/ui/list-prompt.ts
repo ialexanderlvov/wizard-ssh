@@ -85,20 +85,29 @@ const listPrompt = createPrompt<unknown, ListConfig<unknown>>((cfg, done) => {
   const [sortIdx, setSortIdx] = useState(0);
   const [status, setStatus] = useState<'idle' | 'done'>('idle');
 
-  // Node's readline waits `escapeCodeTimeout` ms (default 500) after a lone Esc
-  // to tell it apart from an escape sequence — arrows, etc. all start with the
-  // ESC byte. We only read local key presses here (sequences arrive atomically),
-  // so shrink it; otherwise backing out with Esc lags about half a second.
+  // Esc handling watches the raw input stream directly. Node's readline holds a
+  // lone Esc for ~500ms (escapeCodeTimeout) before surfacing the 'escape'
+  // keypress, to disambiguate it from an escape SEQUENCE (arrows, etc., which all
+  // start with the ESC byte). Setting rl.escapeCodeTimeout after the interface is
+  // built does NOT take effect (the keypress decoder already captured the
+  // default), so backing out via the keypress would lag half a second. Instead we
+  // resolve on the lone ESC byte immediately — sequences arrive as one multi-byte
+  // chunk, so they never look like a lone ESC. We also record the byte time so the
+  // keypress handler can reject the byte-less "echo" of an Esc a previous prompt
+  // held and re-emitted after closing. Watch the prompt's OWN input stream so this
+  // works under an injected test stream too.
   useEffect((rl) => {
-    (rl as unknown as { escapeCodeTimeout: number }).escapeCodeTimeout = 1;
-    // Track fresh input bytes so the keypress handler can reject a byte-less echo
-    // Esc (see lastByteAt). Forget any byte seen before this list mounted. Watch
-    // the prompt's OWN input stream (process.stdin in real use) rather than a
-    // hard-coded one, so it also works under an injected test stream.
     lastByteAt = 0;
     const input = (rl as unknown as { input?: NodeJS.EventEmitter }).input;
-    const onData = (): void => {
+    let backed = false;
+    const onData = (chunk: Buffer | string): void => {
       lastByteAt = Date.now();
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+      if (!backed && buf.length === 1 && buf[0] === 0x1b) {
+        backed = true;
+        setStatus('done');
+        done(BACK);
+      }
     };
     input?.on('data', onData);
     return () => input?.removeListener('data', onData);
