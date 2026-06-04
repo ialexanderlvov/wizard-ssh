@@ -16,6 +16,7 @@ import {
   defaultKdf,
   deriveKey,
   encrypt,
+  isValidKdf,
   keyMatchesCheck,
 } from './crypto.js';
 import * as touchid from './touchid.js';
@@ -39,17 +40,18 @@ function isCipher(c: unknown): c is Cipher {
 }
 
 /** Validate the on-disk shape instead of blindly casting arbitrary JSON — a
- *  hand-edited or truncated vault.json must read as "not a vault", never as a
- *  half-formed VaultFile that crashes later in decrypt/rekey. */
-function isVaultFile(d: unknown): d is VaultFile {
+ *  hand-edited, truncated, or IMPORTED vault.json must read as "not a vault",
+ *  never as a half-formed VaultFile that crashes later in decrypt/rekey. The KDF
+ *  params are bounded (isValidKdf) so a hostile cost can't OOM/hang/lock-out the
+ *  unlock, and version is pinned to 1 so a future format isn't misread as v1.
+ *  Exported so the importer can reject a bad bundled vault before persisting it. */
+export function isVaultFileShape(d: unknown): d is VaultFile {
   if (!d || typeof d !== 'object') return false;
   const f = d as VaultFile;
   return (
+    f.version === 1 &&
     isCipher(f.check) &&
-    !!f.kdf &&
-    typeof f.kdf === 'object' &&
-    typeof f.kdf.N === 'number' &&
-    typeof f.kdf.salt === 'string' &&
+    isValidKdf(f.kdf) &&
     !!f.secrets &&
     typeof f.secrets === 'object'
   );
@@ -77,7 +79,7 @@ class Vault {
     if (this.file) return this.file;
     if (!this.exists()) return null;
     const { data } = readJson<unknown>(FILES.vault, null);
-    if (!isVaultFile(data)) return null;
+    if (!isVaultFileShape(data)) return null;
     this.file = data;
     return this.file;
   }

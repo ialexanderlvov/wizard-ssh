@@ -8,6 +8,7 @@ import { readJson, writeJson } from '../store/json-file.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
+import { isVaultFileShape } from '../vault/vault.js';
 import {
   isSafeKeyPath,
   isValidForwardHost,
@@ -137,9 +138,18 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
   if (data.settings) settings.update(data.settings);
 
   // Restore the encrypted vault only when there is none locally (never clobber).
+  // The bundle is untrusted: validate the vault's shape AND KDF bounds before
+  // persisting, so a hostile export can't write a vault.json that crashes,
+  // OOMs, or permanently locks out the next unlock.
   if (data.vault && !fs.existsSync(FILES.vault)) {
-    writeJson(FILES.vault, data.vault);
-    ui.printInfo('Хранилище паролей восстановлено (нужна та же парольная фраза).');
+    if (isVaultFileShape(data.vault)) {
+      writeJson(FILES.vault, data.vault);
+      ui.printInfo('Хранилище паролей восстановлено (нужна та же парольная фраза).');
+    } else {
+      ui.printWarn(
+        'Хранилище в файле импорта имеет неверный формат или параметры KDF — пропущено.',
+      );
+    }
   } else if (data.vault) {
     ui.printWarn(
       'Локальное хранилище уже есть — оно не перезаписано. Перенесите vault.json вручную при необходимости.',
