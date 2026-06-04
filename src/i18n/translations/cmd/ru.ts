@@ -110,6 +110,7 @@ const ru = {
   // misc
   pathDesc: 'путь к директории с данными',
   menuDesc: 'открыть интерактивное меню',
+  backupDesc: 'бэкап всего ~/.ssh в архив (вкл. приватные ключи)',
 
   // parseSort error
   sortInvalid: (keys: string) => `--sort должно быть одним из: ${keys}`,

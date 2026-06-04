@@ -23,6 +23,7 @@ const en: Dict = {
     vault: 'Password vault',
     settings: 'Settings',
     io: 'Export / import',
+    backup: 'Backup ~/.ssh',
     exit: 'Exit',
   },
   servers: {
