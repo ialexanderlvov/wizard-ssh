@@ -113,7 +113,10 @@ function findManaged(
   alias: string,
 ): { start: number; contentEnd: number; metaStart: number } | null {
   for (const block of blocksFromLines(lines, SSH_CONFIG_FILE)) {
-    if (block.aliases.length === 1 && block.aliases[0] === alias) {
+    // Single-PATTERN only: `block.aliases` filters out wildcards/negations, so a
+    // `Host * prod` block would otherwise look like it manages "prod" and a
+    // rewrite/remove would silently drop the `*`. patternCount guards that.
+    if (block.patternCount === 1 && block.aliases.length === 1 && block.aliases[0] === alias) {
       // Trim trailing blank/comment lines so we preserve the gap before the next block.
       let contentEnd = block.end;
       while (contentEnd > block.start + 1) {

@@ -11,6 +11,11 @@ import { parseWsshComment } from './wssh.js';
 
 export interface Block {
   aliases: string[];
+  /** number of RAW patterns on the `Host` line BEFORE wildcard/negation filtering.
+   *  A block is only safe to splice when it has exactly one pattern total — e.g.
+   *  `Host * prod` collapses to the single alias "prod" but must NOT be rewritten
+   *  (doing so would drop the `*` and clobber the user's global defaults). */
+  patternCount: number;
   params: Array<{ key: string; value: string }>;
   source: string;
   /** line range in the source file [start, end) — only meaningful for main */
@@ -148,11 +153,13 @@ function parseLines(
     if (key === 'host' || key === 'match') {
       closeAt(i);
       if (key === 'host') {
-        const aliases = splitTokens(value).filter(
+        const tokens = splitTokens(value);
+        const aliases = tokens.filter(
           (a) => !a.includes('*') && !a.includes('?') && !a.startsWith('!'),
         );
         current = {
           aliases,
+          patternCount: tokens.length,
           params: [],
           source: file,
           start: i,
@@ -177,10 +184,13 @@ function param(block: Block, name: string): string {
 }
 
 function blockToHost(block: Block, alias: string): SshConfigHost {
-  // Manageable only when it is a single-alias block living in the MAIN config —
-  // those are the ones the writer can safely splice in place.
+  // Manageable only when it is a single-PATTERN block (exactly one alias, no
+  // extra wildcard/negation patterns) living in the MAIN config — those are the
+  // ones the writer can safely splice in place without dropping sibling patterns.
   const manageable =
-    block.aliases.length === 1 && path.resolve(block.source) === path.resolve(SSH_CONFIG_FILE);
+    block.aliases.length === 1 &&
+    block.patternCount === 1 &&
+    path.resolve(block.source) === path.resolve(SSH_CONFIG_FILE);
   return {
     alias,
     hostName: param(block, 'HostName'),
