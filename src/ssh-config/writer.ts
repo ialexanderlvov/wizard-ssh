@@ -9,7 +9,7 @@ import { WizardError } from '../core/errors.js';
 import { hasUnsafeChars } from '../utils/validators.js';
 import { atomicWrite } from '../utils/atomic.js';
 import type { SshConfigEntry } from './types.js';
-import { blocksFromLines } from './parser.js';
+import { blocksFromLines, getHost } from './parser.js';
 import { parseWsshComment, serializeWssh } from './wssh.js';
 import { tr } from '../i18n/index.js';
 
@@ -133,10 +133,25 @@ function findManaged(
 export function upsertHost(entry: SshConfigEntry): { backup: string | null; created: boolean } {
   if (!entry.alias.trim()) throw new WizardError(tr.vault.writerAliasEmpty);
   ensureConfigFile();
-  const backup = backupConfig();
   const lines = readLines();
-  const block = formatBlock(entry);
   const existing = findManaged(lines, entry.alias);
+
+  // No managed block in the MAIN file, but the alias resolves through an Include
+  // (i.e. it is defined in a DIFFERENT file). Appending a fresh block to the main
+  // file would create a cross-file split-brain duplicate that ssh silently
+  // shadows. Refuse, mirroring the interactive update path which declines
+  // unmanageable hosts. (A non-manageable block in the MAIN file — e.g.
+  // `Host * prod` — is intentionally left to the append path below, which adds a
+  // sibling managed block without clobbering the wildcard defaults.) Checked
+  // before the backup so a refusal leaves no spurious backup.
+  if (!existing) {
+    const resolved = getHost(entry.alias);
+    if (resolved && path.resolve(resolved.source) !== path.resolve(SSH_CONFIG_FILE))
+      throw new WizardError(tr.vault.writerAliasInInclude(entry.alias));
+  }
+
+  const backup = backupConfig();
+  const block = formatBlock(entry);
 
   if (existing) {
     lines.splice(existing.metaStart, existing.contentEnd - existing.metaStart, ...block);
