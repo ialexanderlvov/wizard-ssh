@@ -7,7 +7,13 @@ import { findSshKeys } from '../ssh/keys.js';
 import * as sshConfig from '../ssh-config/index.js';
 import * as ui from '../ui/index.js';
 import { configHostLine } from '../ui/format.js';
-import { isValidHostOrIp, isValidName, isValidPort, isValidSshAlias } from '../utils/validators.js';
+import {
+  isValidForwardHost,
+  isValidHostOrIp,
+  isValidName,
+  isValidPort,
+  isValidSshAlias,
+} from '../utils/validators.js';
 import { expandHome, parseTags, slugify, tilde } from '../utils/strings.js';
 
 const portValidate = (v: string): boolean | string => isValidPort(v) || 'Порт должен быть 1..65535';
@@ -262,6 +268,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
         await ui.text({
           message: '🏠 Локальная цель — хост',
           default: defaults.remoteHost || 'localhost',
+          validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || 'Некорректный хост',
         })
       ).trim() || 'localhost';
     const localPort = Number(
@@ -286,6 +293,7 @@ export async function askForward(defaults: Partial<Tunnel> = {}): Promise<Forwar
       await ui.text({
         message: '🌐 Хост сервиса на сервере (обычно 127.0.0.1)',
         default: defaults.remoteHost || s.defaultRemoteHost,
+        validate: (v) => !v.trim() || isValidForwardHost(v.trim()) || 'Некорректный хост',
       })
     ).trim() || '127.0.0.1';
   const localPort = Number(
