@@ -148,23 +148,38 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
     rawServers.length - importedServers.length + (rawTunnels.length - importedTunnels.length);
   if (skipped > 0) ui.printWarn(tr.importExport.skippedRecords(skipped));
 
+  let failed = 0;
   if (replace) {
     servers.replaceAll(importedServers);
     tunnels.replaceAll(importedTunnels);
   } else {
     for (const s of importedServers) {
-      let name = s.name;
-      let i = 2;
-      while (servers.nameExists(name)) name = `${s.name}-${i++}`;
-      servers.create({ ...s, name });
+      // serverIsSafe validates `name ?? sshHost`, so a record can pass with no
+      // `name`; derive the alias the same way (and never call nameExists with
+      // undefined). Wrap create so one bad record can't abort the whole import.
+      const base = (s.name ?? s.sshHost ?? '').trim();
+      try {
+        let name = base;
+        let i = 2;
+        while (servers.nameExists(name)) name = `${base}-${i++}`;
+        servers.create({ ...s, name });
+      } catch {
+        failed++;
+      }
     }
     for (const t of importedTunnels) {
-      let name = t.name;
-      let i = 2;
-      while (tunnels.nameExists(name)) name = `${t.name}-${i++}`;
-      tunnels.create({ ...t, name });
+      const base = (t.name ?? '').trim();
+      try {
+        let name = base;
+        let i = 2;
+        while (tunnels.nameExists(name)) name = `${base}-${i++}`;
+        tunnels.create({ ...t, name });
+      } catch {
+        failed++;
+      }
     }
   }
+  if (failed > 0) ui.printWarn(tr.importExport.skippedRecords(failed));
 
   const safeSettings = sanitizeImportedSettings(data.settings);
   if (Object.keys(safeSettings).length) settings.update(safeSettings);
