@@ -50,6 +50,39 @@ function mergeParams(
   });
 }
 
+/** Pick a ProxyJump bastion from existing config hosts (or none / manual chain). */
+async function askProxyJump(current: string, excludeAlias?: string): Promise<string> {
+  const hosts = sshConfig.listHosts().filter((h) => h.alias !== excludeAlias);
+  const KEEP = '__keep__';
+  const NONE = '__none__';
+  const MANUAL = '__manual__';
+  const choices = [
+    ...(current ? [{ name: `Оставить: ${current}`, value: KEEP }] : []),
+    { name: 'Без jump-хоста', value: NONE },
+    ...hosts.map((h) => ({
+      name: `${h.alias}${h.hostName ? ` (${h.hostName})` : ''}`,
+      value: h.alias,
+    })),
+    { name: 'Ввести вручную (цепочку через запятую)', value: MANUAL },
+  ];
+  const pick = await ui.choose<string>({
+    message: '🛬 ProxyJump (bastion, необязательно)',
+    choices,
+    default: current ? KEEP : NONE,
+  });
+  if (pick === KEEP) return current;
+  if (pick === NONE) return '';
+  if (pick === MANUAL) {
+    return (
+      await ui.text({
+        message: 'ProxyJump (alias или user@host:port, через запятую)',
+        default: current,
+      })
+    ).trim();
+  }
+  return pick;
+}
+
 async function askHostFields(current?: SshConfigHost): Promise<Record<string, string>> {
   const get = (k: string): string =>
     current?.params.find((p) => p.key.toLowerCase() === k.toLowerCase())?.value ?? '';
@@ -61,10 +94,7 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
       message: '🗝 IdentityFile (путь, необязательно)',
       default: get('IdentityFile'),
     }),
-    ProxyJump: await ui.text({
-      message: '🛬 ProxyJump (jump-host, необязательно)',
-      default: get('ProxyJump'),
-    }),
+    ProxyJump: await askProxyJump(get('ProxyJump'), current?.alias),
   };
 }
 
