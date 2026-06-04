@@ -7,6 +7,14 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.3.3](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.2...wizard-ssh-v1.3.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* **ui:** stop one Esc from skipping two screens back when editing ([e3bae91](https://github.com/ialexanderlvov/wizard-ssh/commit/e3bae91adae188fe624bc178435cc9503502f1b1))
+* **ui:** stop one Esc from skipping two screens back when editing ([c157de4](https://github.com/ialexanderlvov/wizard-ssh/commit/c157de4e35079768bb203cb027fa3f489e66a6dc))
+
 ## [1.3.2](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.1...wizard-ssh-v1.3.2) (2026-06-04)
 
 
