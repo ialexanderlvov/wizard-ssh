@@ -27,7 +27,10 @@ export interface Cipher {
 export const CHECK_PLAINTEXT = 'wizard-ssh::vault::ok';
 
 export function defaultKdf(): KdfParams {
-  return { salt: randomBytes(16).toString('base64'), N: 16384, r: 8, p: 1, keylen: 32 };
+  // N=2^17 (~128 MiB), r=8, p=1 — the OWASP-recommended scrypt cost for a
+  // password-derived key. The params are stored per-vault, so an existing vault
+  // keeps decrypting with its own (older) N and only re-keying adopts this one.
+  return { salt: randomBytes(16).toString('base64'), N: 131072, r: 8, p: 1, keylen: 32 };
 }
 
 export function deriveKey(passphrase: string, kdf: KdfParams): Buffer {

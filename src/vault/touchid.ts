@@ -2,13 +2,18 @@
  *
  *  Strategy: the vault's 32-byte AES key is stashed in the login Keychain via
  *  the system `security` tool. A tiny Swift helper (compiled once, cached under
- *  ~/.wizard-ssh/bin) gates release of that key behind a biometric prompt. If
- *  Touch ID hardware / Command Line Tools are missing we report unsupported and
- *  the caller falls back to the master passphrase.
+ *  ~/.wizard-ssh/bin) shows a biometric prompt; on success THIS CLI then reads
+ *  the key from the Keychain. If Touch ID hardware / Command Line Tools are
+ *  missing we report unsupported and the caller falls back to the passphrase.
  *
- *  Trade-off (documented): this is a convenience layer, not a hardware-bound
- *  secret — the key still lives in your login Keychain. The vault passphrase
- *  remains the root of trust. */
+ *  Trade-off (IMPORTANT — do not over-trust this): the biometric prompt is a UX
+ *  gate inside this CLI, NOT an OS-enforced access control on the key. The
+ *  `security` tool cannot attach a biometric ACL, so the Keychain item is a
+ *  plain generic-password readable by ANY process running as you (via
+ *  `security find-generic-password`) WITHOUT Touch ID. This is a convenience
+ *  layer for same-user use, not a hardware-bound secret; the vault passphrase
+ *  remains the real root of trust. (A future hardening would store + release the
+ *  key inside the Swift helper under a SecAccessControl biometric ACL.) */
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -28,6 +28,33 @@ interface VaultFile {
   touchId: boolean;
 }
 
+function isCipher(c: unknown): c is Cipher {
+  return (
+    !!c &&
+    typeof c === 'object' &&
+    typeof (c as Cipher).iv === 'string' &&
+    typeof (c as Cipher).tag === 'string' &&
+    typeof (c as Cipher).data === 'string'
+  );
+}
+
+/** Validate the on-disk shape instead of blindly casting arbitrary JSON — a
+ *  hand-edited or truncated vault.json must read as "not a vault", never as a
+ *  half-formed VaultFile that crashes later in decrypt/rekey. */
+function isVaultFile(d: unknown): d is VaultFile {
+  if (!d || typeof d !== 'object') return false;
+  const f = d as VaultFile;
+  return (
+    isCipher(f.check) &&
+    !!f.kdf &&
+    typeof f.kdf === 'object' &&
+    typeof f.kdf.N === 'number' &&
+    typeof f.kdf.salt === 'string' &&
+    !!f.secrets &&
+    typeof f.secrets === 'object'
+  );
+}
+
 export interface UnlockOptions {
   /** Asked when Touch ID is off/unavailable or biometric auth fails. */
   promptPassphrase: () => Promise<string>;
@@ -49,9 +76,9 @@ class Vault {
   private read(): VaultFile | null {
     if (this.file) return this.file;
     if (!this.exists()) return null;
-    const { data } = readJson<VaultFile | Record<string, never>>(FILES.vault, {});
-    if (!data || !('check' in data) || !('kdf' in data)) return null;
-    this.file = data as VaultFile;
+    const { data } = readJson<unknown>(FILES.vault, null);
+    if (!isVaultFile(data)) return null;
+    this.file = data;
     return this.file;
   }
 
@@ -73,8 +100,15 @@ class Vault {
     return touchid.isSupported();
   }
 
-  lock(): void {
+  /** Best-effort zeroization of the in-memory master key before dropping it, so
+   *  it doesn't linger in a heap buffer for the rest of the process lifetime. */
+  private wipeKey(): void {
+    if (this.key) this.key.fill(0);
     this.key = null;
+  }
+
+  lock(): void {
+    this.wipeKey();
   }
 
   // ---------- setup ----------
@@ -201,7 +235,7 @@ class Vault {
       /* noop */
     }
     this.file = null;
-    this.key = null;
+    this.wipeKey();
   }
 
   /** Re-encrypt the whole vault under a new passphrase. Requires unlocked. */
@@ -233,6 +267,7 @@ class Vault {
       secrets,
       touchId: file.touchId,
     });
+    this.wipeKey(); // scrub the old master key before swapping in the new one
     this.key = key;
     if (file.touchId && touchid.isSupported()) touchid.storeKey(key.toString('base64'));
   }
