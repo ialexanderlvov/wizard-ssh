@@ -119,6 +119,42 @@ describe('transfer', () => {
       'PreferredAuthentications=password',
     );
   });
+
+  it('password-auth scp disables ProxyCommand/ProxyJump/LocalCommand (no SSHPASS leak)', async () => {
+    await transfer(
+      server({ auth: 'password' }),
+      { direction: 'upload', localPath: 'a', remotePath: 'b' },
+      'pw',
+    );
+    const args = (h.runProgram.mock.calls[0]?.[1] as string[]).join(' ');
+    expect(args).toContain('ProxyCommand=none');
+    expect(args).toContain('ProxyJump=none');
+    expect(args).toContain('PermitLocalCommand=no');
+  });
+
+  it('key-auth scp keeps proxying available (no none-overrides)', async () => {
+    await transfer(server({ auth: 'key', keyPath: '/k' }), {
+      direction: 'upload',
+      localPath: 'a',
+      remotePath: 'b',
+    });
+    expect((h.runProgram.mock.calls[0]?.[1] as string[]).join(' ')).not.toContain('ProxyJump=none');
+  });
+});
+
+describe('copyId SSHPASS leak protection', () => {
+  it('password-auth ssh-copy-id disables ProxyCommand/ProxyJump/LocalCommand', async () => {
+    await copyId(server({ auth: 'password' }), '/keys/id.pub', 'pw');
+    const args = (h.runProgram.mock.calls[0]?.[1] as string[]).join(' ');
+    expect(args).toContain('ProxyCommand=none');
+    expect(args).toContain('ProxyJump=none');
+    expect(args).toContain('PermitLocalCommand=no');
+  });
+
+  it('non-password ssh-copy-id adds no proxy overrides', async () => {
+    await copyId(server({ auth: 'agent' }), '/keys/id.pub');
+    expect((h.runProgram.mock.calls[0]?.[1] as string[]).join(' ')).not.toContain('ProxyJump=none');
+  });
 });
 
 describe('copyId / resolveEndpoint port branches', () => {

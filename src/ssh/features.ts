@@ -6,7 +6,7 @@ import type { ConnectionTarget, Server } from '../core/types.js';
 import { capture, captureAsync, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { shJoin } from '../utils/shell.js';
-import { destination, targetOptions, buildRunArgs } from './args.js';
+import { destination, targetOptions, buildRunArgs, PASSWORD_NO_PROXY_OPTS } from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { runProgram, runSshInherit } from './runner.js';
 import { tr } from '../i18n/index.js';
@@ -137,6 +137,12 @@ export async function copyId(
   if (server.hostMode !== 'sshconfig' && server.sshPort && server.sshPort !== 22) {
     args.push('-p', String(server.sshPort));
   }
+  // ssh-copy-id runs ssh under the hood, so for password auth it must carry the
+  // same proxy-disabling overrides as targetOptions — otherwise SSHPASS leaks
+  // into a ProxyJump/ProxyCommand child (ssh-copy-id forwards `-o` to ssh).
+  if (server.auth === 'password') {
+    args.push('-o', 'PreferredAuthentications=password', ...PASSWORD_NO_PROXY_OPTS);
+  }
   args.push('--', destination(server)); // end options: a leading-dash dest stays an operand
   return runProgram('ssh-copy-id', args, password);
 }
@@ -181,7 +187,15 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
   if (t.auth === 'key' && t.keyPath)
     args.push('-i', expandHome(t.keyPath), '-o', 'IdentitiesOnly=yes'); // pin the chosen key
   else if (t.auth === 'password')
-    args.push('-o', 'PreferredAuthentications=password', '-o', 'PubkeyAuthentication=no');
+    // Mirror targetOptions(): without these, an SSHPASS-carrying scp to a config
+    // host with a ProxyJump/ProxyCommand would leak the password into that child.
+    args.push(
+      '-o',
+      'PreferredAuthentications=password',
+      '-o',
+      'PubkeyAuthentication=no',
+      ...PASSWORD_NO_PROXY_OPTS,
+    );
 
   const remoteSpec = `${destination(t)}:${opts.remotePath}`;
   // `--` so a local path beginning with `-` is a file operand, not an scp option.
