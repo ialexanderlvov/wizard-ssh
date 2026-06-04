@@ -178,7 +178,11 @@ class ConfigServers {
     return true;
   }
 
-  /** Import: upsert each server into the config (keyed by alias) + its stats. */
+  /** Import: upsert each server into the config (keyed by alias) + its stats.
+   *  Servers are MERGED, never wiped — ~/.ssh/config is the shared source of
+   *  truth (it also holds hosts used by plain ssh), so an import must not delete
+   *  config blocks that are merely absent from the bundle. The import UI wording
+   *  reflects this asymmetry vs the (truly replaced) tunnels list. */
   replaceAll(items: Server[]): void {
     for (const s of items) {
       const alias = (s.name || s.sshHost || '').trim();

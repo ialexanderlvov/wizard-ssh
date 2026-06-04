@@ -8,7 +8,41 @@ import { readJson, writeJson } from '../store/json-file.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
+import {
+  isSafeKeyPath,
+  isValidForwardHost,
+  isValidHostOrIp,
+  isValidName,
+  isValidSshAlias,
+  isValidUser,
+} from '../utils/validators.js';
 import * as ui from '../ui/index.js';
+
+/** An imported file is untrusted input. A server/tunnel record flows straight
+ *  into ~/.ssh/config (host/user/keyPath/alias) and the ssh argv (remoteHost),
+ *  so reject any record whose fields could inject a directive before it is ever
+ *  written. (formatBlock guards too, but this surfaces a clean count instead of
+ *  aborting the whole import on the first bad record.) */
+function serverIsSafe(s: Partial<Server>): boolean {
+  if (!isValidSshAlias(String(s.name ?? s.sshHost ?? ''))) return false;
+  if (s.host && !isValidHostOrIp(String(s.host))) return false;
+  if (s.user && !isValidUser(String(s.user))) return false;
+  if (s.keyPath && !isSafeKeyPath(String(s.keyPath))) return false;
+  return true;
+}
+
+function tunnelIsSafe(t: Partial<Tunnel>): boolean {
+  if (!isValidName(String(t.name ?? ''))) return false;
+  if (t.hostMode === 'sshconfig') {
+    if (!isValidSshAlias(String(t.sshHost ?? ''))) return false;
+  } else if (t.host && !isValidHostOrIp(String(t.host))) {
+    return false;
+  }
+  if (t.user && !isValidUser(String(t.user))) return false;
+  if (t.keyPath && !isSafeKeyPath(String(t.keyPath))) return false;
+  if (t.remoteHost && !isValidForwardHost(String(t.remoteHost))) return false;
+  return true;
+}
 
 interface Bundle {
   app: 'wizard-ssh';
@@ -64,13 +98,23 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
       message: 'Как импортировать?',
       choices: [
         { name: '➕ Добавить к существующим (безопасно)', value: false },
-        { name: '♻️ Заменить все списки', value: true },
+        // Servers live in ~/.ssh/config (shared, source of truth) so they are
+        // merged/updated, not wiped; only the tunnels list is truly replaced.
+        { name: '♻️ Заменить туннели; серверы — обновить в ~/.ssh/config', value: true },
       ],
     });
   }
 
-  const importedServers = data.servers ?? [];
-  const importedTunnels = data.tunnels ?? [];
+  const rawServers = data.servers ?? [];
+  const rawTunnels = data.tunnels ?? [];
+  const importedServers = rawServers.filter(serverIsSafe);
+  const importedTunnels = rawTunnels.filter(tunnelIsSafe);
+  const skipped =
+    rawServers.length - importedServers.length + (rawTunnels.length - importedTunnels.length);
+  if (skipped > 0)
+    ui.printWarn(
+      `Пропущено небезопасных/некорректных записей: ${skipped} (недопустимые символы в host/user/alias/ключе).`,
+    );
 
   if (replace) {
     servers.replaceAll(importedServers);
@@ -103,7 +147,8 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
   }
 
   ui.printOk(
-    `Импорт завершён (${replace ? 'замена' : 'добавление'}): серверов +${importedServers.length}, туннелей +${importedTunnels.length}.`,
+    `Импорт завершён (${replace ? 'туннели заменены, серверы обновлены' : 'добавление'}): ` +
+      `серверов +${importedServers.length}, туннелей +${importedTunnels.length}.`,
   );
 }
 
