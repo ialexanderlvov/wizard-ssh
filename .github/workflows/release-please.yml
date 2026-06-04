@@ -47,7 +47,8 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Auth via npm OIDC trusted publisher (configured on npmjs.com) — no token.
+      # The job's `id-token: write` permission lets pnpm exchange the OIDC token
+      # for short-lived publish credentials; provenance is attached automatically.
       - name: Publish to npm
         run: pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
