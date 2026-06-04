@@ -121,7 +121,7 @@ function spawnPass(
  *  resolution stays identical to features' endpoint resolver. */
 function knownHostsTarget(t: ConnectionTarget): string {
   if (t.hostMode === 'sshconfig') {
-    const res = capture('ssh', ['-G', t.sshHost]);
+    const res = capture('ssh', ['-G', '--', t.sshHost]);
     const { host, port } =
       res.status === 0 ? parseSshGOutput(res.stdout, t.sshHost, 22) : { host: t.sshHost, port: 22 };
     return knownHostsToken(host, port);

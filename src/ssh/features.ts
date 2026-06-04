@@ -21,7 +21,7 @@ export function resolveEndpoint(t: ConnectionTarget): Endpoint {
   if (t.hostMode !== 'sshconfig') {
     return { host: t.host, port: t.sshPort || 22 };
   }
-  const res = capture('ssh', ['-G', t.sshHost]);
+  const res = capture('ssh', ['-G', '--', t.sshHost]);
   return res.status === 0
     ? parseSshGOutput(res.stdout, t.sshHost, 22)
     : { host: t.sshHost, port: 22 };
@@ -75,7 +75,7 @@ export async function resolveEndpointAsync(t: ConnectionTarget): Promise<Endpoin
   if (t.hostMode !== 'sshconfig') {
     return { host: t.host, port: t.sshPort || 22 };
   }
-  const res = await captureAsync('ssh', ['-G', t.sshHost], 10_000);
+  const res = await captureAsync('ssh', ['-G', '--', t.sshHost], 10_000);
   return res.status === 0
     ? parseSshGOutput(res.stdout, t.sshHost, 22)
     : { host: t.sshHost, port: 22 };

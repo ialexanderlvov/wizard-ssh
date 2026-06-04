@@ -243,6 +243,22 @@ describe('mosh args', () => {
     });
     expect(alias[alias.length - 1]).toBe('prod');
   });
+
+  it('refuses a leading-dash destination (no mosh option injection)', async () => {
+    const { buildMoshArgs } = await import('../src/ssh/args.js');
+    expect(() =>
+      buildMoshArgs({
+        hostMode: 'sshconfig',
+        sshHost: '-oProxyCommand=evil',
+        host: '',
+        user: '',
+        sshPort: 22,
+        auth: 'agent',
+        keyPath: null,
+        secretId: null,
+      }),
+    ).toThrow();
+  });
 });
 
 describe('ProxyJump visualization', () => {

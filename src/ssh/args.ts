@@ -99,7 +99,12 @@ export function buildMoshArgs(t: ConnectionTarget): string[] {
   // mosh re-splits (and may shell-evaluate) the --ssh value, so quote each token
   // — an unquoted key path could word-split or inject ssh options (ProxyCommand).
   const sshCmd = shJoin(['ssh', ...targetOptions(t)]);
-  return ['--ssh', sshCmd, destination(t)];
+  const dest = destination(t);
+  // mosh has no portable `--` end-of-options marker (unlike every ssh builder),
+  // so guard the destination directly: a leading-dash alias — only reachable via
+  // a hand-edited ~/.ssh/config — would otherwise be parsed by mosh as an option.
+  if (dest.startsWith('-')) throw new WizardError(tr.ssh.argsBadMoshDest);
+  return ['--ssh', sshCmd, dest];
 }
 
 // A literal `--` ends ssh option parsing, so a destination/alias that begins
