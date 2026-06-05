@@ -12,12 +12,24 @@ export interface CaptureResult {
   stderr: string;
 }
 
+export interface CaptureOptions {
+  /** environment for the child process (defaults to the parent's). Used e.g. to
+   *  pin `TZ=UTC` so `ps -o lstart` yields a timezone-stable start-time token. */
+  env?: NodeJS.ProcessEnv;
+}
+
 /** Run a command and capture its output (no shell). */
-export function capture(cmd: string, args: string[], input?: string): CaptureResult {
+export function capture(
+  cmd: string,
+  args: string[],
+  input?: string,
+  opts: CaptureOptions = {},
+): CaptureResult {
   const res = spawnSync(cmd, args, {
     encoding: 'utf8',
     input,
     timeout: 30_000,
+    env: opts.env,
   });
   return {
     status: res.status,

@@ -2,10 +2,18 @@
  *  PID, and where its log goes. Dead PIDs are reaped on every read so the list
  *  always reflects reality (a process can die without telling us). */
 
+import fs from 'node:fs';
 import { FILES } from '../core/paths.js';
 import { nowIso } from '../utils/time.js';
 import { capture } from '../utils/exec.js';
 import { readJson, writeJson } from './json-file.js';
+
+// `ps -o lstart` formats the start time in the LOCAL timezone, so the captured
+// token would change if the machine's TZ changes (travel, a shell with a
+// different TZ, a corrected clock) — list() would then prune and orphan a still-
+// running tunnel. Pin TZ=UTC for both the launch-time capture and the later probe
+// so the comparison is timezone-stable while still catching reboot/PID reuse.
+const PS_ENV = (): NodeJS.ProcessEnv => ({ ...process.env, TZ: 'UTC' });
 
 export interface TunnelSession {
   /** the running tunnel's id (one live session per tunnel) */
@@ -29,7 +37,7 @@ export interface TunnelSession {
  *  ps is unavailable — callers then fall back to a plain liveness check. */
 export function processStartToken(pid: number): string {
   if (!Number.isInteger(pid) || pid <= 0) return '';
-  const res = capture('ps', ['-o', 'lstart=', '-p', String(pid)]);
+  const res = capture('ps', ['-o', 'lstart=', '-p', String(pid)], undefined, { env: PS_ENV() });
   return res.status === 0 ? res.stdout.trim() : '';
 }
 
@@ -41,7 +49,9 @@ export function processStartTokens(pids: number[]): Map<number, string> {
   const out = new Map<number, string>();
   const valid = pids.filter((p) => Number.isInteger(p) && p > 0);
   if (!valid.length) return out;
-  const res = capture('ps', ['-o', 'pid=,lstart=', '-p', valid.join(',')]);
+  const res = capture('ps', ['-o', 'pid=,lstart=', '-p', valid.join(',')], undefined, {
+    env: PS_ENV(),
+  });
   if (res.status !== 0) return out;
   for (const line of res.stdout.split('\n')) {
     const m = line.trim().match(/^(\d+)\s+(.+)$/);
@@ -88,18 +98,34 @@ export function sessionAlive(s: TunnelSession): boolean {
 
 class SessionsStore {
   private cache: SessionsFile | null = null;
+  /** signature (mtime+size) of the file when last read — re-read when another
+   *  `wssh` process wrote meanwhile, so a long-lived menu can't clobber a
+   *  concurrently-added session and orphan its background tunnel. */
+  private sig = '';
+
+  private fileSig(): string {
+    try {
+      const st = fs.statSync(FILES.sessions);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '';
+    }
+  }
 
   private load(): SessionsFile {
-    if (this.cache) return this.cache;
+    const s = this.fileSig();
+    if (this.cache && s === this.sig) return this.cache;
     const { data } = readJson<SessionsFile>(FILES.sessions, { version: 1, sessions: [] });
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
     this.cache = { version: 1, sessions };
+    this.sig = s;
     return this.cache;
   }
 
   private persist(f: SessionsFile): void {
     this.cache = f;
     writeJson(FILES.sessions, f);
+    this.sig = this.fileSig();
   }
 
   /** Live sessions only — prunes any whose PID is gone or was reused by another

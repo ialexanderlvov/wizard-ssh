@@ -22,10 +22,13 @@ const SORTERS: Record<SortKey, (a: BaseEntity, b: BaseEntity) => number> = {
 
 export class EntityCollection<T extends BaseEntity> {
   private items: T[] | null = null;
-  /** mtime of the file when we last (re)read it — used to invalidate the cache
-   *  when the file changed underneath us (another `wssh` process, or a hand edit
-   *  while a long-lived interactive menu is open). 0 = no file / never read. */
-  private mtimeMs = 0;
+  /** signature (mtime + size) of the file when we last (re)read it — used to
+   *  invalidate the cache when the file changed underneath us (another `wssh`
+   *  process, or a hand edit while a long-lived interactive menu is open). Size is
+   *  folded in alongside mtime so two writes that share an mtime tick on a
+   *  coarse-granularity FS (NFS/FAT/SMB) are still seen as a change. '' = no file
+   *  / never read. */
+  private sig = '';
   corruptBackup?: string;
 
   constructor(
@@ -33,20 +36,21 @@ export class EntityCollection<T extends BaseEntity> {
     private readonly normalize: (raw: unknown) => T,
   ) {}
 
-  private fileMtime(): number {
+  private fileSig(): string {
     try {
-      return fs.statSync(this.file).mtimeMs;
+      const st = fs.statSync(this.file);
+      return `${st.mtimeMs}:${st.size}`;
     } catch {
-      return 0;
+      return '';
     }
   }
 
-  /** Always reflect what's on disk. Re-reads when the file's mtime changed since
-   *  our cached copy, so a long-lived menu (and read-modify-write mutations) never
-   *  operate on — or silently overwrite — another process's newer state. */
+  /** Always reflect what's on disk. Re-reads when the file's signature changed
+   *  since our cached copy, so a long-lived menu (and read-modify-write mutations)
+   *  never operate on — or silently overwrite — another process's newer state. */
   private load(): T[] {
-    const m = this.fileMtime();
-    if (this.items && m === this.mtimeMs) return this.items;
+    const s = this.fileSig();
+    if (this.items && s === this.sig) return this.items;
     const { data, corruptBackup } = readJson<FileShape<unknown>>(this.file, {
       version: 1,
       items: [],
@@ -54,15 +58,15 @@ export class EntityCollection<T extends BaseEntity> {
     if (corruptBackup) this.corruptBackup = corruptBackup;
     const rawItems = Array.isArray(data.items) ? data.items : [];
     this.items = rawItems.map((r) => this.normalize(r));
-    this.mtimeMs = m;
+    this.sig = s;
     return this.items;
   }
 
   private persist(): void {
     writeJson(this.file, { version: 1, items: this.load() });
-    // Adopt the just-written file's mtime so the next load() trusts our own cache
-    // (and only re-reads when SOMEONE ELSE writes after us).
-    this.mtimeMs = this.fileMtime();
+    // Adopt the just-written file's signature so the next load() trusts our own
+    // cache (and only re-reads when SOMEONE ELSE writes after us).
+    this.sig = this.fileSig();
   }
 
   all(): T[] {
@@ -131,8 +135,14 @@ export class EntityCollection<T extends BaseEntity> {
     return true;
   }
 
-  /** Replace the whole collection (used by import). */
+  /** Replace the whole collection (used by import/migration). */
   replaceAll(items: T[]): void {
+    // Prime the cache first so mtimeMs matches the on-disk file. Without this, a
+    // cold cache (mtimeMs=0) over an EXISTING file (mtime>0) makes persist()'s
+    // inner load() see a mismatch and RE-READ the old file, silently discarding
+    // the items we are trying to write (e.g. `import --replace` reported success
+    // while dropping every imported tunnel).
+    this.load();
     this.items = items.map((i) => this.normalize(i));
     this.persist();
   }

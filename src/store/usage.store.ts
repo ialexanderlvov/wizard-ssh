@@ -2,6 +2,7 @@
  *  NOT live in ~/.ssh/config (that would rewrite the config on every connect),
  *  so they sit in their own usage.json keyed by Host alias. */
 
+import fs from 'node:fs';
 import { FILES } from '../core/paths.js';
 import { readJson, writeJson } from './json-file.js';
 import { nowIso, ts } from '../utils/time.js';
@@ -20,21 +21,37 @@ const EMPTY: UsageEntry = { lastUsedAt: null, useCount: 0 };
 
 class UsageStore {
   private cache: UsageFile | null = null;
+  /** signature (mtime+size) of the file when last read — re-read when a
+   *  concurrent `wssh` bumped a counter, so a long-lived menu doesn't write back a
+   *  stale snapshot and lose the other process's increment. */
+  private sig = '';
+
+  private fileSig(): string {
+    try {
+      const st = fs.statSync(FILES.usage);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '';
+    }
+  }
 
   private load(): UsageFile {
-    if (this.cache) return this.cache;
+    const s = this.fileSig();
+    if (this.cache && s === this.sig) return this.cache;
     const { data } = readJson<UsageFile>(FILES.usage, { version: 1, hosts: {} });
     const hosts =
       data && typeof data === 'object' && data.hosts && typeof data.hosts === 'object'
         ? data.hosts
         : {};
     this.cache = { version: 1, hosts };
+    this.sig = s;
     return this.cache;
   }
 
   private persist(f: UsageFile): void {
     this.cache = f;
     writeJson(FILES.usage, f);
+    this.sig = this.fileSig();
   }
 
   /** Stats for an alias (zeroed defaults when never used). */
