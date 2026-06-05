@@ -58,8 +58,18 @@ function flagsFor(cmd: Command, program: Command): string[] {
   return [...new Set([...own, ...global, '--help'])];
 }
 
-/** Dynamic entity names for a kind. Names with whitespace are dropped — they'd
- *  word-split in a shell completion (they can still be typed by hand). */
+// A completion candidate is emitted on stdout and then handled by the shell. We
+// only ever emit names matching this conservative charset (letters, digits, and
+// the handful of separators a real server/tunnel/tag/alias uses). This is the
+// FIRST line of defence for the bash wrapper: a `~/.ssh/config` Host alias is
+// only `stripControl`'d by the parser, never validated, so a hostile alias like
+// `$(reboot)` or `` `id` `` (no whitespace) would otherwise reach the shell and,
+// under the old `compgen -W` wrapper, execute on <TAB>. Dropping it here (plus
+// the no-re-expansion wrapper below) closes that arbitrary-code-execution path.
+// A name that doesn't match can still be typed by hand; it just isn't suggested.
+const COMPLETION_SAFE = /^[A-Za-z0-9._@:-]+$/;
+
+/** Dynamic entity names for a kind, restricted to shell-safe tokens. */
 function namesFor(kind: NameKind): string[] {
   let out: string[] = [];
   if (kind === 'server' || kind === 'both') out.push(...servers.all().map((s) => s.name));
@@ -72,7 +82,7 @@ function namesFor(kind: NameKind): string[] {
     for (const e of tunnels.all()) e.tags.forEach((t) => tags.add(t));
     out = [...tags];
   }
-  return out.filter((n) => n && !/\s/.test(n));
+  return out.filter((n) => n && COMPLETION_SAFE.test(n));
 }
 
 /** Compute completion candidates for `words` (the tokens typed after the program
@@ -109,15 +119,24 @@ export function completeFromProgram(program: Command, words: string[]): string[]
 /** The completion script for a shell. Includes a one-line install hint up top. */
 export function completionScript(shell: Shell): string {
   if (shell === 'bash') {
+    // SECURITY: do NOT feed candidates through `compgen -W "$cands"`. compgen -W
+    // re-expands each word (command substitution, `${...}`, arithmetic), so a
+    // candidate like `$(cmd)` would EXECUTE on <TAB>. We instead read candidates
+    // as literal lines and prefix-match them ourselves — no candidate is ever
+    // evaluated. (namesFor() also restricts candidates to a safe charset.)
     return `# wizard-ssh bash completion.
 # Install:  wssh completion bash | sudo tee /etc/bash_completion.d/wssh
 #       or:  echo 'source <(wssh completion bash)' >> ~/.bashrc
 _wssh_complete() {
-  local cur words cands
+  local cur line
   cur="\${COMP_WORDS[COMP_CWORD]}"
-  words=("\${COMP_WORDS[@]:1:COMP_CWORD}")
-  cands="$(wssh complete -- "\${words[@]}" 2>/dev/null)"
-  COMPREPLY=($(compgen -W "\${cands}" -- "\${cur}"))
+  local words=("\${COMP_WORDS[@]:1:COMP_CWORD}")
+  COMPREPLY=()
+  # Read each candidate as a literal line; never let the shell re-expand it.
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    case "$line" in "$cur"*) COMPREPLY+=("$line") ;; esac
+  done < <(wssh complete -- "\${words[@]}" 2>/dev/null)
 }
 complete -F _wssh_complete wssh wizard-ssh
 `;

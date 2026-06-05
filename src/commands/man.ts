@@ -7,9 +7,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import type { Command } from 'commander';
 import { APP_BIN, APP_NAME, APP_VERSION } from '../core/constants.js';
+import { atomicWrite } from '../utils/atomic.js';
 import { DATA_DIR } from '../core/paths.js';
 import { commandExists } from '../utils/exec.js';
 import { tr } from '../i18n/index.js';
@@ -124,9 +126,12 @@ export function manFlow(program: Command, opts: { roff?: boolean } = {}): number
     process.stdout.write(stripRoff(roff));
     return 0;
   }
-  const tmp = path.join(os.tmpdir(), `${APP_BIN}-${process.pid}.1`);
+  // Unpredictable name + atomicWrite's O_EXCL|O_NOFOLLOW open: on a shared host
+  // with a sticky /tmp, a predictable `${APP_BIN}-${pid}.1` could be pre-planted
+  // as a symlink and a plain writeFileSync would follow it (clobber a victim file).
+  const tmp = path.join(os.tmpdir(), `${APP_BIN}-${randomBytes(8).toString('hex')}.1`);
   try {
-    fs.writeFileSync(tmp, roff, { mode: 0o600 });
+    atomicWrite(tmp, roff);
     const res = spawnSync('man', [tmp], { stdio: 'inherit' });
     if (res.error) {
       process.stdout.write(stripRoff(roff)); // man present but failed to launch

@@ -11,6 +11,7 @@ import type {
 import { newId } from '../utils/id.js';
 import { nowIso, safeIso } from '../utils/time.js';
 import { stripControl } from '../utils/strings.js';
+import { isValidPort } from '../utils/validators.js';
 
 type Raw = Record<string, unknown>;
 
@@ -29,6 +30,19 @@ const numOrNull = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const bool = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
+// A TCP port from an on-disk record: keep it only when it's a real 1..65535
+// port, else fall back to the default. Stops a negative/zero/fractional/out-of-
+// range value (which num() would happily return) reaching `ssh -p <n>`.
+const port = (v: unknown, d: number): number => (isValidPort(v) ? Number(v) : d);
+// A connection token (host/user/ssh alias) printed AND placed before `--` in the
+// ssh argv. stripControl already removes CR/LF; additionally blank any value that
+// carries whitespace — a valid host/user/alias never does, and a space is exactly
+// what would let `1.2.3.4 -oProxyCommand=…` smuggle an option if a future builder
+// ever forgot the `--` guard. Defence in depth, no loss for well-formed records.
+const token = (v: unknown): string => {
+  const t = stripControl(str(v)).trim();
+  return /\s/.test(t) ? '' : t;
+};
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
@@ -61,7 +75,8 @@ export function normalizeBase(raw: Raw): BaseEntity {
     createdAt: created,
     updatedAt: safeIso(raw.updatedAt, created),
     lastUsedAt: safeIso(raw.lastUsedAt, null),
-    useCount: num(raw.useCount, 0),
+    // A counter, never negative or fractional — floor & clamp a hand-edited value.
+    useCount: Math.max(0, Math.floor(num(raw.useCount, 0))),
   };
 }
 
@@ -72,14 +87,14 @@ export function normalizeConnection(raw: Raw): ConnectionTarget {
     // control/escape bytes so a hand-edited/imported record can't emit terminal
     // escapes (mirrors desc/tags in normalizeBase). The argv/forward-spec paths
     // are guarded separately (buildConnectArgs / normalizeTunnel.remoteHost).
-    sshHost: stripControl(str(raw.sshHost)),
-    host: stripControl(str(raw.host)),
-    user: stripControl(str(raw.user)),
-    sshPort: num(raw.sshPort, 22),
+    sshHost: token(raw.sshHost),
+    host: token(raw.host),
+    user: token(raw.user),
+    sshPort: port(raw.sshPort, 22),
     auth: oneOf(raw.auth, AUTHS, 'agent'),
     keyPath: raw.keyPath ? stripControl(str(raw.keyPath)) : null,
     secretId: raw.secretId ? str(raw.secretId) : null,
   };
 }
 
-export { str, num, numOrNull, bool, strArr, oneOf, FORWARDS };
+export { str, num, numOrNull, bool, strArr, oneOf, port, token, FORWARDS };

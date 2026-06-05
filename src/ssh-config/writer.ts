@@ -4,9 +4,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { SSH_CONFIG_FILE, SSH_DIR, FILES, ensureDir } from '../core/paths.js';
 import { WizardError } from '../core/errors.js';
-import { hasUnsafeChars } from '../utils/validators.js';
+import { hasUnsafeChars, isValidSshAlias } from '../utils/validators.js';
 import { atomicWrite } from '../utils/atomic.js';
 import type { SshConfigEntry } from './types.js';
 import { blocksFromLines, getHost } from './parser.js';
@@ -22,12 +23,42 @@ function assertConfigSafe(label: string, value: string): void {
   if (hasUnsafeChars(value)) throw new WizardError(tr.vault.writerUnsafeChar(label));
 }
 
+/** Keep at most this many timestamped config backups; older ones are pruned. */
+const MAX_BACKUPS = 50;
+
+/** Delete all but the newest {@link MAX_BACKUPS} `ssh-config.*.bak` files. */
+function pruneBackups(): void {
+  try {
+    const files = fs
+      .readdirSync(FILES.backupsDir)
+      .filter((f) => f.startsWith('ssh-config.') && f.endsWith('.bak'))
+      .sort(); // the timestamp prefix sorts chronologically
+    for (const f of files.slice(0, Math.max(0, files.length - MAX_BACKUPS))) {
+      try {
+        fs.rmSync(path.join(FILES.backupsDir, f));
+      } catch {
+        /* best-effort */
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function backupConfig(): string | null {
   if (!fs.existsSync(SSH_CONFIG_FILE)) return null;
   ensureDir(FILES.backupsDir);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const dest = path.join(FILES.backupsDir, `ssh-config.${stamp}.bak`);
+  // A rename = upsert + remove within the same millisecond, so the ISO stamp
+  // alone collides and the second backup would overwrite the first (defeating
+  // undo). Add a short random suffix and pick a non-existing name so every write
+  // keeps its own pre-change snapshot.
+  let dest = path.join(FILES.backupsDir, `ssh-config.${stamp}.bak`);
+  if (fs.existsSync(dest)) {
+    dest = path.join(FILES.backupsDir, `ssh-config.${stamp}-${randomBytes(3).toString('hex')}.bak`);
+  }
   fs.copyFileSync(SSH_CONFIG_FILE, dest);
+  pruneBackups();
   return dest;
 }
 
@@ -86,8 +117,22 @@ function writeLines(lines: string[]): void {
 export function formatBlock(entry: SshConfigEntry): string[] {
   const out: string[] = [];
   assertConfigSafe(tr.vault.writerAliasLabel, entry.alias);
+  // The writer's last-resort backstop: an alias must be a single, glob-free token
+  // (letters/digits/._-). assertConfigSafe alone only blocks control chars — it
+  // would still let a space/`*` through, which writes a multi-pattern/wildcard
+  // `Host` line that orphans on round-trip (duplicate-on-update, silent
+  // remove-failure) or clobbers the user's global `Host *`. Every live caller
+  // already validates, so this only ever fires for a future caller that didn't.
+  if (!isValidSshAlias(entry.alias))
+    throw new WizardError(tr.vault.writerInvalidAlias(entry.alias));
   const meta = serializeWssh(entry.wssh);
-  if (meta) out.push(meta); // `#wssh {...}` directly above the Host
+  if (meta) {
+    // The `#wssh {json}` line carries user desc/tags. JSON.stringify already
+    // escapes control bytes, but funnel it through the same gate so directive
+    // injection can't reappear if the serializer ever changes.
+    assertConfigSafe(tr.vault.writerAliasLabel, meta);
+    out.push(meta); // `#wssh {...}` directly above the Host
+  }
   out.push(`Host ${entry.alias}`);
   for (const { key, value } of entry.params) {
     assertConfigSafe(tr.vault.writerParamLabel(key.trim()), key);

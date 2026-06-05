@@ -95,7 +95,9 @@ function spawnPass(
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => {
       process.stderr.write(d); // keep the user seeing ssh's own output
-      if (stderr.length < 16_384) stderr += d.toString('utf8');
+      // Hard-cap the retained copy (it only feeds a literal-alternation host-key
+      // regex): slice after appending so a single large chunk can't overshoot.
+      if (stderr.length < 16_384) stderr = (stderr + d.toString('utf8')).slice(0, 16_384);
     });
 
     const onSigint = (): void => {
@@ -430,7 +432,9 @@ export function startTransferDetached(
     logFile,
     fs.constants.O_WRONLY |
       fs.constants.O_CREAT |
-      fs.constants.O_APPEND |
+      // O_TRUNC (not O_APPEND): a fresh detached start gets a fresh log, so
+      // re-running the same stable-id tunnel/transfer can't grow the log forever.
+      fs.constants.O_TRUNC |
       (fs.constants.O_NOFOLLOW ?? 0),
     0o600,
   );
@@ -466,7 +470,9 @@ export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
     logFile,
     fs.constants.O_WRONLY |
       fs.constants.O_CREAT |
-      fs.constants.O_APPEND |
+      // O_TRUNC (not O_APPEND): a fresh detached start gets a fresh log, so
+      // re-running the same stable-id tunnel/transfer can't grow the log forever.
+      fs.constants.O_TRUNC |
       (fs.constants.O_NOFOLLOW ?? 0),
     0o600,
   );

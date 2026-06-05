@@ -4,7 +4,7 @@
 
 import { FILES } from '../core/paths.js';
 import { readJson, writeJson } from './json-file.js';
-import { nowIso } from '../utils/time.js';
+import { nowIso, ts } from '../utils/time.js';
 
 export interface UsageEntry {
   lastUsedAt: string | null;
@@ -54,6 +54,22 @@ class UsageStore {
   set(alias: string, entry: Partial<UsageEntry>): void {
     const f = this.load();
     f.hosts[alias] = { ...EMPTY, ...f.hosts[alias], ...entry };
+    this.persist(f);
+  }
+
+  /** Merge imported stats WITHOUT rewinding: keep the higher useCount and the
+   *  more-recent lastUsedAt. Used by import so re-importing your own export (or a
+   *  teammate's bundle, whose counts are typically lower/zero) never zeroes or
+   *  reduces the local "most-used / recent" history. */
+  merge(alias: string, entry: Partial<UsageEntry>): void {
+    const f = this.load();
+    const cur = f.hosts[alias] ?? EMPTY;
+    const incoming = { ...EMPTY, ...entry };
+    f.hosts[alias] = {
+      useCount: Math.max(cur.useCount || 0, incoming.useCount || 0),
+      lastUsedAt:
+        ts(incoming.lastUsedAt) > ts(cur.lastUsedAt) ? incoming.lastUsedAt : cur.lastUsedAt,
+    };
     this.persist(f);
   }
 

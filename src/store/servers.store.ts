@@ -202,7 +202,8 @@ class ConfigServers {
           params: paramsFor(connOf(s), sshConfig.getHost(alias)?.params ?? []),
           wssh: metaFor(s, s.createdAt || nowIso(), s.updatedAt || s.createdAt || nowIso()),
         });
-        usage.set(alias, { lastUsedAt: s.lastUsedAt ?? null, useCount: s.useCount || 0 });
+        // Merge (don't overwrite): an import must never rewind local usage history.
+        usage.merge(alias, { lastUsedAt: s.lastUsedAt ?? null, useCount: s.useCount || 0 });
       } catch {
         // Skip a server we can't safely manage (e.g. its alias lives in an
         // Include) rather than aborting the whole import mid-way.

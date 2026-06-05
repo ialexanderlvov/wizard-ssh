@@ -78,6 +78,10 @@ export function forgetHostKey(host: string): { ok: boolean; message: string } {
   const target = host.trim();
   if (!target) return { ok: false, message: tr.ssh.hostkeyEmptyHost };
   if (!fs.existsSync(KNOWN_HOSTS_FILE)) return { ok: false, message: tr.ssh.hostkeyFileNotFound };
+  // `-R <host>` binds the NEXT argv element as its operand unconditionally, so a
+  // leading-dash host (only reachable via a hand-edited record) is consumed as the
+  // hostname, never parsed as a flag — no option-injection. (A trailing `--`
+  // doesn't apply here since the host is -R's operand, not a positional.)
   const res = capture('ssh-keygen', ['-R', target, '-f', KNOWN_HOSTS_FILE]);
   if (res.status === 0) return { ok: true, message: tr.ssh.hostkeyRemoved(target) };
   return {

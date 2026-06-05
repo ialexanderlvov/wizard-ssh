@@ -2,9 +2,14 @@ import { tr } from '../i18n/index.js';
 
 export const nowIso = (): string => new Date().toISOString();
 
-/** Keep only parseable ISO strings; otherwise fall back. */
+// Accept only an ISO-8601-shaped date (what nowIso()/toISOString() produce):
+// `YYYY-MM-DD` optionally followed by a time. Date.parse alone also swallows
+// locale formats like `12/31/2020`, which then sort/display inconsistently.
+const ISO_RE = /^\d{4}-\d{2}-\d{2}([T ]\d|$)/;
+
+/** Keep only parseable, ISO-shaped strings; otherwise fall back. */
 export function safeIso<T extends string | null>(v: unknown, fallback: T): string | T {
-  if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) return v;
+  if (typeof v === 'string' && ISO_RE.test(v) && !Number.isNaN(Date.parse(v))) return v;
   return fallback;
 }
 

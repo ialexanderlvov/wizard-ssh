@@ -8,7 +8,7 @@ import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import { copyToClipboard } from '../utils/platform.js';
 import * as ui from '../ui/index.js';
-import { isValidPort } from '../utils/validators.js';
+import { isValidPort, isValidUser, isValidForwardHost } from '../utils/validators.js';
 import { ensureVaultSetup, unlockVault } from './helpers.js';
 import { tr, setLocale, resolveLocale } from '../i18n/index.js';
 
@@ -41,7 +41,13 @@ async function editSetting(key: string): Promise<void> {
   if (key === 'defaultUser') {
     settings.update({
       defaultUser: (
-        await ui.text({ message: tr.settings.defaultUserPrompt, default: s.defaultUser })
+        await ui.text({
+          message: tr.settings.defaultUserPrompt,
+          default: s.defaultUser,
+          // Validate at entry (like the import path) so a bad default can't lie
+          // dormant and then throw a confusing WizardError on a later `add`.
+          validate: (x) => !x.trim() || isValidUser(x.trim()) || tr.settings.invalidUser,
+        })
       ).trim(),
     });
   } else if (key === 'defaultSshPort') {
@@ -69,6 +75,8 @@ async function editSetting(key: string): Promise<void> {
         await ui.text({
           message: tr.settings.defaultRemoteHostPrompt,
           default: s.defaultRemoteHost,
+          validate: (x) =>
+            !x.trim() || isValidForwardHost(x.trim()) || tr.settings.invalidRemoteHost,
         })
       ).trim(),
     });
@@ -360,6 +368,17 @@ async function revealSavedPassword(): Promise<void> {
 async function deleteSavedPassword(): Promise<void> {
   const picked = await pickSecretHolder(tr.settings.pickDeletePrompt);
   if (!picked) return;
+  // Deletion is irreversible (and every other destructive vault/key/config action
+  // confirms) — gate it so a single mis-selection can't silently destroy a saved
+  // password.
+  const ok = await ui.confirm({
+    message: tr.settings.confirmDeletePassword(picked.entity.name),
+    default: false,
+  });
+  if (!ok) {
+    ui.printInfo(tr.common.cancelled);
+    return;
+  }
   vault.removeSecret(picked.entity.secretId);
   picked.clear();
   ui.printOk(tr.settings.passwordDeleted(picked.entity.name));
@@ -376,10 +395,30 @@ async function resetVault(): Promise<void> {
     return;
   }
   vault.reset();
-  servers.all().forEach((e) => e.secretId && servers.update(e.id, { secretId: null }));
-  tunnels.all().forEach((e) => e.secretId && tunnels.update(e.id, { secretId: null }));
-  tempTunnels.all().forEach((e) => e.secretId && tempTunnels.update(e.id, { secretId: null }));
-  settings.update({ vault: { enabled: false, touchId: false } });
+  // Clear secretId refs best-effort: one entity that can't be updated (e.g. an
+  // unmanageable config host) must not abort the loop and leave the rest dangling,
+  // and the settings reset must still run. (A stray secretId self-heals at connect
+  // time anyway — the vault is gone, so it falls back to prompting.)
+  const clearRefs = <T extends { id: string; secretId: string | null }>(store: {
+    all(): T[];
+    update(id: string, p: { secretId: null }): unknown;
+  }): void => {
+    for (const e of store.all()) {
+      if (!e.secretId) continue;
+      try {
+        store.update(e.id, { secretId: null });
+      } catch {
+        /* best-effort */
+      }
+    }
+  };
+  try {
+    clearRefs(servers);
+    clearRefs(tunnels);
+    clearRefs(tempTunnels);
+  } finally {
+    settings.update({ vault: { enabled: false, touchId: false } });
+  }
   ui.printOk(tr.settings.resetDone);
 }
 

@@ -152,11 +152,15 @@ describe('shell-quoting of transport strings (injection fix #1-3)', () => {
 
 describe('tunnel logs', () => {
   it('tailLines returns the last N lines (trailing newline ignored)', async () => {
-    const { tailLines } = await import('../src/commands/tunnels.js');
+    const { tailLines } = await import('../src/utils/logtail.js');
     expect(tailLines('a\nb\nc\n', 2)).toEqual(['b', 'c']);
     expect(tailLines('a\nb\nc', 2)).toEqual(['b', 'c']);
     expect(tailLines('', 5)).toEqual([]);
     expect(tailLines('x\ny\nz', 0)).toEqual(['x', 'y', 'z']);
+    // NaN / negative → treated as "all" (callers coerce the --tail flag), and
+    // control/escape bytes from a malicious server's output are stripped.
+    expect(tailLines('a\nb', NaN)).toEqual(['a', 'b']);
+    expect(tailLines('x]0;pwnedy\nz', 5)).toEqual(['x]0;pwnedy', 'z']);
   });
 
   it('tails a live session log and reports not-found / no-sessions', async () => {

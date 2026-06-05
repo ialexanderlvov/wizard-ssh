@@ -26,6 +26,12 @@ import { tr } from '../i18n/index.js';
 
 const KEYCHAIN_SERVICE = 'wizard-ssh';
 const KEYCHAIN_ACCOUNT = 'vault-master-key';
+// Invoke the system tools by ABSOLUTE path, never a bare name resolved via PATH:
+// these handle the vault master key (over `security`'s stdin) and compile/run the
+// biometric helper, so a same-user PATH-hijack must not be able to interpose a
+// trojan `security`/`swiftc`. Both are stable macOS locations.
+const SECURITY_BIN = '/usr/bin/security';
+const SWIFTC_BIN = '/usr/bin/swiftc';
 const HELPER_BIN = path.join(FILES.binDir, 'wssh-touchid');
 const HELPER_SRC = path.join(FILES.binDir, 'wssh-touchid.swift');
 /** SHA-256 of the compiled helper, written next to it so a cached binary can be
@@ -87,7 +93,7 @@ function ensureHelper(): boolean {
     ensureDir(FILES.binDir);
     fs.rmSync(HELPER_BIN, { force: true }); // drop any stale/tampered binary first
     fs.writeFileSync(HELPER_SRC, SWIFT_SOURCE, { mode: 0o600 });
-    const res = spawnSync('swiftc', ['-O', '-o', HELPER_BIN, HELPER_SRC], {
+    const res = spawnSync(SWIFTC_BIN, ['-O', '-o', HELPER_BIN, HELPER_SRC], {
       encoding: 'utf8',
       timeout: 60_000,
     });
@@ -121,13 +127,13 @@ export function storeKey(keyBase64: string): boolean {
   // closed (no argv fallback): Touch ID is an optional convenience and the
   // passphrase still works, so a build that won't take the key over stdin simply
   // leaves Touch ID disabled rather than leaking the key through argv.
-  const viaStdin = capture('security', [...common, '-w'], `${keyBase64}\n${keyBase64}\n`);
+  const viaStdin = capture(SECURITY_BIN, [...common, '-w'], `${keyBase64}\n${keyBase64}\n`);
   return viaStdin.status === 0 && loadKey() === keyBase64;
 }
 
 export function loadKey(): string | null {
   if (!isMac) return null;
-  const res = capture('security', [
+  const res = capture(SECURITY_BIN, [
     'find-generic-password',
     '-s',
     KEYCHAIN_SERVICE,
@@ -142,5 +148,11 @@ export function loadKey(): string | null {
 
 export function deleteKey(): void {
   if (!isMac) return;
-  capture('security', ['delete-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT]);
+  capture(SECURITY_BIN, [
+    'delete-generic-password',
+    '-s',
+    KEYCHAIN_SERVICE,
+    '-a',
+    KEYCHAIN_ACCOUNT,
+  ]);
 }

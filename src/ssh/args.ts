@@ -1,6 +1,7 @@
 /** Build `ssh` argument vectors for connecting and for forward/reverse/dynamic
  *  tunnels. The destination is either a ~/.ssh/config alias or user@host. */
 
+import net from 'node:net';
 import type { ConnectionTarget, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
@@ -68,9 +69,11 @@ export function destination(t: ConnectionTarget): string {
   return `${t.user || 'root'}@${t.host}`;
 }
 
-/** Bracket an IPv6 literal so its colons can't shift the colon-delimited fields
- *  of a -L/-R forward spec (e.g. a host of "0.0.0.0:1" smuggling a bind addr). */
-const fwdHost = (h: string): string => (h.includes(':') ? `[${h}]` : h);
+/** Bracket a true IPv6 literal so its colons can't shift the colon-delimited
+ *  fields of a -L/-R forward spec. Only a real IPv6 address is bracketed — a
+ *  value that merely contains ':' (or an already-bracketed "[::1]") is left as-is
+ *  so we never produce a double-bracketed "[[::1]]". */
+const fwdHost = (h: string): string => (net.isIP(h) === 6 ? `[${h}]` : h);
 
 /** Forward spec for a tunnel: -L (local), -R (remote/reverse), -D (dynamic). */
 export function forwardFlags(t: Tunnel): string[] {

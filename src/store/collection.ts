@@ -1,6 +1,7 @@
 /** Generic CRUD collection for entities (servers, tunnels) backed by a JSON
  *  file. Sorting, fuzzy-friendly listing, usage tracking — shared by both. */
 
+import fs from 'node:fs';
 import type { BaseEntity, SortKey } from '../core/types.js';
 import { newId } from '../utils/id.js';
 import { nowIso, ts } from '../utils/time.js';
@@ -21,6 +22,10 @@ const SORTERS: Record<SortKey, (a: BaseEntity, b: BaseEntity) => number> = {
 
 export class EntityCollection<T extends BaseEntity> {
   private items: T[] | null = null;
+  /** mtime of the file when we last (re)read it — used to invalidate the cache
+   *  when the file changed underneath us (another `wssh` process, or a hand edit
+   *  while a long-lived interactive menu is open). 0 = no file / never read. */
+  private mtimeMs = 0;
   corruptBackup?: string;
 
   constructor(
@@ -28,8 +33,20 @@ export class EntityCollection<T extends BaseEntity> {
     private readonly normalize: (raw: unknown) => T,
   ) {}
 
+  private fileMtime(): number {
+    try {
+      return fs.statSync(this.file).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Always reflect what's on disk. Re-reads when the file's mtime changed since
+   *  our cached copy, so a long-lived menu (and read-modify-write mutations) never
+   *  operate on — or silently overwrite — another process's newer state. */
   private load(): T[] {
-    if (this.items) return this.items;
+    const m = this.fileMtime();
+    if (this.items && m === this.mtimeMs) return this.items;
     const { data, corruptBackup } = readJson<FileShape<unknown>>(this.file, {
       version: 1,
       items: [],
@@ -37,11 +54,15 @@ export class EntityCollection<T extends BaseEntity> {
     if (corruptBackup) this.corruptBackup = corruptBackup;
     const rawItems = Array.isArray(data.items) ? data.items : [];
     this.items = rawItems.map((r) => this.normalize(r));
+    this.mtimeMs = m;
     return this.items;
   }
 
   private persist(): void {
     writeJson(this.file, { version: 1, items: this.load() });
+    // Adopt the just-written file's mtime so the next load() trusts our own cache
+    // (and only re-reads when SOMEONE ELSE writes after us).
+    this.mtimeMs = this.fileMtime();
   }
 
   all(): T[] {

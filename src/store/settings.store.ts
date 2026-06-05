@@ -25,13 +25,17 @@ class SettingsStore {
 
   update(patch: Partial<Settings>): Settings {
     const current = this.load();
-    this.cache = {
+    const next: Settings = {
       ...current,
       ...patch,
       vault: { ...current.vault, ...(patch.vault ?? {}) },
       transfer: { ...current.transfer, ...(patch.transfer ?? {}) },
     };
-    writeJson(FILES.settings, this.cache);
+    // Persist FIRST, then adopt into the cache — so a failed write doesn't leave
+    // the in-memory cache holding state that never reached disk (a session-long
+    // desync between what the UI shows and what's stored).
+    writeJson(FILES.settings, next);
+    this.cache = next;
     return this.get();
   }
 }

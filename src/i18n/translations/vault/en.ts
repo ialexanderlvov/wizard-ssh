@@ -10,6 +10,8 @@ const en: Dict = {
   writerParamLabel: (key) => `parameter ${key}`,
   writerValueLabel: (key) => `value of ${key}`,
   writerAliasEmpty: 'Alias cannot be empty.',
+  writerInvalidAlias: (alias) =>
+    `Invalid host alias "${alias}": only letters, digits, dot, dash and underscore are allowed.`,
   writerAliasInInclude: (alias) =>
     `Alias "${alias}" already exists in an Included or unmanaged ~/.ssh/config block — skipped to avoid a duplicate block.`,
   jsonfileBackupFailed: '(could not create backup)',

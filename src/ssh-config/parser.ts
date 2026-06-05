@@ -72,8 +72,18 @@ function expandGlob(pattern: string, baseDir: string): string[] {
   }
 }
 
+// Bound Include nesting (OpenSSH uses 16). The `seen` set already breaks cycles;
+// this also caps a pathological deep-but-acyclic Include chain.
+const MAX_INCLUDE_DEPTH = 16;
+
 /** Parse a file into blocks. Follows Include unless `followIncludes` is false. */
-function parseBlocks(file: string, followIncludes: boolean, seen = new Set<string>()): Block[] {
+function parseBlocks(
+  file: string,
+  followIncludes: boolean,
+  seen = new Set<string>(),
+  depth = 0,
+): Block[] {
+  if (depth > MAX_INCLUDE_DEPTH) return [];
   const real = path.resolve(file);
   if (seen.has(real)) return [];
   seen.add(real);
@@ -84,7 +94,7 @@ function parseBlocks(file: string, followIncludes: boolean, seen = new Set<strin
   } catch {
     return [];
   }
-  return parseLines(text.split(/\r?\n/), file, followIncludes, seen);
+  return parseLines(text.split(/\r?\n/), file, followIncludes, seen, depth);
 }
 
 /** Parse an already-read, \n-split line array into blocks. The writer reads the
@@ -99,6 +109,7 @@ function parseLines(
   file: string,
   followIncludes: boolean,
   seen: Set<string>,
+  depth = 0,
 ): Block[] {
   const blocks: Block[] = [];
   const baseDir = path.dirname(file);
@@ -115,19 +126,32 @@ function parseLines(
     }
   };
 
+  // The trimmed next non-blank line at/after `from` (for `#wssh` look-ahead).
+  const nextNonBlank = (from: number): string => {
+    for (let k = from; k < lines.length; k++) {
+      const t = (lines[k] ?? '').trim();
+      if (t) return t;
+    }
+    return '';
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i] ?? '';
     const line = raw.trim();
     if (!line) continue; // blank line: keep any pending #wssh (allow a gap)
     if (line.startsWith('#')) {
       const meta = parseWsshComment(line);
-      if (meta) {
-        // A `#wssh` line begins a new block — close the previous one (blank lines
-        // never close it) so the annotation attaches to the Host BELOW it.
+      // A `#wssh` annotation belongs to the Host block that FOLLOWS it — but only
+      // when a `Host` line actually comes next. A stray/inline `#wssh` inside a
+      // block (only possible via a hand-edited config; the writer never emits one
+      // mid-block) is otherwise treated as a plain comment: it must NOT close the
+      // current block, drop its later params, or mis-bind its auth/secretId to the
+      // next host.
+      if (meta && /^host[\s=]/i.test(nextNonBlank(i + 1))) {
         closeAt(i);
         pendingMeta = meta;
         pendingMetaStart = i;
-      } else if (!current) {
+      } else if (!meta && !current) {
         // A non-#wssh comment between blocks detaches any pending #wssh, matching
         // the writer (which only treats an immediately-adjacent #wssh as ours).
         pendingMeta = null;
@@ -145,7 +169,7 @@ function parseLines(
       pendingMeta = null;
       for (const token of splitTokens(value)) {
         for (const inc of expandGlob(token, baseDir)) {
-          blocks.push(...parseBlocks(inc, followIncludes, seen));
+          blocks.push(...parseBlocks(inc, followIncludes, seen, depth + 1));
         }
       }
       continue;

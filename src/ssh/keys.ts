@@ -8,17 +8,27 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { capture, commandExists } from '../utils/exec.js';
 import { tr } from '../i18n/index.js';
-import { expandHome } from '../utils/strings.js';
+import { expandHome, stripControl } from '../utils/strings.js';
 
 function looksPrivate(file: string): boolean {
+  let fd: number | undefined;
   try {
-    const fd = fs.openSync(file, 'r');
+    fd = fs.openSync(file, 'r');
     const buf = Buffer.alloc(80);
     const n = fs.readSync(fd, buf, 0, 80, 0);
-    fs.closeSync(fd);
     return buf.subarray(0, n).toString('utf8').includes('PRIVATE KEY');
   } catch {
     return false;
+  } finally {
+    // Close in `finally` so a throwing readSync (EIO/NFS/TOCTOU) never leaks the
+    // descriptor — this runs per candidate on every ~/.ssh scan.
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* already gone */
+      }
+    }
   }
 }
 
@@ -203,7 +213,9 @@ export function buildKeygenArgs(opts: GenerateKeyOptions): string[] {
   const type = opts.type ?? 'ed25519';
   const args = ['-t', type];
   if (type === 'rsa') args.push('-b', String(opts.bits ?? 4096));
-  args.push('-f', expandHome(opts.path), '-C', opts.comment ?? defaultKeyComment());
+  // Strip control bytes from the comment: it's a single argv token (no injection),
+  // but a stray newline/control char would write a malformed `.pub`.
+  args.push('-f', expandHome(opts.path), '-C', stripControl(opts.comment ?? defaultKeyComment()));
   if (!opts.withPassphrase) args.push('-N', '');
   return args;
 }

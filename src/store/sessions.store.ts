@@ -33,6 +33,23 @@ export function processStartToken(pid: number): string {
   return res.status === 0 ? res.stdout.trim() : '';
 }
 
+/** Start-time tokens for many pids in ONE `ps` call (vs one spawn per session on
+ *  every list()). Returns pid → lstart; pids absent from the output are omitted
+ *  (dead, or ps unavailable → empty map, callers then fall back to a liveness
+ *  check). */
+export function processStartTokens(pids: number[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const valid = pids.filter((p) => Number.isInteger(p) && p > 0);
+  if (!valid.length) return out;
+  const res = capture('ps', ['-o', 'pid=,lstart=', '-p', valid.join(',')]);
+  if (res.status !== 0) return out;
+  for (const line of res.stdout.split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(.+)$/);
+    if (m) out.set(Number(m[1]), (m[2] ?? '').trim());
+  }
+  return out;
+}
+
 interface SessionsFile {
   version: 1;
   sessions: TunnelSession[];
@@ -53,8 +70,10 @@ export function pidAlive(pid: number): boolean {
 }
 
 /** A session is live only if its PID is alive AND still the same process we
- *  launched (start-time token matches) — guards against PID reuse. */
-function sessionAlive(s: TunnelSession): boolean {
+ *  launched (start-time token matches) — guards against PID reuse. Exported so a
+ *  caller can RE-verify immediately before signalling a PID (the list() snapshot
+ *  may be stale after a long interactive prompt — PID-reuse TOCTOU). */
+export function sessionAlive(s: TunnelSession): boolean {
   if (!pidAlive(s.pid)) return false;
   if (!s.startToken) return true; // legacy session without a token — best effort
   const token = processStartToken(s.pid);
@@ -87,7 +106,18 @@ class SessionsStore {
    *  process, persisting the result. */
   list(): TunnelSession[] {
     const f = this.load();
-    const alive = f.sessions.filter((s) => sessionAlive(s));
+    // Batch the start-token probe into ONE `ps` call for all live pids, instead of
+    // spawning `ps` per session inside sessionAlive().
+    const livePids = f.sessions.filter((s) => pidAlive(s.pid)).map((s) => s.pid);
+    const tokens = livePids.length ? processStartTokens(livePids) : new Map<number, string>();
+    const alive = f.sessions.filter((s) => {
+      if (!pidAlive(s.pid)) return false;
+      if (!s.startToken) return true; // legacy session without a token — best effort
+      const token = tokens.get(s.pid);
+      // No token for an alive pid is inconclusive (ps missing/failed) — keep it,
+      // mirroring sessionAlive()'s tolerance, rather than orphaning a live tunnel.
+      return token === undefined || token === '' || token === s.startToken;
+    });
     if (alive.length !== f.sessions.length) this.persist({ version: 1, sessions: alive });
     return alive.slice();
   }

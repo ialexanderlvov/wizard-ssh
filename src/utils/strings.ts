@@ -8,11 +8,14 @@ export function expandHome(p: string | null | undefined): string {
   return p.startsWith('~/') || p.startsWith('~\\') ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
-/** /Users/you/foo → ~/foo (compact display) */
+/** /Users/you/foo → ~/foo (compact display). Only collapses the home dir itself
+ *  or a path UNDER it — a bare prefix match would turn a sibling like
+ *  `/Users/bobby` into `~by` when home is `/Users/bob`. */
 export function tilde(p: string | null | undefined): string {
   if (!p) return '';
   const home = os.homedir();
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+  if (p === home) return '~';
+  return p.startsWith(home + path.sep) ? '~' + p.slice(home.length) : p;
 }
 
 export function slugify(s: string): string {

@@ -69,9 +69,14 @@ export function deriveKey(passphrase: string, kdf: KdfParams): Buffer {
   });
 }
 
+/** GCM nonce/tag sizes we always produce — anything else on disk is corrupt or
+ *  hostile and is rejected before it reaches the cipher. */
+const IV_BYTES = 12;
+const TAG_BYTES = 16;
+
 export function encrypt(key: Buffer, plaintext: string): Cipher {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
   const data = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   return {
     iv: iv.toString('base64'),
@@ -81,8 +86,17 @@ export function encrypt(key: Buffer, plaintext: string): Cipher {
 }
 
 export function decrypt(key: Buffer, c: Cipher): string {
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(c.iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(c.tag, 'base64'));
+  const iv = Buffer.from(c.iv, 'base64');
+  const tag = Buffer.from(c.tag, 'base64');
+  // encrypt() always emits a 12-byte IV and a full 16-byte GCM tag. Node would
+  // otherwise accept a TRUNCATED tag (4/8/12 bytes — only a deprecation warning),
+  // collapsing forgery resistance from 2^128 toward 2^32; and any IV length >= 1.
+  // A hand-edited / imported vault.json is untrusted, so reject a downgraded nonce
+  // or tag outright instead of feeding it to the cipher.
+  if (iv.length !== IV_BYTES) throw new Error('bad GCM nonce length');
+  if (tag.length !== TAG_BYTES) throw new Error('bad GCM tag length');
+  const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
+  decipher.setAuthTag(tag);
   const out = Buffer.concat([decipher.update(Buffer.from(c.data, 'base64')), decipher.final()]);
   return out.toString('utf8');
 }

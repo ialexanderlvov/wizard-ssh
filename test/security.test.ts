@@ -211,7 +211,13 @@ describe('vault KDF params are bounded against hostile/broken values', () => {
 
   it('isVaultFileShape rejects a wrong version or a hostile kdf', async () => {
     const { isVaultFileShape } = await import('../src/vault/vault.js');
-    const check = { iv: 'a', tag: 'b', data: 'c' };
+    // A well-formed check blob: 12-byte GCM nonce + 16-byte tag (isCipher now
+    // pins those lengths to reject a truncated/downgraded tag at shape-check time).
+    const check = {
+      iv: Buffer.alloc(12).toString('base64'),
+      tag: Buffer.alloc(16).toString('base64'),
+      data: 'c',
+    };
     const goodKdf = { salt: 'AAAA', N: 131072, r: 8, p: 1, keylen: 32 };
     expect(isVaultFileShape({ version: 1, kdf: goodKdf, check, secrets: {}, touchId: false })).toBe(
       true,

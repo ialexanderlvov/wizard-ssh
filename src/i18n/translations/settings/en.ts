@@ -3,6 +3,8 @@ import type { Dict } from './ru.js';
 const en: Dict = {
   // editSetting prompts
   defaultUserPrompt: 'Default SSH user',
+  invalidUser: 'Invalid username.',
+  invalidRemoteHost: 'Invalid host or IP.',
   defaultSshPortPrompt: 'Default SSH port',
   defaultAuthPrompt: 'Default auth method',
   authAgent: 'ssh-agent / default',
@@ -82,6 +84,8 @@ const en: Dict = {
 
   // deleteSavedPassword
   pickDeletePrompt: 'Which connection to delete the saved password for?',
+  confirmDeletePassword: (name) =>
+    `Delete the saved password for "${name}"? This cannot be undone.`,
   passwordDeleted: (name) =>
     `Password for "${name}" deleted (data kept; will ask on next connect).`,
 
