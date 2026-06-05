@@ -42,6 +42,26 @@ const ru = {
   },
   listHelp: 'фильтр: печатай · ↑↓ — выбор · Enter — выбрать · Esc — назад',
   pause: '↩ Enter — назад',
+  filePicker: {
+    parent: '..  (на уровень выше)',
+    chooseDir: (p: string) => `✅ выбрать эту папку: ${p}`,
+    create: '✏️  ввести имя вручную…',
+    namePrompt: 'Имя файла (можно с путём)',
+    emptyDir: 'папка пуста',
+    denied: '⚠ нет доступа к этой папке',
+    dirBadge: '/',
+    // hotkey hint shown at the bottom
+    help: 'печатай — фильтр · ↑↓ — выбор · → — войти · ← — вверх · Enter — открыть/выбрать',
+    help2: (sortLabel: string, hidden: boolean) =>
+      `Tab — сортировка: ${sortLabel} · Ctrl+H — скрытые: ${hidden ? 'вкл' : 'выкл'} · Ctrl+G — перейти к пути · ~ домой · / корень · Esc — отмена`,
+    sortName: 'имя',
+    sortSize: 'размер',
+    sortModified: 'дата',
+    sortType: 'тип',
+    notExist: (p: string) => `Путь не существует: ${p}`,
+    mustBeFile: 'Нужно выбрать файл, а не папку.',
+    mustBeDir: 'Нужно выбрать папку.',
+  },
 };
 
 export default ru;

@@ -47,6 +47,14 @@ export function promptMock(q: PromptQueues) {
       o?.validate?.(String(v ?? ''));
       return v;
     },
+    // promptPath (the filesystem browser) draws from the same `text` queue, so
+    // existing tests that enqueue a path keep working without changes.
+    promptPath: async (o?: { validate?: (v: string) => unknown }) => {
+      const v = q.text.shift();
+      if (v instanceof Error) throw v;
+      o?.validate?.(String(v ?? ''));
+      return v;
+    },
     secret: async (o?: { validate?: (v: string) => unknown }) => {
       const v = q.secret.shift();
       if (v instanceof Error) throw v;
