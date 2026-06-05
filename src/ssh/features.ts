@@ -6,7 +6,13 @@ import type { ConnectionTarget, Server } from '../core/types.js';
 import { capture, captureAsync, commandExists, rsyncSupportsInfoProgress } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { shJoin } from '../utils/shell.js';
-import { destination, targetOptions, buildRunArgs, PASSWORD_NO_PROXY_OPTS } from './args.js';
+import {
+  destination,
+  targetOptions,
+  buildRunArgs,
+  assertSafeDestination,
+  PASSWORD_NO_PROXY_OPTS,
+} from './args.js';
 import { parseSshGOutput } from './gconfig.js';
 import { runProgram, runSshInherit } from './runner.js';
 import { tr } from '../i18n/index.js';
@@ -143,7 +149,12 @@ export async function copyId(
   if (server.auth === 'password') {
     args.push('-o', 'PreferredAuthentications=password', ...PASSWORD_NO_PROXY_OPTS);
   }
-  args.push('--', destination(server)); // end options: a leading-dash dest stays an operand
+  const dest = destination(server);
+  // ssh-copy-id's `--` ends only ITS OWN getopt; under the hood it then runs ssh
+  // with the host as the last argument and NO `--`, so a leading-dash alias would
+  // be parsed by that inner ssh as an option (`-oProxyCommand=…` → RCE). Guard it.
+  assertSafeDestination(dest);
+  args.push('--', dest); // end options: a leading-dash dest stays an operand
   return runProgram('ssh-copy-id', args, password);
 }
 
@@ -197,7 +208,9 @@ function buildScpArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
       ...PASSWORD_NO_PROXY_OPTS,
     );
 
-  const remoteSpec = `${destination(t)}:${opts.remotePath}`;
+  const dest = destination(t);
+  assertSafeDestination(dest); // a leading-dash alias must not reach scp's inner ssh
+  const remoteSpec = `${dest}:${opts.remotePath}`;
   // `--` so a local path beginning with `-` is a file operand, not an scp option.
   return opts.direction === 'upload'
     ? [...args, '--', expandHome(opts.localPath), remoteSpec]
@@ -226,7 +239,12 @@ function buildRsyncArgs(t: ConnectionTarget, opts: TransferOptions): string[] {
   if (rsyncSupportsInfoProgress()) args.push('-h', '--info=progress2', '-v');
   else args.push('--progress', '-v');
 
-  const remoteSpec = `${destination(t)}:${opts.remotePath}`;
+  const dest = destination(t);
+  // rsync passes the host to its OWN inner ssh with no `--`, so a leading-dash
+  // alias would inject an ssh option (ProxyCommand → RCE). `--` below only guards
+  // rsync's own getopt, not the transport, so reject the dash dest here.
+  assertSafeDestination(dest);
+  const remoteSpec = `${dest}:${opts.remotePath}`;
   // `--` so a local path beginning with `-` is a file operand, not an rsync option.
   return opts.direction === 'upload'
     ? [...args, '--', expandHome(opts.localPath), remoteSpec]
