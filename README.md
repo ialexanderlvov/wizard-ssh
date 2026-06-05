@@ -98,7 +98,14 @@ More in [docs/INSTALL.md](docs/INSTALL.md) and [docs/USAGE.md](docs/USAGE.md).
 | `wssh vault`                                             | manage the password vault                         |
 | `wssh settings`                                          | default values                                    |
 | `wssh export [file]` · `wssh import <file> [--replace]`  | backup / restore                                  |
+| `wssh completion install` (`uninstall`)                  | install/remove shell completion (auto-detects)    |
 | `wssh path`                                              | path to the data directory                        |
+
+**Shell completion.** `wssh completion install` sets it up for your shell automatically —
+it detects bash / zsh / fish (and oh-my-zsh), drops the completion file in the right place,
+wires up your rc file when needed and rebuilds the zsh `compinit` cache. Pass an explicit
+shell (`wssh completion install bash`) to override detection, or `wssh completion <shell>` to
+just print the script for a manual install. Restart your shell (or `exec zsh`) afterwards.
 
 Lists are sortable: `wssh server ls --sort recent|name|uses|created|updated [--reverse] [--json]`.
 
