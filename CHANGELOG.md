@@ -7,6 +7,17 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.5.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.4.0...wizard-ssh-v1.5.0) (2026-06-05)
+
+
+### Features
+
+* **backup:** back up the whole ~/.ssh to an owner-only archive ([bd113c0](https://github.com/ialexanderlvov/wizard-ssh/commit/bd113c0d3e9c3c4468e46315389cd30a9687e4d3))
+* **cli:** man page generated from the CLI (wssh man) ([6a3f9b0](https://github.com/ialexanderlvov/wizard-ssh/commit/6a3f9b0f403379420c00d81244df8ee0a4792245))
+* **cli:** shell completion for bash, zsh and fish ([35c492e](https://github.com/ialexanderlvov/wizard-ssh/commit/35c492e4ceaf6463694a26a59baf5f0011004ed9))
+* **transfer:** background transfers with a session registry and log ([57900c9](https://github.com/ialexanderlvov/wizard-ssh/commit/57900c96c2c7038617873d57b4a5622c635e971d))
+* **transfer:** scriptable flags, configurable defaults, richer progress ([b580aaa](https://github.com/ialexanderlvov/wizard-ssh/commit/b580aaa674997f06b278e7bd096b8c00712aa9c0))
+
 ## [1.4.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.3.4...wizard-ssh-v1.4.0) (2026-06-04)
 
 
