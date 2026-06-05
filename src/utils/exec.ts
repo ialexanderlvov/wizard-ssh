@@ -12,18 +12,61 @@ export interface CaptureResult {
   stderr: string;
 }
 
+export interface CaptureOptions {
+  /** environment for the child process (defaults to the parent's). Used e.g. to
+   *  pin `TZ=UTC` so `ps -o lstart` yields a timezone-stable start-time token. */
+  env?: NodeJS.ProcessEnv;
+}
+
 /** Run a command and capture its output (no shell). */
-export function capture(cmd: string, args: string[], input?: string): CaptureResult {
+export function capture(
+  cmd: string,
+  args: string[],
+  input?: string,
+  opts: CaptureOptions = {},
+): CaptureResult {
   const res = spawnSync(cmd, args, {
     encoding: 'utf8',
     input,
     timeout: 30_000,
+    env: opts.env,
   });
   return {
     status: res.status,
     stdout: res.stdout ?? '',
     stderr: res.stderr ?? '',
   };
+}
+
+/** Pure: does this `rsync --version` banner indicate rsync >= 3.1.0, i.e. support
+ *  for `--info=progress2` (a single overall progress bar) and `-h` as
+ *  human-readable sizes? Apple's `/usr/bin/rsync` is openrsync ("rsync version
+ *  2.6.9 compatible") and the old samba rsync 2.6.9 BOTH reject `--info` (and
+ *  2.6.9 treats `-h` as `--help`), so anything we can't parse as >= 3.1 is "no". */
+export function rsyncVersionHasInfoProgress(versionOutput: string): boolean {
+  const m = /rsync\s+version\s+v?(\d+)\.(\d+)/i.exec(versionOutput);
+  if (!m) return false;
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  return major > 3 || (major === 3 && minor >= 1);
+}
+
+let rsyncInfoProgressCache: boolean | undefined;
+
+/** Whether the installed rsync supports `--info=progress2` (cached per process).
+ *  Probes `rsync --version` once; on any failure assumes "no" so we fall back to
+ *  the universally-supported `--progress`. */
+export function rsyncSupportsInfoProgress(): boolean {
+  if (rsyncInfoProgressCache === undefined) {
+    const res = capture('rsync', ['--version']);
+    rsyncInfoProgressCache = res.status === 0 && rsyncVersionHasInfoProgress(res.stdout);
+  }
+  return rsyncInfoProgressCache;
+}
+
+/** Reset the cached rsync capability probe (tests only). */
+export function resetExecCaps(): void {
+  rsyncInfoProgressCache = undefined;
 }
 
 /** Async variant of {@link capture}: runs a command without blocking the event

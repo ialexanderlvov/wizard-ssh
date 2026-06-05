@@ -2,6 +2,7 @@
  *  writer. */
 
 import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 
 // O_EXCL: fail if the tmp path already exists (never reuse/clobber). O_NOFOLLOW:
@@ -25,8 +26,40 @@ export function atomicWrite(target: string, data: string | Buffer, mode = 0o600)
   try {
     fs.writeFileSync(fd, data);
     fs.fsyncSync(fd);
-  } finally {
+  } catch (e) {
+    // Clean up the temp file on a failed write so a crash mid-write doesn't leave
+    // a stray `.tmp` behind (the rename below never runs in this case).
     fs.closeSync(fd);
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* best-effort */
+    }
+    throw e;
   }
-  fs.renameSync(tmp, target);
+  fs.closeSync(fd);
+  try {
+    fs.renameSync(tmp, target);
+  } catch (e) {
+    // Don't leave the temp file behind if the rename itself fails (e.g. EXDEV, or
+    // the parent dir vanished) — clean it up, mirroring the write-failure path.
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* best-effort */
+    }
+    throw e;
+  }
+  // fsync the directory so the rename itself is durable (the file contents were
+  // already fsync'd above). Best-effort: not all platforms allow opening a dir.
+  try {
+    const dirFd = fs.openSync(path.dirname(target), 'r');
+    try {
+      fs.fsyncSync(dirFd);
+    } finally {
+      fs.closeSync(dirFd);
+    }
+  } catch {
+    /* best-effort (e.g. Windows) */
+  }
 }

@@ -30,14 +30,23 @@ interface VaultFile {
   touchId: boolean;
 }
 
+/** A base64 string that decodes to exactly `bytes` bytes. */
+function isB64Len(v: unknown, bytes: number): boolean {
+  if (typeof v !== 'string' || !v) return false;
+  try {
+    return Buffer.from(v, 'base64').length === bytes;
+  } catch {
+    return false;
+  }
+}
+
 function isCipher(c: unknown): c is Cipher {
-  return (
-    !!c &&
-    typeof c === 'object' &&
-    typeof (c as Cipher).iv === 'string' &&
-    typeof (c as Cipher).tag === 'string' &&
-    typeof (c as Cipher).data === 'string'
-  );
+  if (!c || typeof c !== 'object') return false;
+  const cc = c as Cipher;
+  // Pin the GCM nonce/tag sizes encrypt() always produces (12-byte IV, 16-byte
+  // tag): a truncated tag from a hand-edited/imported vault is rejected here, at
+  // shape-validation time, not just deferred to decrypt().
+  return isB64Len(cc.iv, 12) && isB64Len(cc.tag, 16) && typeof cc.data === 'string';
 }
 
 /** Validate the on-disk shape instead of blindly casting arbitrary JSON — a
@@ -70,6 +79,11 @@ export interface UnlockOptions {
 class Vault {
   private key: Buffer | null = null;
   private file: VaultFile | null = null;
+  private corruptHandled = false;
+  /** Set when a present vault.json existed but was unusable (tampered / truncated
+   *  / hostile KDF / future version). The original bytes are preserved at this
+   *  path so the UI can warn instead of silently losing recoverable ciphertext. */
+  corruptBackup?: string;
 
   // ---------- file helpers ----------
   exists(): boolean {
@@ -79,8 +93,25 @@ class Vault {
   private read(): VaultFile | null {
     if (this.file) return this.file;
     if (!this.exists()) return null;
-    const { data } = readJson<unknown>(FILES.vault, null);
-    if (!isVaultFileShape(data)) return null;
+    const { data, corruptBackup } = readJson<unknown>(FILES.vault, null);
+    if (corruptBackup) this.corruptBackup = corruptBackup;
+    if (!isVaultFileShape(data)) {
+      // readJson only backs up on a JSON *syntax* error. A file that parses but
+      // fails the shape/KDF check (data !== null) would otherwise be silently
+      // treated as "no vault" — and a later reset() would then destroy ciphertext
+      // that might still be recoverable. Preserve the bytes once.
+      if (data !== null && !this.corruptHandled) {
+        this.corruptHandled = true;
+        try {
+          const dest = `${FILES.vault}.corrupt-${Date.now()}`;
+          fs.copyFileSync(FILES.vault, dest);
+          this.corruptBackup = dest;
+        } catch {
+          /* best-effort */
+        }
+      }
+      return null;
+    }
     this.file = data;
     return this.file;
   }

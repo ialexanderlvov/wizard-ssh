@@ -14,7 +14,7 @@ import { freshHome } from './helpers.js';
 // startTunnelDetached spawns a detached ssh; stub it so the test never launches a
 // real process (it only needs a child with pid + unref).
 const h = vi.hoisted(() => ({
-  spawn: vi.fn(() => ({ pid: 4242, unref: vi.fn() })),
+  spawn: vi.fn(() => ({ pid: 4242, unref: vi.fn(), on: vi.fn() })),
 }));
 vi.mock('node:child_process', async (orig) => {
   const actual = await orig<typeof import('node:child_process')>();

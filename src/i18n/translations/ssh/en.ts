@@ -43,6 +43,8 @@ const en: Dict = {
   hostkeyEmptyHost: 'Empty host.',
   hostkeyFileNotFound: 'File ~/.ssh/known_hosts not found — nothing to remove.',
   hostkeyRemoved: (host) => `Keys for ${host} removed from known_hosts.`,
+  hostkeyNothingRemoved: (host) =>
+    `No matching entry for ${host} in known_hosts — nothing removed.`,
   hostkeyKeygenFailed: 'ssh-keygen exited with an error.',
   // features
   featuresCopyIdNotFound: 'ssh-copy-id not found in PATH.',
@@ -54,6 +56,8 @@ const en: Dict = {
   argsBadTmuxSession:
     'Invalid tmux session name: only letters, digits, dot, hyphen and underscore are allowed (up to 64 characters).',
   argsBadMoshDest: 'Refusing to launch mosh: the destination must not start with “-”.',
+  argsBadDest:
+    'Refusing to connect: the destination/alias must not start with “-” (it would be parsed as an SSH option). Fix the offending ~/.ssh/config Host alias.',
 
   // mosh
   moshConnecting: (name) => `Connecting via mosh to “${name}”…`,

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AuthMethod, Server, Settings, SortKey, Tunnel } from '../core/types.js';
+import { WizardError } from '../core/errors.js';
 import { DATA_DIR, FILES } from '../core/paths.js';
 import { readJson, writeJson } from '../store/json-file.js';
 import { servers } from '../store/servers.store.js';
@@ -28,6 +29,9 @@ import { tr } from '../i18n/index.js';
  *  written. (formatBlock guards too, but this surfaces a clean count instead of
  *  aborting the whole import on the first bad record.) */
 function serverIsSafe(s: Partial<Server>): boolean {
+  // A hostile/hand-edited bundle may hold a null/scalar element; guard before
+  // dereferencing so one bad record skips cleanly instead of crashing the import.
+  if (!s || typeof s !== 'object') return false;
   if (!isValidSshAlias(String(s.name ?? s.sshHost ?? ''))) return false;
   if (s.host && !isValidHostOrIp(String(s.host))) return false;
   if (s.user && !isValidUser(String(s.user))) return false;
@@ -40,6 +44,7 @@ function serverIsSafe(s: Partial<Server>): boolean {
 }
 
 function tunnelIsSafe(t: Partial<Tunnel>): boolean {
+  if (!t || typeof t !== 'object') return false;
   if (!isValidName(String(t.name ?? ''))) return false;
   if (t.hostMode === 'sshconfig') {
     if (!isValidSshAlias(String(t.sshHost ?? ''))) return false;
@@ -90,10 +95,17 @@ interface Bundle {
   vault?: unknown;
 }
 
-export function exportData(file?: string): string {
+export function exportData(file?: string, opts: { force?: boolean } = {}): string {
   const target = file
     ? path.resolve(file)
     : path.join(DATA_DIR, `wizard-ssh-export-${Date.now()}.json`);
+  // Don't silently clobber an existing file (a typo or mis-expanded script var
+  // would otherwise overwrite it). A default (timestamped) target can't collide,
+  // so this only guards an explicit path. --force / --yes / an interactive
+  // confirm (the menu) override.
+  if (file && fs.existsSync(target) && !opts.force && !ui.runtime.assumeYes) {
+    throw new WizardError(tr.importExport.exportExists(target));
+  }
   const bundle: Bundle = {
     app: 'wizard-ssh',
     version: 1,
@@ -140,8 +152,10 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
     });
   }
 
-  const rawServers = data.servers ?? [];
-  const rawTunnels = data.tunnels ?? [];
+  // data.servers is already array-checked above; tunnels may be missing or a
+  // non-array in a hand-edited bundle — coerce so .filter never throws.
+  const rawServers = Array.isArray(data.servers) ? data.servers : [];
+  const rawTunnels = Array.isArray(data.tunnels) ? data.tunnels : [];
   const importedServers = rawServers.filter(serverIsSafe);
   const importedTunnels = rawTunnels.filter(tunnelIsSafe);
   const skipped =
@@ -220,11 +234,33 @@ export async function importExportMenu(): Promise<void> {
   });
   if (action === 'back') return;
   if (action === 'export') {
-    const file = await ui.text({ message: tr.importExport.exportPathPrompt, default: '' });
-    exportData(file.trim() || undefined);
+    // Browse to the destination folder and/or type a filename (empty → default
+    // timestamped name in the data dir).
+    const file = await ui.promptPath({
+      message: tr.importExport.exportPathPrompt,
+      select: 'any',
+      allowCreate: true,
+      optional: true,
+    });
+    const path_ = file.trim() || undefined;
+    // Interactive: if the chosen path exists, confirm the overwrite, then force it.
+    let force = false;
+    if (path_ && fs.existsSync(path.resolve(path_))) {
+      force = await ui.confirm({
+        message: tr.importExport.exportOverwrite(path.resolve(path_)),
+        default: false,
+      });
+      if (!force) {
+        ui.printInfo(tr.common.cancelled);
+        return;
+      }
+    }
+    exportData(path_, { force });
   } else {
-    const file = await ui.text({
+    // Browse to the export file to import (must exist).
+    const file = await ui.promptPath({
       message: tr.importExport.importPathPrompt,
+      select: 'file',
       validate: (v) => v.trim().length > 0 || tr.importExport.specifyPath,
     });
     await importData(file.trim());

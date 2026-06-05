@@ -24,9 +24,11 @@ async function loadTouchid(opts: {
   const commandExists = vi.fn((c: string) => (c === 'swiftc' ? (opts.swiftc ?? true) : true));
   const capture = vi.fn(() => captureResult(opts.captureStatus ?? 0, opts.captureStdout ?? ''));
   const spawnSync = vi.fn((cmd: string, args: readonly string[]) => {
+    // swiftc is now invoked by absolute path (/usr/bin/swiftc) to avoid PATH hijack.
+    const isSwiftc = cmd === 'swiftc' || cmd.endsWith('/swiftc');
     // emulate swiftc producing the helper binary
-    if (cmd === 'swiftc' && args[2]) fs.writeFileSync(args[2], '#!/bin/sh\n');
-    const status = cmd === 'swiftc' ? 0 : (opts.authStatus ?? 0);
+    if (isSwiftc && args[2]) fs.writeFileSync(args[2], '#!/bin/sh\n');
+    const status = isSwiftc ? 0 : (opts.authStatus ?? 0);
     return { status } as SpawnSyncReturns<string>;
   });
   vi.doMock('../src/utils/exec.js', async (orig) => {

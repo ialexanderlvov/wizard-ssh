@@ -43,6 +43,20 @@ const strArr = (v: unknown): string[] =>
 
 /** Returns the number of servers migrated, or null when there was nothing to do. */
 export function migrateServersToConfig(): ServerMigrationResult | null {
+  // The renamed `servers.json.migrated` is our durable "already migrated" marker.
+  // If it exists, migration completed on a prior run — never re-import (that would
+  // bump aliases to `-2`/`-3` and pollute ~/.ssh/config on every launch). Clean up
+  // a `servers.json` that lingered after a failed rename, without re-importing.
+  if (fs.existsSync(FILES.serversMigrated)) {
+    if (fs.existsSync(FILES.servers)) {
+      try {
+        fs.rmSync(FILES.servers, { force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
+    return null;
+  }
   if (!fs.existsSync(FILES.servers)) return null;
 
   const { data } = readJson<{ items?: unknown[] }>(FILES.servers, {});
@@ -120,12 +134,19 @@ export function migrateServersToConfig(): ServerMigrationResult | null {
     }
   }
 
-  // Retire servers.json so the migration is idempotent.
+  // Retire servers.json so the migration is idempotent. The `.migrated` file is
+  // the durable marker checked at the top — so create it even if the rename
+  // fails (copy + remove fallback), otherwise an EPERM/lock/interrupt would let
+  // the next launch re-import everything and duplicate every Host block.
   try {
-    fs.rmSync(FILES.serversMigrated, { force: true });
     fs.renameSync(FILES.servers, FILES.serversMigrated);
   } catch {
-    /* best-effort: if the rename fails the data is still in config */
+    try {
+      fs.copyFileSync(FILES.servers, FILES.serversMigrated);
+      fs.rmSync(FILES.servers, { force: true });
+    } catch {
+      /* double fault — data is already in config; marker may be missing */
+    }
   }
 
   return { count, backup };

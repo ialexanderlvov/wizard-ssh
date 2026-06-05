@@ -9,6 +9,8 @@ const ru = {
   writerParamLabel: (key: string) => `параметре ${key}`,
   writerValueLabel: (key: string) => `значении ${key}`,
   writerAliasEmpty: 'Алиас не может быть пустым.',
+  writerInvalidAlias: (alias: string) =>
+    `Недопустимый алиас хоста «${alias}»: разрешены только буквы, цифры, точка, дефис и подчёркивание.`,
   writerAliasInInclude: (alias: string) =>
     `Алиас «${alias}» уже определён во включённом (Include) или неуправляемом блоке ~/.ssh/config — пропущен, чтобы не создавать дубликат.`,
   jsonfileBackupFailed: '(резервную копию создать не удалось)',

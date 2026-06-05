@@ -6,7 +6,7 @@ vi.mock('../src/ssh/runner.js', () => ({
 }));
 vi.mock('../src/utils/exec.js', async (orig) => {
   const actual = await orig<typeof import('../src/utils/exec.js')>();
-  return { ...actual, commandExists: () => true };
+  return { ...actual, commandExists: () => true, rsyncSupportsInfoProgress: () => true };
 });
 
 import { transfer } from '../src/ssh/features.js';

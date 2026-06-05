@@ -5,7 +5,7 @@ import type { SortKey, SshConfigHost, Tunnel } from '../core/types.js';
 import { PromptCancelError } from '../core/errors.js';
 import type { EntityCollection } from '../store/collection.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
-import { sessions, type TunnelSession } from '../store/sessions.store.js';
+import { sessions, sessionAlive, type TunnelSession } from '../store/sessions.store.js';
 import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
 import * as sshConfig from '../ssh-config/index.js';
@@ -17,6 +17,7 @@ import { detailBox, forwardSummary, targetSummary } from '../ui/format.js';
 import { renderEntityTable, renderSessionsTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
 import { parseTags, slugify, tilde } from '../utils/strings.js';
+import { tailFile, followLog } from '../utils/logtail.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
 import {
   commitSecretChange,
@@ -166,15 +167,26 @@ export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}
       return name ? 1 : 0;
     }
     toStop = [target];
-  } else if (
-    !(await ui.confirm({ message: tr.tunnels.confirmStopAll(live.length), default: false }))
-  ) {
-    ui.printInfo(tr.common.cancelled);
-    return 0;
+  } else {
+    // `--all`: needs a confirmation, so it must be interactive (or `--yes`).
+    // Without ensureInteractive, a scripted `tunnel down --all` would abort with
+    // an opaque PromptAbortError instead of a clear "interactive / --yes" error.
+    ui.ensureInteractive(tr.tunnels.stopEnsure);
+    if (!(await ui.confirm({ message: tr.tunnels.confirmStopAll(live.length), default: false }))) {
+      ui.printInfo(tr.common.cancelled);
+      return 0;
+    }
   }
 
   let stopped = 0;
   for (const s of toStop) {
+    // Re-verify the PID is STILL our process right before signalling: the list()
+    // snapshot above may be stale after the (possibly long) confirm/pick prompt,
+    // and the PID could have been recycled by an unrelated same-user process.
+    if (!sessionAlive(s)) {
+      sessions.remove(s.tunnelId);
+      continue;
+    }
     try {
       process.kill(s.pid, 'SIGTERM');
       stopped++;
@@ -244,19 +256,24 @@ export async function raiseTemporaryTunnel(): Promise<number> {
   ui.printSection('🚇', tr.tunnels.tempTunnelSection);
   const target = await askConnectionTarget({});
   const secretId = await handlePasswordSecret(target, null);
+  let tunnel: Tunnel;
   try {
     const fwd = await askForward({});
     const suggested = slugify(
       `${target.hostMode === 'sshconfig' ? target.sshHost : target.host}-${fwd.localPort}`,
     );
     const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
-    const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-    ui.printOk(tr.tunnels.tempTunnelSaved(tunnel.name));
-    return connectTunnel(tunnel, tempTunnels);
+    tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
   } catch (e) {
-    rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
+    // Roll back ONLY while the tunnel isn't persisted yet. Once create() has run,
+    // the secret is referenced by a saved record, so a later connect failure must
+    // NOT delete it (which would orphan the record + re-prompt next time) —
+    // mirrors addTunnel(), whose create() is its last statement before return.
+    rollbackSecretChange(null, secretId);
     throw e;
   }
+  ui.printOk(tr.tunnels.tempTunnelSaved(tunnel.name));
+  return connectTunnel(tunnel, tempTunnels);
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
@@ -497,51 +514,6 @@ export async function cloneTunnelFlow(
   console.log(detailBox(clone));
 }
 
-/** Last `n` lines of `content` (drops a single trailing newline first). */
-export function tailLines(content: string, n: number): string[] {
-  const lines = content.split('\n');
-  if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  return n > 0 ? lines.slice(-n) : lines;
-}
-
-/** Stream appended bytes of `file` to stdout until Ctrl+C. Handles truncation
- *  (rotation) by rewinding to 0. Resolves on SIGINT so callers can return. */
-function followLog(file: string): Promise<void> {
-  return new Promise((resolve) => {
-    let pos = fs.statSync(file).size;
-    const flush = (): void => {
-      try {
-        const { size } = fs.statSync(file);
-        if (size < pos) pos = 0; // file was truncated / rotated
-        if (size <= pos) return;
-        const fd = fs.openSync(file, 'r');
-        try {
-          const buf = Buffer.alloc(size - pos);
-          fs.readSync(fd, buf, 0, buf.length, pos);
-          process.stdout.write(buf.toString('utf8'));
-          pos = size;
-        } finally {
-          fs.closeSync(fd);
-        }
-      } catch {
-        /* best-effort */
-      }
-    };
-    let watcher: fs.FSWatcher | undefined;
-    try {
-      watcher = fs.watch(file, flush);
-    } catch {
-      resolve();
-      return;
-    }
-    const onSigint = (): void => {
-      watcher?.close();
-      resolve();
-    };
-    process.once('SIGINT', onSigint);
-  });
-}
-
 /** Show (and optionally follow) a background tunnel's log, resolved from the
  *  sessions registry so users never hunt PIDs or log paths. */
 export async function tunnelLogsFlow(
@@ -581,8 +553,7 @@ export async function tunnelLogsFlow(
     return 1;
   }
   ui.printSection('📜', tr.tunnels.logsSection(target.name, tilde(target.logFile)));
-  const body = fs.readFileSync(target.logFile, 'utf8');
-  const lines = tailLines(body, opts.tail ?? 40);
+  const lines = tailFile(target.logFile, opts.tail ?? 40);
   if (lines.length) console.log(lines.join('\n'));
   if (opts.follow) {
     ui.printInfo(ui.chalk.dim(tr.tunnels.logFollowHint));

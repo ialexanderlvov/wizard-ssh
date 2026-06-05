@@ -29,7 +29,7 @@ import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
 import { newId } from '../utils/id.js';
-import { tailLines, followLog } from '../utils/logtail.js';
+import { tailFile, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
 import { tr } from '../i18n/index.js';
 
@@ -137,9 +137,15 @@ export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
 
 function applyForget(host: string): number {
   const res = forgetHostKey(host);
-  if (res.ok) ui.printOk(res.message);
-  else ui.printError(res.message);
-  return res.ok ? 0 : 1;
+  if (!res.ok) {
+    ui.printError(res.message);
+    return 1;
+  }
+  // ok but nothing actually matched → warn (not a success tick) so the user knows
+  // trust wasn't reset, but it's not an error exit.
+  if (res.removed === false) ui.printWarn(res.message);
+  else ui.printOk(res.message);
+  return 0;
 }
 
 /** List the readable entries currently in ~/.ssh/known_hosts. */
@@ -353,15 +359,20 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
     });
   }
   let localPath = cli.local;
-  if (localPath === undefined) {
+  // A blank/whitespace flag (`--local ''`) bypassed the non-empty check before and
+  // produced an empty scp/rsync operand; treat it like "not provided".
+  if (localPath === undefined || !localPath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedLocal);
-    localPath = await ui.text({
+    // Browse for the local path. Upload → must exist (a file, or a folder via its
+    // "choose this folder" row); download → the target may be a new file/folder.
+    localPath = await ui.promptPath({
       message: tr.actions.localPath,
-      validate: (v) => v.trim().length > 0 || tr.common.empty,
+      select: 'any',
+      allowCreate: direction === 'download',
     });
   }
   let remotePath = cli.remote;
-  if (remotePath === undefined) {
+  if (remotePath === undefined || !remotePath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
     remotePath = await ui.text({
       message: tr.actions.remotePath,
@@ -467,14 +478,26 @@ export async function transferLogsFlow(
   }
   let target: TransferSession;
   if (id) {
-    const found = live.find(
-      (s) => s.id === id || s.id.startsWith(id) || s.name.toLowerCase() === id.toLowerCase(),
-    );
-    if (!found) {
+    // Prefer an EXACT id, then an exact name; only then fall back to an id-prefix.
+    // Two background transfers to the same server share a `name`, so a prefix/name
+    // match can be ambiguous — surface that instead of silently picking the first.
+    const lower = id.toLowerCase();
+    const exact = live.find((s) => s.id === id);
+    const matches =
+      exact !== undefined
+        ? [exact]
+        : live.filter((s) => s.id.startsWith(id) || s.name.toLowerCase() === lower);
+    if (matches.length === 0) {
       ui.printError(tr.actions.transferBgNotFound(id));
       return 1;
     }
-    target = found;
+    if (matches.length > 1) {
+      ui.printError(tr.actions.transferBgAmbiguous(id));
+      for (const s of matches)
+        console.log(`  ${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.id.slice(0, 12))}  ${s.summary}`);
+      return 1;
+    }
+    target = matches[0]!;
   } else if (live.length === 1) {
     target = live[0]!;
   } else {
@@ -495,7 +518,7 @@ export async function transferLogsFlow(
     return 1;
   }
   ui.printSection('📜', tr.actions.transferBgLogsSection(target.name, tilde(target.logFile)));
-  const lines = tailLines(fs.readFileSync(target.logFile, 'utf8'), opts.tail ?? 40);
+  const lines = tailFile(target.logFile, opts.tail ?? 40);
   if (lines.length) console.log(lines.join('\n'));
   if (opts.follow) {
     ui.printInfo(ui.chalk.dim(tr.actions.transferBgFollowHint));

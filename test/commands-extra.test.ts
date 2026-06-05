@@ -682,6 +682,7 @@ describe('redesign: new flows (#6 vault delete/reset, #9 quick tunnel)', () => {
     const s = servers.create({ name: 'mybox', host: '1.1.1.1', kind: 'server' });
     servers.update(s.id, { secretId: id });
     q.pick = ['deleteSecret', 'mybox', PICK_BACK];
+    q.confirm = [true]; // confirm the (now-gated) deletion
     const { vaultFlow } = await import('../src/commands/settings.js');
     await vaultFlow();
     expect(vault.hasSecret(id)).toBe(false);

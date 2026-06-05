@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { ensureDir } from '../core/paths.js';
 import { atomicWrite } from '../utils/atomic.js';
 import { tr } from '../i18n/index.js';
@@ -20,12 +21,25 @@ export function readJson<T>(file: string, fallback: T): ReadResult<T> {
     return { data: fallback };
   }
   try {
-    return { data: JSON.parse(raw) as T };
+    const parsed = JSON.parse(raw);
+    // A valid-JSON scalar/array/null is NOT a usable store object: every store
+    // file we write is a top-level object ({version,items}, {sessions}, a vault,
+    // settings…). The literal token `null` (or `42`/`"x"`/an array) would parse
+    // fine and then crash callers that dereference `data.items`/`data.tunnels`
+    // (which run at startup, before any command — a total DoS). Treat a
+    // non-object as corrupt so it funnels into the same backup+fallback path as a
+    // JSON syntax error, instead of propagating a TypeError.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new SyntaxError('not a JSON object');
+    return { data: parsed as T };
   } catch {
     // Never lose user data silently: back the bad file up, then start clean.
     try {
-      const backup = `${file}.corrupt-${Date.now()}`;
-      fs.copyFileSync(file, backup);
+      // Unpredictable suffix + COPYFILE_EXCL (fail if the dest already exists):
+      // for an `import` of a corrupt file from a shared dir this avoids a symlink
+      // race / clobber at a predictable `<file>.corrupt-<ms>` path.
+      const backup = `${file}.corrupt-${Date.now()}-${randomBytes(4).toString('hex')}`;
+      fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
       return { data: fallback, corruptBackup: backup };
     } catch {
       return { data: fallback, corruptBackup: tr.vault.jsonfileBackupFailed };

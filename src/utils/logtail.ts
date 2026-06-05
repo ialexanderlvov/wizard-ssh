@@ -1,17 +1,63 @@
-/** Tail + follow a log file. Shared by the background-tunnel and background-
- *  transfer log viewers so both behave identically. */
+/** Tail + follow a log file. The SINGLE shared implementation for the background-
+ *  tunnel and background-transfer log viewers so both behave — and are sanitized
+ *  — identically. */
 
 import fs from 'node:fs';
 
-/** Last `n` lines of `content` (trailing newline ignored). n<=0 → all lines. */
-export function tailLines(content: string, n: number): string[] {
-  const lines = content.split('\n');
-  if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  return n > 0 ? lines.slice(-n) : lines;
+// Background logs capture a child's stdout/stderr, which includes the REMOTE
+// server's banner / MOTD / ssh diagnostics — attacker-influenced text. Printing
+// it raw lets a hostile server move the cursor, rewrite the window title, or
+// spoof OSC-8 hyperlinks when the user later views the log. Strip every C0/C1
+// control byte EXCEPT tab and newline (so the log still reads as lines); this
+// also drops colour, an accepted trade for a diagnostic view. Built via the
+// constructor so the source carries no literal control bytes.
+// eslint-disable-next-line no-control-regex
+const LOG_UNSAFE = new RegExp('[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]', 'g');
+
+/** Make captured child output safe to write to the terminal. */
+export const sanitizeLog = (s: string): string => s.replace(LOG_UNSAFE, '');
+
+/** Cap on how much of a (possibly huge, attacker-influenced) log we ever read
+ *  into memory for a tail/follow view. */
+const MAX_TAIL_BYTES = 256 * 1024;
+
+/** Last `n` lines of a FILE, reading only its trailing {@link MAX_TAIL_BYTES}
+ *  rather than slurping the whole thing — a multi-GB background log would
+ *  otherwise OOM (or throw RangeError on a >~2 GB string) exactly when the
+ *  diagnostic view is needed most. Returns [] when the file can't be read. */
+export function tailFile(file: string, n: number, maxBytes = MAX_TAIL_BYTES): string[] {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return [];
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = size > maxBytes ? size - maxBytes : 0;
+    const len = size - start;
+    if (len <= 0) return [];
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, start);
+    // tailLines slices the LAST n lines, so the partial first line from a mid-file
+    // start (when the log exceeds the window) is naturally dropped.
+    return tailLines(buf.toString('utf8'), n);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
-/** Stream appended bytes of `file` to stdout until Ctrl+C. Handles truncation
- *  (rotation) by rewinding to 0. Resolves on SIGINT so callers can return. */
+/** Last `n` lines of `content` (trailing newline ignored), each sanitized. A
+ *  non-positive / non-integer `n` means "all lines". */
+export function tailLines(content: string, n: number): string[] {
+  const lines = sanitizeLog(content).split('\n');
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  return Number.isInteger(n) && n > 0 ? lines.slice(-n) : lines;
+}
+
+/** Stream appended bytes of `file` to stdout (sanitized) until Ctrl+C. Handles
+ *  truncation (rotation) by rewinding to 0. Resolves on SIGINT so callers can
+ *  return. */
 export function followLog(file: string): Promise<void> {
   return new Promise((resolve) => {
     let pos = fs.statSync(file).size;
@@ -20,11 +66,14 @@ export function followLog(file: string): Promise<void> {
         const { size } = fs.statSync(file);
         if (size < pos) pos = 0; // file was truncated / rotated
         if (size <= pos) return;
+        // Bound a single huge burst (a flood / hostile server spew) so we never
+        // allocate an unbounded buffer — keep only the most recent window.
+        if (size - pos > MAX_TAIL_BYTES) pos = size - MAX_TAIL_BYTES;
         const fd = fs.openSync(file, 'r');
         try {
           const buf = Buffer.alloc(size - pos);
           fs.readSync(fd, buf, 0, buf.length, pos);
-          process.stdout.write(buf.toString('utf8'));
+          process.stdout.write(sanitizeLog(buf.toString('utf8')));
           pos = size;
         } finally {
           fs.closeSync(fd);

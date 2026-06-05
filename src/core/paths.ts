@@ -55,7 +55,19 @@ export function ensureDataDir(): void {
   tightenDir(DATA_DIR);
 }
 
+/** True when `dir` is DATA_DIR itself or lives under it — the only directories
+ *  this app owns and may safely tighten. */
+function isUnderDataDir(dir: string): boolean {
+  const r = path.resolve(dir);
+  return r === DATA_DIR || r.startsWith(DATA_DIR + path.sep);
+}
+
 export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  tightenDir(dir);
+  // Only chmod-tighten directories WE own. ensureDir is also reached with a
+  // user-chosen destination (export/backup into ~/shared, a synced folder, …) and
+  // silently flipping that to 0700 would break group/tooling access (and drop the
+  // sticky bit if run as root over a world-dir). A brand-new dir we create still
+  // lands at 0700 via mkdir's mode; we just don't re-tighten a pre-existing one.
+  if (isUnderDataDir(dir)) tightenDir(dir);
 }

@@ -30,6 +30,8 @@ const ru = {
   overwriteConfirm: (path: string, note: string) =>
     `Файл ${path} уже существует — перезаписать?${note}`,
   overwriteNote: (names: string) => ` На него ссылаются: ${names}.`,
+  overwriteOutsideSsh:
+    ' ⚠ Путь вне ~/.ssh — файл будет заменён парой ключей. Убедитесь, что это не важный файл!',
   commentQuestion: '🏷 Комментарий',
   passphraseQuestion: '🔒 Защитить ключ парольной фразой?',
   keygenFailed: (code: number) => `ssh-keygen завершился с кодом ${code}.`,

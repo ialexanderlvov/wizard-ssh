@@ -7,7 +7,8 @@ const en: Dict = {
   setupSection: 'Password vault',
   setupIntro: 'Passwords are encrypted with AES-256-GCM. Enter the passphrase once per session.',
   newPassphrase: '🔑 Choose a vault passphrase',
-  minChars: 'At least 4 characters',
+  minChars:
+    'At least 12 characters (the encrypted vault is included in exports — a short passphrase is offline-crackable)',
   repeatPassphrase: '🔑 Repeat the passphrase',
   passphraseMismatch: 'Passphrases do not match.',
   touchIdNote:
@@ -29,6 +30,7 @@ const en: Dict = {
   pickEnsure: 'Selecting from a list',
   notFound: (q) => `“${q}” not found.`,
   multipleMatches: (q) => `Several matches for “${q}”:`,
+  resolvedFuzzy: (q, name) => `“${q}” resolved to: ${name}`,
 };
 
 export default en;

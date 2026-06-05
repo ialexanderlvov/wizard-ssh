@@ -95,7 +95,9 @@ function spawnPass(
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => {
       process.stderr.write(d); // keep the user seeing ssh's own output
-      if (stderr.length < 16_384) stderr += d.toString('utf8');
+      // Hard-cap the retained copy (it only feeds a literal-alternation host-key
+      // regex): slice after appending so a single large chunk can't overshoot.
+      if (stderr.length < 16_384) stderr = (stderr + d.toString('utf8')).slice(0, 16_384);
     });
 
     const onSigint = (): void => {
@@ -430,7 +432,9 @@ export function startTransferDetached(
     logFile,
     fs.constants.O_WRONLY |
       fs.constants.O_CREAT |
-      fs.constants.O_APPEND |
+      // O_TRUNC (not O_APPEND): a fresh detached start gets a fresh log, so
+      // re-running the same stable-id tunnel/transfer can't grow the log forever.
+      fs.constants.O_TRUNC |
       (fs.constants.O_NOFOLLOW ?? 0),
     0o600,
   );
@@ -441,6 +445,11 @@ export function startTransferDetached(
   }
   try {
     const child = spawn(program, args, { stdio: ['ignore', fd, fd], detached: true });
+    // A ChildProcess emits 'error' ASYNCHRONOUSLY on a spawn failure (ENOENT, or
+    // EMFILE/EAGAIN under fd/process exhaustion). With no listener Node treats it
+    // as unhandled and crashes the parent — defeating the `pid <= 0` degradation
+    // the caller relies on (child.pid is already undefined → -1 in that case).
+    child.on('error', () => {});
     child.unref();
     return { pid: child.pid ?? -1, logFile };
   } finally {
@@ -466,7 +475,9 @@ export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
     logFile,
     fs.constants.O_WRONLY |
       fs.constants.O_CREAT |
-      fs.constants.O_APPEND |
+      // O_TRUNC (not O_APPEND): a fresh detached start gets a fresh log, so
+      // re-running the same stable-id tunnel/transfer can't grow the log forever.
+      fs.constants.O_TRUNC |
       (fs.constants.O_NOFOLLOW ?? 0),
     0o600,
   );
@@ -480,6 +491,9 @@ export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
       stdio: ['ignore', fd, fd],
       detached: true,
     });
+    // Swallow the async spawn-failure 'error' (see startTransferDetached) so an
+    // EMFILE/ENOENT surfaces through the caller's `pid <= 0` path, not a crash.
+    child.on('error', () => {});
     child.unref();
     return { pid: child.pid ?? -1, logFile };
   } finally {

@@ -8,7 +8,11 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../src/utils/exec.js', async (orig) => {
   const actual = await orig<typeof import('../src/utils/exec.js')>();
-  return { ...actual, commandExists: (c: string) => h.cmds.has(c) };
+  return {
+    ...actual,
+    commandExists: (c: string) => h.cmds.has(c),
+    rsyncSupportsInfoProgress: () => true,
+  };
 });
 vi.mock('../src/ssh/runner.js', async (orig) => {
   const actual = await orig<typeof import('../src/ssh/runner.js')>();

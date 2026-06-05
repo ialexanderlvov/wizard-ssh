@@ -59,7 +59,7 @@ export async function ensureVaultSetup(): Promise<boolean> {
   ui.printInfo(tr.helpers.setupIntro);
   const p1 = await ui.secret({
     message: tr.helpers.newPassphrase,
-    validate: (v) => v.length >= 4 || tr.helpers.minChars,
+    validate: (v) => v.length >= 12 || tr.helpers.minChars,
   });
   const p2 = await ui.secret({ message: tr.helpers.repeatPassphrase });
   if (p1 !== p2) {
@@ -239,7 +239,14 @@ export async function resolveEntity<T extends Entity>(
   if (exact) return exact;
 
   const hits = filterEntities(items, name);
-  if (hits.length === 1) return hits[0] ?? null;
+  if (hits.length === 1) {
+    const hit = hits[0] ?? null;
+    // Surface a non-exact (fuzzy) resolution so a scripted `-y server rm <typo>`
+    // (or any --yes destructive flow) records WHICH entity it acted on — the
+    // confirm prompt that would otherwise reveal it is skipped under --yes.
+    if (hit) ui.printInfo(tr.helpers.resolvedFuzzy(name, hit.name));
+    return hit;
+  }
   if (!hits.length) {
     ui.printError(tr.helpers.notFound(name));
     return items.length ? pickEntity(items, message) : null;

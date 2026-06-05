@@ -8,11 +8,14 @@ export function expandHome(p: string | null | undefined): string {
   return p.startsWith('~/') || p.startsWith('~\\') ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
-/** /Users/you/foo → ~/foo (compact display) */
+/** /Users/you/foo → ~/foo (compact display). Only collapses the home dir itself
+ *  or a path UNDER it — a bare prefix match would turn a sibling like
+ *  `/Users/bobby` into `~by` when home is `/Users/bob`. */
 export function tilde(p: string | null | undefined): string {
   if (!p) return '';
   const home = os.homedir();
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+  if (p === home) return '~';
+  return p.startsWith(home + path.sep) ? '~' + p.slice(home.length) : p;
 }
 
 export function slugify(s: string): string {
@@ -25,8 +28,12 @@ export function slugify(s: string): string {
   return out || 'item';
 }
 
+// Anchored to ESC so it strips real SGR colour sequences (chalk output) only —
+// not innocent literal text like `[36m` typed into a filter. `\x1b` escape (not a
+// raw byte) keeps the source free of literal control bytes, like CONTROL_RE below.
+// For full terminal-escape neutralization use stripControl, not this.
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\[[0-9;]*m/g;
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** Remove ANSI colour codes (for filtering / width math). */
 export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '');

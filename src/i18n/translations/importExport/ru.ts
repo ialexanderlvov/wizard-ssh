@@ -1,5 +1,8 @@
 const ru = {
   exportedTo: (target: string) => `Экспортировано в ${target}`,
+  exportExists: (target: string) =>
+    `Файл уже существует: ${target}. Перезапись отменена — добавьте --force (или --yes), либо укажите другой путь.`,
+  exportOverwrite: (target: string) => `Файл ${target} уже существует. Перезаписать?`,
   exportSummary: (servers: number, tunnels: number, vault: boolean) =>
     `Серверов: ${servers} · туннелей: ${tunnels}${vault ? ' · хранилище включено (зашифровано)' : ''}`,
   fileNotFound: (abs: string) => `Файл не найден: ${abs}`,

@@ -12,6 +12,8 @@ import {
 } from '@inquirer/prompts';
 import { NotInteractiveError, PromptAbortError, PromptCancelError } from '../core/errors.js';
 import { runtime } from './runtime.js';
+import { expandHome } from '../utils/strings.js';
+import { pickPath, BACK, type PathSelect } from './file-picker.js';
 import { tr } from '../i18n/index.js';
 
 export const isInteractive = (): boolean =>
@@ -147,6 +149,48 @@ export function searchChoose<V>(opts: {
       ctx,
     ),
   );
+}
+
+export interface PromptPathOptions {
+  message: string;
+  /** what the result must be (default 'any': a file, or the folder via its row). */
+  select?: PathSelect;
+  /** allow a path that doesn't exist yet (type a name) — for save targets. */
+  allowCreate?: boolean;
+  /** initial directory to open the browser at (a file path opens its parent). */
+  start?: string;
+  /** non-interactive fallback default (also seeds the browser's start dir). */
+  default?: string;
+  /** empty result is acceptable (Esc/back returns '' instead of cancelling). */
+  optional?: boolean;
+  fileFilter?: (name: string) => boolean;
+  /** validation for the non-interactive text fallback. */
+  validate?: (v: string) => boolean | string;
+}
+
+/** Ask for a path. Interactive → the filesystem browser (pickPath); otherwise a
+ *  plain text prompt, so scripted / non-TTY use is unchanged. Backing out throws
+ *  PromptCancelError (like every other prompt) unless `optional`, where it
+ *  returns the default (or ''). The returned path is expanded/absolute. */
+export async function promptPath(opts: PromptPathOptions): Promise<string> {
+  if (isInteractive()) {
+    const picked = await pickPath({
+      message: opts.message,
+      start: opts.start ?? opts.default,
+      select: opts.select,
+      allowCreate: opts.allowCreate,
+      fileFilter: opts.fileFilter,
+    });
+    if (picked === BACK) {
+      if (opts.optional) return opts.default ? expandHome(opts.default) : '';
+      throw new PromptCancelError();
+    }
+    return picked;
+  }
+  const v = (
+    await text({ message: opts.message, default: opts.default, validate: opts.validate })
+  ).trim();
+  return v ? expandHome(v) : v;
 }
 
 export async function pause(message = tr.ui.pause): Promise<void> {

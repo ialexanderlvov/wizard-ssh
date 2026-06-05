@@ -1,6 +1,8 @@
 const ru = {
   // editSetting prompts
   defaultUserPrompt: 'SSH-пользователь по умолчанию',
+  invalidUser: 'Недопустимое имя пользователя.',
+  invalidRemoteHost: 'Недопустимый хост или IP.',
   defaultSshPortPrompt: 'SSH-порт по умолчанию',
   defaultAuthPrompt: 'Метод авторизации по умолчанию',
   authAgent: 'ssh-agent / по умолчанию',
@@ -82,6 +84,8 @@ const ru = {
 
   // deleteSavedPassword
   pickDeletePrompt: 'У какого подключения удалить сохранённый пароль?',
+  confirmDeletePassword: (name: string) =>
+    `Удалить сохранённый пароль для «${name}»? Это необратимо.`,
   passwordDeleted: (name: string) =>
     `Пароль для «${name}» удалён (данные сохранены, спросим при подключении).`,
 
@@ -109,7 +113,7 @@ const ru = {
   sessionCleared: 'Сессия сброшена.',
   needUnlockFirst: 'Сначала нужно разблокировать.',
   rekeyNewPassphrase: 'Новая парольная фраза',
-  rekeyMinLength: 'Минимум 4 символа',
+  rekeyMinLength: 'Минимум 12 символов',
   rekeyRepeat: 'Повторите',
   rekeyMismatch: 'Не совпадают.',
   rekeyDone: 'Парольная фраза изменена.',

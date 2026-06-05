@@ -73,13 +73,38 @@ export function knownHostsToken(host: string, port: number): string {
 /** Remove every key for `host` from known_hosts (`ssh-keygen -R <host> -f file`).
  *  The file is passed explicitly so it edits exactly the known_hosts we list
  *  (ssh-keygen otherwise resolves ~ via the passwd db, not $HOME). */
-export function forgetHostKey(host: string): { ok: boolean; message: string } {
+export function forgetHostKey(host: string): { ok: boolean; removed?: boolean; message: string } {
   if (!commandExists('ssh-keygen')) return { ok: false, message: tr.ssh.hostkeyNoKeygen };
   const target = host.trim();
   if (!target) return { ok: false, message: tr.ssh.hostkeyEmptyHost };
   if (!fs.existsSync(KNOWN_HOSTS_FILE)) return { ok: false, message: tr.ssh.hostkeyFileNotFound };
+  // ssh-keygen -R exits 0 even when NOTHING matched — an absent host, a custom-port
+  // host stored as `[h]:port` but probed by bare name, or a hashed / @cert-authority
+  // / @revoked entry it cannot remove. Diff the file around the call so we can
+  // report a genuine no-op distinctly instead of a misleading "removed" (which
+  // makes a user think they reset trust when the stale key is still pinned).
+  let before = '';
+  try {
+    before = fs.readFileSync(KNOWN_HOSTS_FILE, 'utf8');
+  } catch {
+    /* treat unreadable as empty */
+  }
+  // `-R <host>` binds the NEXT argv element as its operand unconditionally, so a
+  // leading-dash host (only reachable via a hand-edited record) is consumed as the
+  // hostname, never parsed as a flag — no option-injection. (A trailing `--`
+  // doesn't apply here since the host is -R's operand, not a positional.)
   const res = capture('ssh-keygen', ['-R', target, '-f', KNOWN_HOSTS_FILE]);
-  if (res.status === 0) return { ok: true, message: tr.ssh.hostkeyRemoved(target) };
+  if (res.status === 0) {
+    let after = before;
+    try {
+      after = fs.readFileSync(KNOWN_HOSTS_FILE, 'utf8');
+    } catch {
+      /* keep `before` → counts as no change */
+    }
+    if (after === before)
+      return { ok: true, removed: false, message: tr.ssh.hostkeyNothingRemoved(target) };
+    return { ok: true, removed: true, message: tr.ssh.hostkeyRemoved(target) };
+  }
   return {
     ok: false,
     message: (res.stderr || res.stdout || tr.ssh.hostkeyKeygenFailed).trim(),

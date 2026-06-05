@@ -44,6 +44,25 @@ const en: Dict = {
   },
   listHelp: 'filter: type · ↑↓ — move · Enter — select · Esc — back',
   pause: '↩ Enter — back',
+  filePicker: {
+    parent: '..  (up one level)',
+    chooseDir: (p) => `✅ choose this folder: ${p}`,
+    create: '✏️  enter a name manually…',
+    namePrompt: 'File name (a path is allowed)',
+    emptyDir: 'empty folder',
+    denied: '⚠ cannot read this folder',
+    dirBadge: '/',
+    help: 'type — filter · ↑↓ — move · → — open · ← — up · Enter — open/select',
+    help2: (sortLabel, hidden) =>
+      `Tab — sort: ${sortLabel} · Ctrl+H — hidden: ${hidden ? 'on' : 'off'} · Ctrl+G — go to path · ~ home · / root · Esc — cancel`,
+    sortName: 'name',
+    sortSize: 'size',
+    sortModified: 'date',
+    sortType: 'type',
+    notExist: (p) => `Path does not exist: ${p}`,
+    mustBeFile: 'Please pick a file, not a folder.',
+    mustBeDir: 'Please pick a folder.',
+  },
 };
 
 export default en;

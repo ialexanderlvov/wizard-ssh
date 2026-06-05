@@ -43,6 +43,7 @@ const ru = {
   hostkeyEmptyHost: 'Пустой хост.',
   hostkeyFileNotFound: 'Файл ~/.ssh/known_hosts не найден — удалять нечего.',
   hostkeyRemoved: (host: string) => `Ключи для ${host} удалены из known_hosts.`,
+  hostkeyNothingRemoved: (host: string) => `Для ${host} нет записи в known_hosts — удалять нечего.`,
   hostkeyKeygenFailed: 'ssh-keygen завершился с ошибкой.',
   // features
   featuresCopyIdNotFound: 'ssh-copy-id не найден в PATH.',
@@ -54,6 +55,8 @@ const ru = {
   argsBadTmuxSession:
     'Недопустимое имя tmux-сессии: разрешены латиница, цифры, точка, дефис и подчёркивание (до 64 символов).',
   argsBadMoshDest: 'Запуск mosh отклонён: назначение не должно начинаться с «-».',
+  argsBadDest:
+    'Подключение отклонено: назначение/алиас не должно начинаться с «-» (это было бы воспринято как опция SSH). Исправьте проблемный алиас Host в ~/.ssh/config.',
 
   // mosh
   moshConnecting: (name: string) => `Подключаюсь по mosh к «${name}»…`,

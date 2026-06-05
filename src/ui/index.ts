@@ -5,4 +5,5 @@ export * from './format.js';
 export * from './tables.js';
 export * from './prompts.js';
 export * from './list-prompt.js';
+export * from './file-picker.js';
 export * from './rows.js';

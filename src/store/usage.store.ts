@@ -2,9 +2,10 @@
  *  NOT live in ~/.ssh/config (that would rewrite the config on every connect),
  *  so they sit in their own usage.json keyed by Host alias. */
 
+import fs from 'node:fs';
 import { FILES } from '../core/paths.js';
 import { readJson, writeJson } from './json-file.js';
-import { nowIso } from '../utils/time.js';
+import { nowIso, ts } from '../utils/time.js';
 
 export interface UsageEntry {
   lastUsedAt: string | null;
@@ -20,21 +21,37 @@ const EMPTY: UsageEntry = { lastUsedAt: null, useCount: 0 };
 
 class UsageStore {
   private cache: UsageFile | null = null;
+  /** signature (mtime+size) of the file when last read — re-read when a
+   *  concurrent `wssh` bumped a counter, so a long-lived menu doesn't write back a
+   *  stale snapshot and lose the other process's increment. */
+  private sig = '';
+
+  private fileSig(): string {
+    try {
+      const st = fs.statSync(FILES.usage);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '';
+    }
+  }
 
   private load(): UsageFile {
-    if (this.cache) return this.cache;
+    const s = this.fileSig();
+    if (this.cache && s === this.sig) return this.cache;
     const { data } = readJson<UsageFile>(FILES.usage, { version: 1, hosts: {} });
     const hosts =
       data && typeof data === 'object' && data.hosts && typeof data.hosts === 'object'
         ? data.hosts
         : {};
     this.cache = { version: 1, hosts };
+    this.sig = s;
     return this.cache;
   }
 
   private persist(f: UsageFile): void {
     this.cache = f;
     writeJson(FILES.usage, f);
+    this.sig = this.fileSig();
   }
 
   /** Stats for an alias (zeroed defaults when never used). */
@@ -54,6 +71,22 @@ class UsageStore {
   set(alias: string, entry: Partial<UsageEntry>): void {
     const f = this.load();
     f.hosts[alias] = { ...EMPTY, ...f.hosts[alias], ...entry };
+    this.persist(f);
+  }
+
+  /** Merge imported stats WITHOUT rewinding: keep the higher useCount and the
+   *  more-recent lastUsedAt. Used by import so re-importing your own export (or a
+   *  teammate's bundle, whose counts are typically lower/zero) never zeroes or
+   *  reduces the local "most-used / recent" history. */
+  merge(alias: string, entry: Partial<UsageEntry>): void {
+    const f = this.load();
+    const cur = f.hosts[alias] ?? EMPTY;
+    const incoming = { ...EMPTY, ...entry };
+    f.hosts[alias] = {
+      useCount: Math.max(cur.useCount || 0, incoming.useCount || 0),
+      lastUsedAt:
+        ts(incoming.lastUsedAt) > ts(cur.lastUsedAt) ? incoming.lastUsedAt : cur.lastUsedAt,
+    };
     this.persist(f);
   }
 

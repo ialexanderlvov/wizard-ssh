@@ -1,6 +1,7 @@
 /** Build `ssh` argument vectors for connecting and for forward/reverse/dynamic
  *  tunnels. The destination is either a ~/.ssh/config alias or user@host. */
 
+import net from 'node:net';
 import type { ConnectionTarget, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { expandHome } from '../utils/strings.js';
@@ -68,9 +69,24 @@ export function destination(t: ConnectionTarget): string {
   return `${t.user || 'root'}@${t.host}`;
 }
 
-/** Bracket an IPv6 literal so its colons can't shift the colon-delimited fields
- *  of a -L/-R forward spec (e.g. a host of "0.0.0.0:1" smuggling a bind addr). */
-const fwdHost = (h: string): string => (h.includes(':') ? `[${h}]` : h);
+/** A real host / alias / user@host never begins with `-`. A destination that
+ *  does (only reachable via a hand-edited, imported, or Include'd ~/.ssh/config
+ *  whose `Host` alias literally starts with `-` — the read path sanitizes control
+ *  chars and globs but does NOT reject such a token) is parsed as an ssh OPTION by
+ *  any wrapper that forwards it to an inner ssh WITHOUT a `--` guard: rsync
+ *  (`-e ssh`) and ssh-copy-id both do, turning `-oProxyCommand=…` into local
+ *  command execution (RCE). The direct ssh/scp builders neutralize this with
+ *  END_OPTS, but the wrappers can't, so reject a leading-dash destination at every
+ *  spawn sink. (mosh already guarded this; this is the shared source of truth.) */
+export function assertSafeDestination(dest: string): void {
+  if (dest.startsWith('-')) throw new WizardError(tr.ssh.argsBadDest);
+}
+
+/** Bracket a true IPv6 literal so its colons can't shift the colon-delimited
+ *  fields of a -L/-R forward spec. Only a real IPv6 address is bracketed — a
+ *  value that merely contains ':' (or an already-bracketed "[::1]") is left as-is
+ *  so we never produce a double-bracketed "[[::1]]". */
+const fwdHost = (h: string): string => (net.isIP(h) === 6 ? `[${h}]` : h);
 
 /** Forward spec for a tunnel: -L (local), -R (remote/reverse), -D (dynamic). */
 export function forwardFlags(t: Tunnel): string[] {
@@ -103,7 +119,7 @@ export function buildMoshArgs(t: ConnectionTarget): string[] {
   // mosh has no portable `--` end-of-options marker (unlike every ssh builder),
   // so guard the destination directly: a leading-dash alias — only reachable via
   // a hand-edited ~/.ssh/config — would otherwise be parsed by mosh as an option.
-  if (dest.startsWith('-')) throw new WizardError(tr.ssh.argsBadMoshDest);
+  assertSafeDestination(dest);
   return ['--ssh', sshCmd, dest];
 }
 

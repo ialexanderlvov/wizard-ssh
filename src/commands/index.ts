@@ -22,11 +22,26 @@ import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
 import { backupSshFlow } from './backup.js';
 import { completeFromProgram, completionScript, type Shell } from './completion.js';
+import {
+  detectShell,
+  installCompletion,
+  uninstallCompletion,
+  tildify,
+} from './completion-install.js';
 import { manFlow } from './man.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
   v === true ? true : typeof v === 'string' ? v : undefined;
+
+/** Parse a `--tail <n>` flag to a positive integer, or undefined (→ the viewer's
+ *  default). Without this, `--tail abc`/`--tail 0`/`--tail -1` become NaN/≤0 and
+ *  the viewer would dump the ENTIRE log instead of erroring or defaulting. */
+const parseTail = (v: string | undefined): number | undefined => {
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
 
 const SORT_KEYS: SortKey[] = ['recent', 'name', 'uses', 'created', 'updated'];
 
@@ -219,7 +234,7 @@ export function registerCommands(program: Command): void {
     .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
     .action(async (n: string | undefined, o: { tail?: string; follow?: boolean }) => {
       const code = await tunnelCmd.tunnelLogsFlow(n, {
-        tail: o.tail !== undefined ? Number(o.tail) : undefined,
+        tail: parseTail(o.tail),
         follow: o.follow,
       });
       if (code) process.exitCode = code;
@@ -353,7 +368,7 @@ export function registerCommands(program: Command): void {
     .action(async (o: { log?: string; tail?: string; follow?: boolean; json?: boolean }) => {
       if (o.log !== undefined || o.follow || o.tail !== undefined) {
         const code = await actions.transferLogsFlow(o.log, {
-          tail: o.tail !== undefined ? Number(o.tail) : undefined,
+          tail: parseTail(o.tail),
           follow: o.follow,
         });
         if (code) process.exitCode = code;
@@ -472,8 +487,9 @@ export function registerCommands(program: Command): void {
   program
     .command('export [file]')
     .description(tr.cmd.exportDesc)
-    .action((f?: string) => {
-      exportData(f);
+    .option('--force', tr.cmd.exportOptForce)
+    .action((f: string | undefined, o: { force?: boolean }) => {
+      exportData(f, { force: o.force });
     });
   program
     .command('import <file>')
@@ -512,13 +528,45 @@ export function registerCommands(program: Command): void {
 
   // ---- shell completion ----
   const SHELLS: Shell[] = ['bash', 'zsh', 'fish'];
-  program
-    .command('completion <shell>')
+  // Resolve an explicit `[shell]` arg, or fall back to detecting it from $SHELL.
+  const resolveShell = (raw: string | undefined, detect: boolean): Shell => {
+    const s = (raw?.toLowerCase() ?? (detect ? detectShell() : undefined)) as Shell | undefined;
+    if (!s && detect) throw new WizardError(tr.cmd.completionDetectFail(SHELLS.join(', ')));
+    if (!s || !SHELLS.includes(s))
+      throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
+    return s;
+  };
+  // `completion <shell>` keeps printing the script (for piping / manual installs);
+  // the `install` / `uninstall` subcommands do the real wiring.
+  const completion = program
+    .command('completion [shell]')
     .description(tr.cmd.completionDesc)
-    .action((shell: string) => {
-      const s = shell.toLowerCase() as Shell;
-      if (!SHELLS.includes(s)) throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
-      console.log(completionScript(s));
+    .action((shell: string | undefined) => {
+      console.log(completionScript(resolveShell(shell, false)));
+    });
+  completion
+    .command('install [shell]')
+    .description(tr.cmd.completionInstallDesc)
+    .action((shell: string | undefined) => {
+      const r = installCompletion(resolveShell(shell, true));
+      ui.printOk(tr.cmd.completionInstalledTitle(r.shell));
+      ui.printInfo(tr.cmd.completionWroteFile(tildify(r.file)));
+      if (r.ohMyZsh) ui.printInfo(tr.cmd.completionOmzDetected);
+      if (r.rcEdited && r.rcFile) ui.printInfo(tr.cmd.completionRcUpdated(tildify(r.rcFile)));
+      for (const hint of r.reloadHints) ui.printInfo(tr.cmd.completionReloadHint(hint));
+    });
+  completion
+    .command('uninstall [shell]')
+    .description(tr.cmd.completionUninstallDesc)
+    .action((shell: string | undefined) => {
+      const r = uninstallCompletion(resolveShell(shell, true));
+      if (!r.removed.length && !r.rcEdited) {
+        ui.printWarn(tr.cmd.completionNothingRemoved);
+        return;
+      }
+      ui.printOk(tr.cmd.completionRemovedTitle(r.shell));
+      for (const f of r.removed) ui.printInfo(tr.cmd.completionRemovedFile(tildify(f)));
+      if (r.rcEdited && r.rcFile) ui.printInfo(tr.cmd.completionRcUpdated(tildify(r.rcFile)));
     });
   // Hidden helper the completion scripts call on <TAB>: prints candidates, one per
   // line. It must NEVER throw or print noise to stdout (it would corrupt the shell

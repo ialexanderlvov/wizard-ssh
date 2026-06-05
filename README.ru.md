@@ -98,7 +98,14 @@ wssh                 # интерактивное меню
 | `wssh vault`                                            | управление хранилищем паролей                       |
 | `wssh settings`                                         | значения по умолчанию                               |
 | `wssh export [файл]` · `wssh import <файл> [--replace]` | бэкап / восстановление                              |
+| `wssh completion install` (`uninstall`)                 | установить/удалить автодополнение (автоопределение) |
 | `wssh path`                                             | путь к директории данных                            |
+
+**Автодополнение шелла.** `wssh completion install` настраивает его автоматически: определяет
+bash / zsh / fish (и oh-my-zsh), кладёт файл автодополнения в нужное место, при необходимости
+правит rc-файл и пересобирает кэш `compinit` для zsh. Можно указать шелл явно
+(`wssh completion install bash`), а `wssh completion <shell>` просто печатает скрипт для ручной
+установки. После установки перезапустите шелл (или `exec zsh`).
 
 Списки сортируются: `wssh server ls --sort recent|name|uses|created|updated [--reverse] [--json]`.
 
