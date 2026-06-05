@@ -231,7 +231,10 @@ function blockToHost(block: Block, alias: string): SshConfigHost {
     port: stripControl(param(block, 'Port')),
     identityFile: stripControl(param(block, 'IdentityFile')),
     proxyJump: stripControl(param(block, 'ProxyJump')),
-    params: block.params.slice(),
+    // Sanitize preserved param VALUES too: in the edit flow they surface as
+    // @inquirer prompt defaults (and are written back), so an untrusted config's
+    // ESC/OSC byte in a non-standard directive must not reach the terminal raw.
+    params: block.params.map((p) => ({ key: p.key, value: stripControl(p.value) })),
     source: block.source,
     wssh: block.meta,
     manageable,

@@ -137,7 +137,18 @@ export function formatBlock(entry: SshConfigEntry): string[] {
   for (const { key, value } of entry.params) {
     assertConfigSafe(tr.vault.writerParamLabel(key.trim()), key);
     assertConfigSafe(tr.vault.writerValueLabel(key.trim()), value);
-    if (key.trim() && value.trim()) out.push(`    ${key.trim()} ${value.trim()}`);
+    const k = key.trim();
+    const v = value.trim();
+    if (!k || !v) continue;
+    // A value with whitespace (e.g. a legitimate `~/My Keys/id_ed25519` or an
+    // iCloud/Drive path) MUST be double-quoted, or OpenSSH errors with "garbage at
+    // end of line" and refuses to parse the WHOLE ~/.ssh/config — every host then
+    // breaks until the line is hand-fixed. splitTokens() reads the quoted form
+    // back, so it round-trips. (An embedded double-quote can't be represented in
+    // ssh_config, so such an exotic value is left unquoted; control chars are
+    // already rejected by assertConfigSafe above.)
+    const needsQuote = /\s/.test(v) && !v.includes('"');
+    out.push(`    ${k} ${needsQuote ? `"${v}"` : v}`);
   }
   return out;
 }
