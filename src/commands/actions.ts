@@ -29,7 +29,7 @@ import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
 import { newId } from '../utils/id.js';
-import { tailLines, followLog } from '../utils/logtail.js';
+import { tailFile, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
 import { tr } from '../i18n/index.js';
 
@@ -137,9 +137,15 @@ export async function statusFlow(opts: StatusOptions = {}): Promise<number> {
 
 function applyForget(host: string): number {
   const res = forgetHostKey(host);
-  if (res.ok) ui.printOk(res.message);
-  else ui.printError(res.message);
-  return res.ok ? 0 : 1;
+  if (!res.ok) {
+    ui.printError(res.message);
+    return 1;
+  }
+  // ok but nothing actually matched → warn (not a success tick) so the user knows
+  // trust wasn't reset, but it's not an error exit.
+  if (res.removed === false) ui.printWarn(res.message);
+  else ui.printOk(res.message);
+  return 0;
 }
 
 /** List the readable entries currently in ~/.ssh/known_hosts. */
@@ -512,7 +518,7 @@ export async function transferLogsFlow(
     return 1;
   }
   ui.printSection('📜', tr.actions.transferBgLogsSection(target.name, tilde(target.logFile)));
-  const lines = tailLines(fs.readFileSync(target.logFile, 'utf8'), opts.tail ?? 40);
+  const lines = tailFile(target.logFile, opts.tail ?? 40);
   if (lines.length) console.log(lines.join('\n'));
   if (opts.follow) {
     ui.printInfo(ui.chalk.dim(tr.actions.transferBgFollowHint));

@@ -17,7 +17,7 @@ import { detailBox, forwardSummary, targetSummary } from '../ui/format.js';
 import { renderEntityTable, renderSessionsTable } from '../ui/tables.js';
 import { isValidName } from '../utils/validators.js';
 import { parseTags, slugify, tilde } from '../utils/strings.js';
-import { tailLines, followLog } from '../utils/logtail.js';
+import { tailFile, followLog } from '../utils/logtail.js';
 import { askConnectionTarget, askForward, askMeta } from './wizard.js';
 import {
   commitSecretChange,
@@ -256,19 +256,24 @@ export async function raiseTemporaryTunnel(): Promise<number> {
   ui.printSection('🚇', tr.tunnels.tempTunnelSection);
   const target = await askConnectionTarget({});
   const secretId = await handlePasswordSecret(target, null);
+  let tunnel: Tunnel;
   try {
     const fwd = await askForward({});
     const suggested = slugify(
       `${target.hostMode === 'sshconfig' ? target.sshHost : target.host}-${fwd.localPort}`,
     );
     const meta = await askMeta({}, (n) => tempTunnels.nameExists(n), suggested);
-    const tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
-    ui.printOk(tr.tunnels.tempTunnelSaved(tunnel.name));
-    return connectTunnel(tunnel, tempTunnels);
+    tunnel = tempTunnels.create({ ...target, secretId, ...fwd, ...meta, kind: 'tunnel' });
   } catch (e) {
-    rollbackSecretChange(null, secretId); // abort after saving a password → no orphan blob
+    // Roll back ONLY while the tunnel isn't persisted yet. Once create() has run,
+    // the secret is referenced by a saved record, so a later connect failure must
+    // NOT delete it (which would orphan the record + re-prompt next time) —
+    // mirrors addTunnel(), whose create() is its last statement before return.
+    rollbackSecretChange(null, secretId);
     throw e;
   }
+  ui.printOk(tr.tunnels.tempTunnelSaved(tunnel.name));
+  return connectTunnel(tunnel, tempTunnels);
 }
 
 export async function addTunnel(seed: Partial<Tunnel> = {}): Promise<Tunnel | null> {
@@ -548,8 +553,7 @@ export async function tunnelLogsFlow(
     return 1;
   }
   ui.printSection('📜', tr.tunnels.logsSection(target.name, tilde(target.logFile)));
-  const body = fs.readFileSync(target.logFile, 'utf8');
-  const lines = tailLines(body, opts.tail ?? 40);
+  const lines = tailFile(target.logFile, opts.tail ?? 40);
   if (lines.length) console.log(lines.join('\n'));
   if (opts.follow) {
     ui.printInfo(ui.chalk.dim(tr.tunnels.logFollowHint));

@@ -17,6 +17,36 @@ const LOG_UNSAFE = new RegExp('[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]',
 /** Make captured child output safe to write to the terminal. */
 export const sanitizeLog = (s: string): string => s.replace(LOG_UNSAFE, '');
 
+/** Cap on how much of a (possibly huge, attacker-influenced) log we ever read
+ *  into memory for a tail/follow view. */
+const MAX_TAIL_BYTES = 256 * 1024;
+
+/** Last `n` lines of a FILE, reading only its trailing {@link MAX_TAIL_BYTES}
+ *  rather than slurping the whole thing — a multi-GB background log would
+ *  otherwise OOM (or throw RangeError on a >~2 GB string) exactly when the
+ *  diagnostic view is needed most. Returns [] when the file can't be read. */
+export function tailFile(file: string, n: number, maxBytes = MAX_TAIL_BYTES): string[] {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return [];
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = size > maxBytes ? size - maxBytes : 0;
+    const len = size - start;
+    if (len <= 0) return [];
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, start);
+    // tailLines slices the LAST n lines, so the partial first line from a mid-file
+    // start (when the log exceeds the window) is naturally dropped.
+    return tailLines(buf.toString('utf8'), n);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /** Last `n` lines of `content` (trailing newline ignored), each sanitized. A
  *  non-positive / non-integer `n` means "all lines". */
 export function tailLines(content: string, n: number): string[] {
@@ -36,6 +66,9 @@ export function followLog(file: string): Promise<void> {
         const { size } = fs.statSync(file);
         if (size < pos) pos = 0; // file was truncated / rotated
         if (size <= pos) return;
+        // Bound a single huge burst (a flood / hostile server spew) so we never
+        // allocate an unbounded buffer — keep only the most recent window.
+        if (size - pos > MAX_TAIL_BYTES) pos = size - MAX_TAIL_BYTES;
         const fd = fs.openSync(file, 'r');
         try {
           const buf = Buffer.alloc(size - pos);
