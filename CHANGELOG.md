@@ -7,6 +7,34 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.6.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.5.0...wizard-ssh-v1.6.0) (2026-06-05)
+
+
+### Features
+
+* **commands:** browse the filesystem at every path prompt ([015bd88](https://github.com/ialexanderlvov/wizard-ssh/commit/015bd88e0898efe3193772adb3d190895549addc))
+* **completion:** add `completion install` / `uninstall` ([768dc69](https://github.com/ialexanderlvov/wizard-ssh/commit/768dc69574b3ec190b757050929427fbecc529a8))
+* **ui:** add an interactive filesystem browser for path inputs ([1e65f9f](https://github.com/ialexanderlvov/wizard-ssh/commit/1e65f9f90806c826b9d7f1c5503cb4c653247aa0))
+
+
+### Bug Fixes
+
+* **commands:** report forget-host no-ops, keep secrets on connect failure, bound log tails ([35e5015](https://github.com/ialexanderlvov/wizard-ssh/commit/35e50150844e5febab08851457cc74642a48ad47))
+* **core:** harden atomic writes, detached spawns, dir perms and input validation ([4a8df2d](https://github.com/ialexanderlvov/wizard-ssh/commit/4a8df2d952650076f0c890b31f86c0aa645e4972))
+* **import:** skip malformed bundle records instead of crashing the import ([c1e30fc](https://github.com/ialexanderlvov/wizard-ssh/commit/c1e30fc5edc2087a6ce3f18b6b5d36fbba81286d))
+* **security:** reject leading-dash ssh destinations to close rsync/ssh-copy-id RCE ([28aa3b0](https://github.com/ialexanderlvov/wizard-ssh/commit/28aa3b08150cc6f4ab88e979ea5332fd33ea8629))
+* **security:** resolve security & correctness audit findings ([df260d4](https://github.com/ialexanderlvov/wizard-ssh/commit/df260d421c6ae169a2658f28db841a1b9f057bea))
+* **ssh-config:** quote whitespace values and sanitize preserved params ([34afda7](https://github.com/ialexanderlvov/wizard-ssh/commit/34afda7d2f8e53eed50f29b22cc807435dc0d5d2))
+* **store:** keep import --replace data and refresh stale caches across processes ([971504e](https://github.com/ialexanderlvov/wizard-ssh/commit/971504e612eb84440a08ac9c5cd9d372127b0a34))
+* **transfer:** support rsync builds without --info=progress2 ([21f2a33](https://github.com/ialexanderlvov/wizard-ssh/commit/21f2a339830679fb8b2ef3b74cd37ab95e900369))
+* **ui:** strip terminal escapes from untrusted filenames, paths and session fields ([e54ae2a](https://github.com/ialexanderlvov/wizard-ssh/commit/e54ae2a90da6d33ec70139f056f52d6eeb2b306d))
+* **vault:** require a 12-char passphrase and write the ~/.ssh backup 0600 ([feaac8f](https://github.com/ialexanderlvov/wizard-ssh/commit/feaac8fca3fc71fe0135e701499e858a740974df))
+
+
+### Documentation
+
+* document `wssh completion install` ([7a976da](https://github.com/ialexanderlvov/wizard-ssh/commit/7a976da5e5ab5bc461c2380a1ca317a73629b001))
+
 ## [1.5.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.4.0...wizard-ssh-v1.5.0) (2026-06-05)
 
 
