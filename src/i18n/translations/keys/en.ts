@@ -31,6 +31,8 @@ const en: Dict = {
   keyPathRequired: 'Path is required',
   overwriteConfirm: (path, note) => `File ${path} already exists — overwrite?${note}`,
   overwriteNote: (names) => ` Referenced by: ${names}.`,
+  overwriteOutsideSsh:
+    ' ⚠ Path is outside ~/.ssh — the file will be REPLACED with a key pair. Make sure it is not an important file!',
   commentQuestion: '🏷 Comment',
   passphraseQuestion: '🔒 Protect the key with a passphrase?',
   keygenFailed: (code) => `ssh-keygen exited with code ${code}.`,

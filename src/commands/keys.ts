@@ -145,18 +145,29 @@ export async function generateKeyFlow(): Promise<string | null> {
   const sshDir = path.join(os.homedir(), '.ssh');
   // ssh convention names sk keys with an underscore: id_ed25519_sk
   const suggested = path.join(sshDir, `id_${type.replace('-sk', '_sk')}`);
-  const keyPath = expandHome(
-    (
-      await ui.text({
-        message: tr.keys.keyPathQuestion,
-        default: tilde(suggested),
-        validate: (v) => v.trim().length > 0 || tr.keys.keyPathRequired,
-      })
-    ).trim(),
-  );
+  // Browse for the key file path (interactive) — pick an existing one to overwrite
+  // or type a new name; non-TTY falls back to a validated text prompt.
+  const keyPath = await ui.promptPath({
+    message: tr.keys.keyPathQuestion,
+    select: 'file',
+    allowCreate: true,
+    start: suggested,
+    default: tilde(suggested),
+    validate: (v) => v.trim().length > 0 || tr.keys.keyPathRequired,
+  });
+  const sshRoot = path.resolve(sshDir);
+  const absKey = path.resolve(keyPath);
+  const inSsh = absKey === sshRoot || absKey.startsWith(sshRoot + path.sep);
   if (fs.existsSync(keyPath)) {
     const refs = keyReferences(keyPath);
-    const note = refs.length ? tr.keys.overwriteNote(refs.map((r) => r.name).join(', ')) : '';
+    // A path OUTSIDE ~/.ssh is a foot-gun: deleteKey() refuses to touch it (so it
+    // can't clobber e.g. ~/.bashrc), and ssh-keygen will prompt again — warn
+    // loudly. Inside ~/.ssh we note which servers/tunnels still reference the key.
+    const note = !inSsh
+      ? tr.keys.overwriteOutsideSsh
+      : refs.length
+        ? tr.keys.overwriteNote(refs.map((r) => r.name).join(', '))
+        : '';
     if (
       !(await ui.confirm({
         message: tr.keys.overwriteConfirm(tilde(keyPath), note),
@@ -166,7 +177,9 @@ export async function generateKeyFlow(): Promise<string | null> {
       ui.printInfo(tr.common.cancelled);
       return null;
     }
-    deleteKey(keyPath); // ssh-keygen would otherwise prompt; remove first
+    // Only pre-remove a key we actually manage (inside ~/.ssh). For anything else
+    // deleteKey is a deliberate no-op and ssh-keygen will ask before overwriting.
+    if (inSsh) deleteKey(keyPath);
   }
   const comment = (
     await ui.text({ message: tr.keys.commentQuestion, default: defaultKeyComment() })

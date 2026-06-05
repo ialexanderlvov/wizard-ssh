@@ -60,13 +60,16 @@ export async function pickKey(savedPath?: string | null): Promise<string> {
       : {}),
   });
   if (pick !== MANUAL) return pick;
-  const manual = await ui.text({
+  // Browse the filesystem for the key (interactive) — or a validated text prompt
+  // when there's no TTY.
+  return ui.promptPath({
     message: tr.wizard.keyPathPrompt,
+    select: 'file',
+    start: savedPath ?? '~/.ssh',
     default: savedPath ?? '~/.ssh/id_rsa',
     validate: (v) =>
       fs.existsSync(expandHome(v.trim())) ? true : tr.wizard.keyNotFound(expandHome(v.trim())),
   });
-  return expandHome(manual.trim());
 }
 
 /** Ask for the connection target (where + how to auth). */

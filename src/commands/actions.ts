@@ -353,15 +353,20 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
     });
   }
   let localPath = cli.local;
-  if (localPath === undefined) {
+  // A blank/whitespace flag (`--local ''`) bypassed the non-empty check before and
+  // produced an empty scp/rsync operand; treat it like "not provided".
+  if (localPath === undefined || !localPath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedLocal);
-    localPath = await ui.text({
+    // Browse for the local path. Upload → must exist (a file, or a folder via its
+    // "choose this folder" row); download → the target may be a new file/folder.
+    localPath = await ui.promptPath({
       message: tr.actions.localPath,
-      validate: (v) => v.trim().length > 0 || tr.common.empty,
+      select: 'any',
+      allowCreate: direction === 'download',
     });
   }
   let remotePath = cli.remote;
-  if (remotePath === undefined) {
+  if (remotePath === undefined || !remotePath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
     remotePath = await ui.text({
       message: tr.actions.remotePath,
@@ -467,14 +472,26 @@ export async function transferLogsFlow(
   }
   let target: TransferSession;
   if (id) {
-    const found = live.find(
-      (s) => s.id === id || s.id.startsWith(id) || s.name.toLowerCase() === id.toLowerCase(),
-    );
-    if (!found) {
+    // Prefer an EXACT id, then an exact name; only then fall back to an id-prefix.
+    // Two background transfers to the same server share a `name`, so a prefix/name
+    // match can be ambiguous — surface that instead of silently picking the first.
+    const lower = id.toLowerCase();
+    const exact = live.find((s) => s.id === id);
+    const matches =
+      exact !== undefined
+        ? [exact]
+        : live.filter((s) => s.id.startsWith(id) || s.name.toLowerCase() === lower);
+    if (matches.length === 0) {
       ui.printError(tr.actions.transferBgNotFound(id));
       return 1;
     }
-    target = found;
+    if (matches.length > 1) {
+      ui.printError(tr.actions.transferBgAmbiguous(id));
+      for (const s of matches)
+        console.log(`  ${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.id.slice(0, 12))}  ${s.summary}`);
+      return 1;
+    }
+    target = matches[0]!;
   } else if (live.length === 1) {
     target = live[0]!;
   } else {

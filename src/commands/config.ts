@@ -113,8 +113,12 @@ async function askHostFields(current?: SshConfigHost): Promise<Record<string, st
       default: get('Port'),
       validate: (v) => !v.trim() || isValidPort(v.trim()) || tr.config.portInvalid,
     }),
-    IdentityFile: await ui.text({
+    // Optional — browse for a key file, or Esc to keep the current value empty.
+    IdentityFile: await ui.promptPath({
       message: tr.config.identityFileQuestion,
+      select: 'file',
+      optional: true,
+      allowCreate: true,
       default: get('IdentityFile'),
       validate: (v) => !v.trim() || isSafeKeyPath(v.trim()) || tr.config.identityFileInvalid,
     }),
@@ -136,6 +140,13 @@ export async function addConfigHost(): Promise<void> {
             : true,
     })
   ).trim();
+  // Defensive re-check: the prompt's `validate` is the primary gate, but don't
+  // rely on it alone — bail before the writer (which now also rejects, harder)
+  // if an invalid alias slips through.
+  if (!isValidSshAlias(alias)) {
+    ui.printError(tr.config.aliasInvalidChars);
+    return;
+  }
   const answers = await askHostFields();
   const { backup, created } = sshConfig.upsertHost({ alias, params: mergeParams([], answers) });
   ui.printOk(created ? tr.config.hostAdded(alias) : tr.config.hostUpdated(alias));

@@ -66,6 +66,7 @@ const ru = {
   transferBgNone: 'Нет фоновых переносов.',
   transferBgSection: (n: number) => `Фоновые переносы (${n})`,
   transferBgNotFound: (id: string) => `Фоновый перенос «${id}» не найден.`,
+  transferBgAmbiguous: (id: string) => `Под «${id}» подходит несколько переносов — уточните по id:`,
   transferBgLogsEnsure: 'Просмотр лога переноса',
   transferBgPick: '📜 Выберите перенос',
   transferBgLogMissing: (path: string) => `Лог не найден: ${path}`,

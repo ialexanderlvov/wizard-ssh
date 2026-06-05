@@ -2,6 +2,9 @@ import type { Dict } from './ru.js';
 
 const en: Dict = {
   exportedTo: (target) => `Exported to ${target}`,
+  exportExists: (target) =>
+    `File already exists: ${target}. Refusing to overwrite — pass --force (or --yes), or choose another path.`,
+  exportOverwrite: (target) => `File ${target} already exists. Overwrite?`,
   exportSummary: (servers, tunnels, vault) =>
     `Servers: ${servers} · tunnels: ${tunnels}${vault ? ' · vault included (encrypted)' : ''}`,
   fileNotFound: (abs) => `File not found: ${abs}`,

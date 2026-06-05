@@ -28,6 +28,15 @@ import { manFlow } from './man.js';
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
   v === true ? true : typeof v === 'string' ? v : undefined;
 
+/** Parse a `--tail <n>` flag to a positive integer, or undefined (→ the viewer's
+ *  default). Without this, `--tail abc`/`--tail 0`/`--tail -1` become NaN/≤0 and
+ *  the viewer would dump the ENTIRE log instead of erroring or defaulting. */
+const parseTail = (v: string | undefined): number | undefined => {
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
+
 const SORT_KEYS: SortKey[] = ['recent', 'name', 'uses', 'created', 'updated'];
 
 function parseSort(value: string | undefined): SortKey | undefined {
@@ -219,7 +228,7 @@ export function registerCommands(program: Command): void {
     .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
     .action(async (n: string | undefined, o: { tail?: string; follow?: boolean }) => {
       const code = await tunnelCmd.tunnelLogsFlow(n, {
-        tail: o.tail !== undefined ? Number(o.tail) : undefined,
+        tail: parseTail(o.tail),
         follow: o.follow,
       });
       if (code) process.exitCode = code;
@@ -353,7 +362,7 @@ export function registerCommands(program: Command): void {
     .action(async (o: { log?: string; tail?: string; follow?: boolean; json?: boolean }) => {
       if (o.log !== undefined || o.follow || o.tail !== undefined) {
         const code = await actions.transferLogsFlow(o.log, {
-          tail: o.tail !== undefined ? Number(o.tail) : undefined,
+          tail: parseTail(o.tail),
           follow: o.follow,
         });
         if (code) process.exitCode = code;
@@ -472,8 +481,9 @@ export function registerCommands(program: Command): void {
   program
     .command('export [file]')
     .description(tr.cmd.exportDesc)
-    .action((f?: string) => {
-      exportData(f);
+    .option('--force', tr.cmd.exportOptForce)
+    .action((f: string | undefined, o: { force?: boolean }) => {
+      exportData(f, { force: o.force });
     });
   program
     .command('import <file>')

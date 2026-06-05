@@ -119,6 +119,7 @@ const en: Dict = {
   vaultDesc: 'manage password vault',
   settingsDesc: 'default settings',
   exportDesc: 'export all lists to a file',
+  exportOptForce: 'overwrite the file if it already exists',
   importDesc: 'import lists from a file',
   importOptReplace: 'replace existing lists',
 

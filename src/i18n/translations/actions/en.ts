@@ -66,6 +66,7 @@ const en: Dict = {
   transferBgNone: 'No background transfers.',
   transferBgSection: (n) => `Background transfers (${n})`,
   transferBgNotFound: (id) => `No background transfer matching “${id}”.`,
+  transferBgAmbiguous: (id) => `“${id}” matches several transfers — narrow it by id:`,
   transferBgLogsEnsure: 'Viewing a transfer log',
   transferBgPick: '📜 Pick a transfer',
   transferBgLogMissing: (path) => `Log not found: ${path}`,
