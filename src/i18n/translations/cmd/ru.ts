@@ -73,6 +73,20 @@ const ru = {
   copyIdDesc: 'установить SSH-ключ на сервер (ssh-copy-id)',
   runDesc: 'выполнить команду на сервере: wssh run <name> -- <cmd>',
   transferDesc: 'передача файлов по scp или rsync',
+  transferOptTool: 'инструмент: scp или rsync',
+  transferOptUpload: 'направление: загрузить на сервер',
+  transferOptDownload: 'направление: скачать с сервера',
+  transferOptLocal: 'локальный путь',
+  transferOptRemote: 'путь на сервере',
+  transferOptRecursive: 'scp: рекурсивно (папка)',
+  transferOptCompress: 'rsync: сжимать в пути (-z)',
+  transferOptDelete: 'rsync: удалять лишнее на приёмнике (--delete)',
+  transferOptDryRun: 'rsync: пробный прогон (--dry-run)',
+  transferBothDirections: 'Укажите только одно: --upload или --download.',
+  transferBadTool: (tools: string) => `--tool должно быть одним из: ${tools}.`,
+  transferOptBg: 'запустить в фоне (agent/key)',
+  transfersDesc: 'фоновые переносы: список (или лог через --log)',
+  transfersOptLog: 'показать лог переноса по id/имени',
 
   // status
   statusDesc: 'массовая проверка доступности (дашборд)',
@@ -110,6 +124,20 @@ const ru = {
   // misc
   pathDesc: 'путь к директории с данными',
   menuDesc: 'открыть интерактивное меню',
+  backupDesc: 'бэкап всего ~/.ssh в архив (вкл. приватные ключи)',
+  completionDesc: 'скрипт автодополнения для шелла (bash|zsh|fish)',
+  completionBadShell: (shells: string) => `Поддерживаются только: ${shells}.`,
+  manDesc: 'показать man-страницу (--roff — вывести исходник для установки)',
+  manOptRoff: 'вывести roff-исходник (для установки в man)',
+  manIntro:
+    'Интерактивный CLI для управления SSH-серверами, туннелями и ~/.ssh/config: ' +
+    'полный CRUD, подключение, прямые/обратные туннели и зашифрованное хранилище паролей.',
+  manEnvLang: 'язык интерфейса (ru|en); приоритетнее настройки и системной локали',
+  manEnvHome: 'переопределить каталог данных (по умолчанию ~/.wizard-ssh)',
+  manEnvVault: 'парольная фраза хранилища для неинтерактивных запусков',
+  manEnvDebug: 'показывать полный стек ошибок',
+  manFilesData: 'каталог данных: серверы (usage.json), туннели, настройки, хранилище, бэкапы, логи',
+  manFilesSsh: 'серверы хранятся здесь как Host-блоки с аннотациями #wssh',
 
   // parseSort error
   sortInvalid: (keys: string) => `--sort должно быть одним из: ${keys}`,

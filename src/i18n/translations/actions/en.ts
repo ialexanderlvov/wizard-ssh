@@ -49,6 +49,28 @@ const en: Dict = {
   transferSection: (tool, direction, target) => `${tool} ${direction} → ${target}`,
   transferOk: 'Done.',
   transferFailed: (tool, code) => `${tool} exited with code ${code}.`,
+  backupSection: 'Backup ~/.ssh',
+  backupNoSshDir: (dir) => `${dir} not found — nothing to back up.`,
+  backupTarMissing: 'The tar utility was not found — no archive created.',
+  backupFailed: (err) => `Could not create the archive. ${err}`.trim(),
+  backupDone: (path, size) => `Backup created: ${path} (${size}).`,
+  backupKeysNote: 'The archive contains private keys and is owner-only (0600).',
+  transferNeedDirection: 'Specify a direction: --upload or --download.',
+  transferNeedLocal: 'Specify the local path: --local <path>.',
+  transferNeedRemote: 'Specify the remote path: --remote <path>.',
+  transferBgNoPassword: 'A background transfer needs agent/key auth (not a password).',
+  transferBgFailed: 'Could not start the background process.',
+  transferBgStarted: (pid) => `Transfer started in the background (pid ${pid}).`,
+  transferBgMonitor: (id) =>
+    `Watch: wssh transfers   ·   log: wssh transfers --log ${id.slice(0, 8)} -f`,
+  transferBgNone: 'No background transfers.',
+  transferBgSection: (n) => `Background transfers (${n})`,
+  transferBgNotFound: (id) => `No background transfer matching “${id}”.`,
+  transferBgLogsEnsure: 'Viewing a transfer log',
+  transferBgPick: '📜 Pick a transfer',
+  transferBgLogMissing: (path) => `Log not found: ${path}`,
+  transferBgLogsSection: (name, path) => `Transfer log ${name} — ${path}`,
+  transferBgFollowHint: 'Following the log… Ctrl+C to stop.',
 };
 
 export default en;

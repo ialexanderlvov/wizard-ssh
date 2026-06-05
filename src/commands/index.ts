@@ -20,6 +20,9 @@ import { quickConnectByName } from './connect.js';
 import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
+import { backupSshFlow } from './backup.js';
+import { completeFromProgram, completionScript, type Shell } from './completion.js';
+import { manFlow } from './man.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
 const tmuxOpt = (v: unknown): string | boolean | undefined =>
@@ -296,9 +299,67 @@ export function registerCommands(program: Command): void {
     .command('transfer [name]')
     .alias('scp')
     .description(tr.cmd.transferDesc)
-    .action(async (n?: string) => {
-      const code = await actions.transferFlow(n);
-      if (code) process.exitCode = code;
+    .option('--tool <scp|rsync>', tr.cmd.transferOptTool)
+    .option('--upload', tr.cmd.transferOptUpload)
+    .option('--download', tr.cmd.transferOptDownload)
+    .option('--local <path>', tr.cmd.transferOptLocal)
+    .option('--remote <path>', tr.cmd.transferOptRemote)
+    .option('--recursive', tr.cmd.transferOptRecursive)
+    .option('--compress', tr.cmd.transferOptCompress)
+    .option('--delete', tr.cmd.transferOptDelete)
+    .option('--dry-run', tr.cmd.transferOptDryRun)
+    .option('--bg', tr.cmd.transferOptBg)
+    .action(
+      async (
+        n: string | undefined,
+        o: {
+          tool?: string;
+          upload?: boolean;
+          download?: boolean;
+          local?: string;
+          remote?: string;
+          recursive?: boolean;
+          compress?: boolean;
+          delete?: boolean;
+          dryRun?: boolean;
+          bg?: boolean;
+        },
+      ) => {
+        if (o.upload && o.download) throw new WizardError(tr.cmd.transferBothDirections);
+        if (o.tool && o.tool !== 'scp' && o.tool !== 'rsync')
+          throw new WizardError(tr.cmd.transferBadTool('scp, rsync'));
+        const code = await actions.transferFlow(n, {
+          tool: o.tool as 'scp' | 'rsync' | undefined,
+          direction: o.upload ? 'upload' : o.download ? 'download' : undefined,
+          local: o.local,
+          remote: o.remote,
+          recursive: o.recursive,
+          compress: o.compress,
+          delete: o.delete,
+          dryRun: o.dryRun,
+          bg: o.bg,
+        });
+        if (code) process.exitCode = code;
+      },
+    );
+  // background transfer monitoring (one-shot processes started with `transfer --bg`)
+  program
+    .command('transfers')
+    .description(tr.cmd.transfersDesc)
+    .option('--log <id>', tr.cmd.transfersOptLog)
+    .option('--tail <n>', tr.cmd.tunnelLogsOptTail)
+    .option('-f, --follow', tr.cmd.tunnelLogsOptFollow)
+    .option('--json', tr.cmd.optOutputJson)
+    .action(async (o: { log?: string; tail?: string; follow?: boolean; json?: boolean }) => {
+      if (o.log !== undefined || o.follow || o.tail !== undefined) {
+        const code = await actions.transferLogsFlow(o.log, {
+          tail: o.tail !== undefined ? Number(o.tail) : undefined,
+          follow: o.follow,
+        });
+        if (code) process.exitCode = code;
+        return;
+      }
+      actions.transferSessionsFlow({ json: o.json });
     });
 
   // ---- fleet status ----
@@ -422,6 +483,13 @@ export function registerCommands(program: Command): void {
 
   // ---- misc ----
   program
+    .command('backup [dir]')
+    .description(tr.cmd.backupDesc)
+    .action((dir?: string) => {
+      const code = backupSshFlow(dir);
+      if (code) process.exitCode = code;
+    });
+  program
     .command('path')
     .description(tr.cmd.pathDesc)
     .action(() => console.log(DATA_DIR));
@@ -432,6 +500,39 @@ export function registerCommands(program: Command): void {
       const { mainMenu } = await import('./menu.js');
       ui.printBanner();
       await mainMenu();
+    });
+  program
+    .command('man')
+    .description(tr.cmd.manDesc)
+    .option('--roff', tr.cmd.manOptRoff)
+    .action((o: { roff?: boolean }) => {
+      const code = manFlow(program, { roff: o.roff });
+      if (code) process.exitCode = code;
+    });
+
+  // ---- shell completion ----
+  const SHELLS: Shell[] = ['bash', 'zsh', 'fish'];
+  program
+    .command('completion <shell>')
+    .description(tr.cmd.completionDesc)
+    .action((shell: string) => {
+      const s = shell.toLowerCase() as Shell;
+      if (!SHELLS.includes(s)) throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
+      console.log(completionScript(s));
+    });
+  // Hidden helper the completion scripts call on <TAB>: prints candidates, one per
+  // line. It must NEVER throw or print noise to stdout (it would corrupt the shell
+  // completion), so everything is swallowed.
+  program
+    .command('complete [words...]', { hidden: true })
+    .allowUnknownOption()
+    .action((words: string[] | undefined) => {
+      try {
+        const out = completeFromProgram(program, words ?? []);
+        if (out.length) console.log(out.join('\n'));
+      } catch {
+        /* completion is best-effort — never break the user's shell */
+      }
     });
 
   program.addHelpText('after', tr.cmd.helpExamples);

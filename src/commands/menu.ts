@@ -18,6 +18,7 @@ import { quickConnect } from './connect.js';
 import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
 import { importExportMenu } from './import-export.js';
+import { backupSshFlow } from './backup.js';
 
 interface MenuItem {
   label: string;
@@ -266,6 +267,7 @@ const actionsMenu = (): Promise<void> =>
       { label: tr.menu.actions.copyId, value: 'copyId' },
       { label: tr.menu.actions.run, value: 'run' },
       { label: tr.menu.actions.transfer, value: 'transfer' },
+      { label: tr.menu.actions.bgTransfers, value: 'bgTransfers' },
       { label: tr.menu.actions.groups, value: 'groups' },
     ],
     async (a) => {
@@ -274,6 +276,7 @@ const actionsMenu = (): Promise<void> =>
       else if (a === 'copyId') await actions.copyIdFlow();
       else if (a === 'run') await actions.runFlow(undefined, []);
       else if (a === 'transfer') await actions.transferFlow();
+      else if (a === 'bgTransfers') await actions.transferLogsFlow();
       else if (a === 'groups') actions.groupListFlow();
     },
   );
@@ -301,6 +304,7 @@ export async function mainMenu(): Promise<void> {
         { label: tr.menu.main.vault, value: 'vault' },
         { label: tr.menu.main.settings, value: 'settings' },
         { label: tr.menu.main.io, value: 'io' },
+        { label: tr.menu.main.backup, value: 'backup' },
         { label: tr.menu.main.exit, value: 'exit' },
       ]);
     } catch (e) {
@@ -333,6 +337,10 @@ export async function mainMenu(): Promise<void> {
       } else if (action === 'vault') await vaultFlow();
       else if (action === 'settings') await settingsFlow();
       else if (action === 'io') await importExportMenu();
+      else if (action === 'backup') {
+        backupSshFlow();
+        await ui.pause();
+      }
     } catch (e) {
       // Esc / Ctrl+C out of a top-level flow → straight back to the main menu;
       // only a genuine error is worth pausing on.

@@ -113,6 +113,50 @@ async function editSetting(key: string): Promise<void> {
     settings.update({ language: choice });
     // `system` re-resolves from env/OS; an explicit choice loads that locale.
     await setLocale(choice === 'system' ? resolveLocale() : choice, false);
+  } else if (key === 'transferTool') {
+    settings.update({
+      transfer: {
+        ...s.transfer,
+        tool: await ui.choose<'scp' | 'rsync'>({
+          message: tr.settings.transferToolPrompt,
+          choices: [
+            { name: 'scp', value: 'scp' },
+            { name: 'rsync', value: 'rsync' },
+          ],
+          default: s.transfer.tool,
+        }),
+      },
+    });
+  } else if (key === 'transferRecursive') {
+    settings.update({
+      transfer: {
+        ...s.transfer,
+        recursive: await ui.confirm({
+          message: tr.settings.transferRecursivePrompt,
+          default: s.transfer.recursive,
+        }),
+      },
+    });
+  } else if (key === 'transferCompress') {
+    settings.update({
+      transfer: {
+        ...s.transfer,
+        compress: await ui.confirm({
+          message: tr.settings.transferCompressPrompt,
+          default: s.transfer.compress,
+        }),
+      },
+    });
+  } else if (key === 'transferDelete') {
+    settings.update({
+      transfer: {
+        ...s.transfer,
+        delete: await ui.confirm({
+          message: tr.settings.transferDeletePrompt,
+          default: s.transfer.delete,
+        }),
+      },
+    });
   }
   ui.printOk(tr.settings.saved);
 }
@@ -131,6 +175,7 @@ export async function settingsFlow(): Promise<void> {
     ru: tr.settings.langRu,
     en: tr.settings.langEn,
   };
+  const yn = (b: boolean): string => ui.chalk.cyan(b ? tr.common.yes : tr.common.no);
   for (;;) {
     ui.clearScreen();
     const s = settings.get();
@@ -167,6 +212,22 @@ export async function settingsFlow(): Promise<void> {
       {
         value: 'language',
         label: tr.settings.labelLanguage(ui.chalk.cyan(langLabels[s.language])),
+      },
+      {
+        value: 'transferTool',
+        label: tr.settings.labelTransferTool(ui.chalk.cyan(s.transfer.tool)),
+      },
+      {
+        value: 'transferRecursive',
+        label: tr.settings.labelTransferRecursive(yn(s.transfer.recursive)),
+      },
+      {
+        value: 'transferCompress',
+        label: tr.settings.labelTransferCompress(yn(s.transfer.compress)),
+      },
+      {
+        value: 'transferDelete',
+        label: tr.settings.labelTransferDelete(yn(s.transfer.delete)),
       },
     ];
     const key = await pick(tr.settings.settingsMenuPrompt, rows);

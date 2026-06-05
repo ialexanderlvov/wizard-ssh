@@ -214,7 +214,7 @@ describe('transfer via rsync', () => {
       dryRun: true,
     });
     const a = h.runProgram.mock.calls[0]?.[1] as string[];
-    expect(a).toEqual(expect.arrayContaining(['-z', '--delete', '-n', '--progress']));
+    expect(a).toEqual(expect.arrayContaining(['-z', '--delete', '-n', '--info=progress2']));
     expect(a[1]).not.toContain('-p');
     expect(a[a.length - 2]).toBe('alias:/remote');
     expect(a[a.length - 1]).toContain('local');

@@ -101,3 +101,23 @@ git pull
 pnpm install
 pnpm build           # при pnpm link этого достаточно — dist обновится «на месте»
 ```
+
+## Man-страница
+
+Прочитать справку как man-страницу:
+
+```bash
+wssh man                 # открыть через `man`
+```
+
+Установить системно, чтобы работало `man wssh`:
+
+```bash
+# Linux
+wssh man --roff | sudo tee /usr/local/share/man/man1/wssh.1 >/dev/null
+# macOS
+wssh man --roff | sudo tee /usr/local/share/man/man1/wssh.1 >/dev/null
+man wssh
+```
+
+Страница генерируется из самого CLI, поэтому всегда соответствует доступным командам.

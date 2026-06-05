@@ -20,6 +20,9 @@ const runner = {
   runTunnel: vi.fn(async () => 0),
   runSshInherit: vi.fn(async () => 0),
   runProgram: vi.fn(async () => 0),
+  // pid = this test process (alive) so the recorded session survives the
+  // liveness reap in transferSessions.list().
+  startTransferDetached: vi.fn(() => ({ pid: process.pid, logFile: '/tmp/wssh-t.log' })),
 };
 const feat = {
   healthOpen: false,
@@ -46,6 +49,7 @@ function setupMocks(): void {
     copyId: feat.copyId,
     runCommand: feat.runCommand,
     transfer: feat.transfer,
+    transferArgv: () => ({ program: 'scp', args: [] }),
     resolveEndpoint: () => ({ host: 'h', port: 22 }),
     checkTcp: async () => ({ host: 'h', port: 22, open: feat.healthOpen, ms: 1 }),
   }));
@@ -81,6 +85,7 @@ beforeEach(() => {
     runner.runTunnel,
     runner.runSshInherit,
     runner.runProgram,
+    runner.startTransferDetached,
     feat.copyId,
     feat.transfer,
     feat.runCommand,
@@ -161,6 +166,107 @@ describe('actions branches', () => {
     expect(feat.transfer).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ tool: 'rsync', compress: true, archive: true }),
+      undefined,
+    );
+  });
+
+  it('transferFlow runs fully from CLI flags (no prompts)', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    const code = await transferFlow('box', {
+      tool: 'scp',
+      direction: 'upload',
+      local: './a',
+      remote: '/b',
+      recursive: true,
+    });
+    expect(code).toBe(0);
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tool: 'scp',
+        direction: 'upload',
+        localPath: './a',
+        remotePath: '/b',
+        recursive: true,
+      }),
+      undefined,
+    );
+  });
+
+  it('transferFlow errors when scripted and a required field is missing', async () => {
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ nonInteractive: true }); // reset by vi.resetModules in beforeEach
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    await expect(transferFlow('box', { local: './a', remote: '/b' })).rejects.toThrow();
+  });
+
+  it('transferFlow applies saved transfer defaults when flags are omitted', async () => {
+    const { settings } = await import('../src/store/settings.store.js');
+    settings.update({
+      transfer: { tool: 'rsync', recursive: false, compress: true, delete: true },
+    });
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ nonInteractive: true });
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    await transferFlow('box', { direction: 'upload', local: './a', remote: '/b' }); // no tool/compress/delete
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tool: 'rsync', compress: true, delete: true }),
+      undefined,
+    );
+  });
+
+  it('transferFlow --bg starts a detached transfer and records a session', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', auth: 'agent', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    const code = await transferFlow('box', {
+      tool: 'scp',
+      direction: 'upload',
+      local: './a',
+      remote: '/b',
+      bg: true,
+    });
+    expect(code).toBe(0);
+    expect(runner.startTransferDetached).toHaveBeenCalled();
+    expect(feat.transfer).not.toHaveBeenCalled(); // backgrounded, not run in foreground
+    const { FILES } = await import('../src/core/paths.js');
+    const data = JSON.parse(fs.readFileSync(FILES.transferSessions, 'utf8'));
+    expect(data.sessions.some((s: { name: string }) => s.name === 'box')).toBe(true);
+  });
+
+  it('transferFlow --bg refuses password auth (no detached process)', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'pw', host: '1.2.3.4', auth: 'password', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    const code = await transferFlow('pw', {
+      tool: 'scp',
+      direction: 'upload',
+      local: './a',
+      remote: '/b',
+      bg: true,
+    });
+    expect(code).toBe(1);
+    expect(runner.startTransferDetached).not.toHaveBeenCalled();
+  });
+
+  it('transferFlow under --yes accepts toggle defaults (no forced --delete / --dry-run)', async () => {
+    const { setRuntime } = await import('../src/ui/runtime.js');
+    setRuntime({ assumeYes: true }); // --yes, but session is still "interactive"
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'box', host: '1.2.3.4', kind: 'server' });
+    const { transferFlow } = await import('../src/commands/actions.js');
+    // rsync via flag (skips picker); no toggle flags → must fall to defaults, NOT "yes"
+    await transferFlow('box', { tool: 'rsync', direction: 'upload', local: './a', remote: '/b' });
+    expect(feat.transfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tool: 'rsync', delete: false, dryRun: false }),
       undefined,
     );
   });

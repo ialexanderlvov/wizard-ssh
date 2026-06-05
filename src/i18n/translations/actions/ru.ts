@@ -49,6 +49,28 @@ const ru = {
     `${tool} ${direction} → ${target}`,
   transferOk: 'Готово.',
   transferFailed: (tool: string, code: number) => `${tool} завершился с кодом ${code}.`,
+  backupSection: 'Бэкап ~/.ssh',
+  backupNoSshDir: (dir: string) => `Каталог ${dir} не найден — бэкапить нечего.`,
+  backupTarMissing: 'Утилита tar не найдена — архив не создан.',
+  backupFailed: (err: string) => `Не удалось создать архив. ${err}`.trim(),
+  backupDone: (path: string, size: string) => `Бэкап создан: ${path} (${size}).`,
+  backupKeysNote: 'Архив содержит приватные ключи и доступен только владельцу (0600).',
+  transferNeedDirection: 'Укажите направление: --upload или --download.',
+  transferNeedLocal: 'Укажите локальный путь: --local <путь>.',
+  transferNeedRemote: 'Укажите путь на сервере: --remote <путь>.',
+  transferBgNoPassword: 'Фоновый перенос работает только для agent/key (не для пароля).',
+  transferBgFailed: 'Не удалось запустить фоновый процесс.',
+  transferBgStarted: (pid: number) => `Перенос запущен в фоне (pid ${pid}).`,
+  transferBgMonitor: (id: string) =>
+    `Следить: wssh transfers   ·   лог: wssh transfers --log ${id.slice(0, 8)} -f`,
+  transferBgNone: 'Нет фоновых переносов.',
+  transferBgSection: (n: number) => `Фоновые переносы (${n})`,
+  transferBgNotFound: (id: string) => `Фоновый перенос «${id}» не найден.`,
+  transferBgLogsEnsure: 'Просмотр лога переноса',
+  transferBgPick: '📜 Выберите перенос',
+  transferBgLogMissing: (path: string) => `Лог не найден: ${path}`,
+  transferBgLogsSection: (name: string, path: string) => `Лог переноса ${name} — ${path}`,
+  transferBgFollowHint: 'Слежу за логом… Ctrl+C — выйти.',
 };
 
 export default ru;

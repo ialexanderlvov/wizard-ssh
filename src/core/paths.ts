@@ -23,6 +23,8 @@ export const FILES = {
   vault: path.join(DATA_DIR, 'vault.json'),
   /** registry of background tunnel sessions (PID + log file per running tunnel) */
   sessions: path.join(DATA_DIR, 'sessions.json'),
+  /** registry of background file-transfer sessions (PID + log per running scp/rsync) */
+  transferSessions: path.join(DATA_DIR, 'transfer-sessions.json'),
   binDir: path.join(DATA_DIR, 'bin'),
   backupsDir: path.join(DATA_DIR, 'backups'),
   /** per-session stdout/stderr logs for background tunnels */

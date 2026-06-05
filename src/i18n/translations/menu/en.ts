@@ -23,6 +23,7 @@ const en: Dict = {
     vault: 'Password vault',
     settings: 'Settings',
     io: 'Export / import',
+    backup: 'Backup ~/.ssh',
     exit: 'Exit',
   },
   servers: {
@@ -63,6 +64,7 @@ const en: Dict = {
     copyId: 'ssh-copy-id (key to server)',
     run: 'Run a command',
     transfer: 'File transfer',
+    bgTransfers: 'Background transfers (log)',
     groups: 'Groups by tags',
   },
 };

@@ -21,6 +21,7 @@ const ru = {
     vault: 'Хранилище паролей',
     settings: 'Настройки',
     io: 'Экспорт / импорт',
+    backup: 'Бэкап ~/.ssh',
     exit: 'Выход',
   },
   servers: {
@@ -61,6 +62,7 @@ const ru = {
     copyId: 'ssh-copy-id (ключ на сервер)',
     run: 'Выполнить команду',
     transfer: 'Передача файлов',
+    bgTransfers: 'Фоновые переносы (лог)',
     groups: 'Группы по тегам',
   },
 };

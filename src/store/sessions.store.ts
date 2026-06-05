@@ -27,7 +27,7 @@ export interface TunnelSession {
 /** A stable per-process identity token (its start time, via `ps`) to tell OUR
  *  ssh apart from a foreign process that later reused the same PID. Empty when
  *  ps is unavailable — callers then fall back to a plain liveness check. */
-function processStartToken(pid: number): string {
+export function processStartToken(pid: number): string {
   if (!Number.isInteger(pid) || pid <= 0) return '';
   const res = capture('ps', ['-o', 'lstart=', '-p', String(pid)]);
   return res.status === 0 ? res.stdout.trim() : '';

@@ -1,20 +1,35 @@
 /** Extra actions: reachability check, fleet status, ssh-copy-id, remote command,
  *  file transfer, known_hosts, tag groups. */
 
+import fs from 'node:fs';
 import type { ConnectionTarget, Server } from '../core/types.js';
+import { WizardError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
+import { settings } from '../store/settings.store.js';
+import { transferSessions, type TransferSession } from '../store/transfer-sessions.store.js';
 import { findSshKeys } from '../ssh/keys.js';
-import { healthCheck, healthCheckAll, copyId, runCommand, transfer } from '../ssh/features.js';
+import {
+  healthCheck,
+  healthCheckAll,
+  copyId,
+  runCommand,
+  transfer,
+  transferArgv,
+} from '../ssh/features.js';
 import type { FleetTarget, TransferOptions, TransferTool } from '../ssh/features.js';
 import { forgetHostKey, knownHostsToken, listKnownHosts } from '../ssh/hostkey.js';
 import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
+import { startTransferDetached } from '../ssh/runner.js';
+import { destination } from '../ssh/args.js';
 import * as ui from '../ui/index.js';
 import { renderStatusTable } from '../ui/tables.js';
 import { targetSummary } from '../ui/format.js';
 import { tilde } from '../utils/strings.js';
 import { commandExists } from '../utils/exec.js';
+import { newId } from '../utils/id.js';
+import { tailLines, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
 import { tr } from '../i18n/index.js';
 
@@ -284,52 +299,127 @@ export async function runFlow(name: string | undefined, command: string[]): Prom
   return runCommand(server, cmd, password);
 }
 
-export async function transferFlow(name?: string): Promise<number> {
+/** CLI flags for a (possibly non-interactive) transfer. Anything omitted is
+ *  prompted for in an interactive session, or filled from the saved transfer
+ *  defaults / errors when scripted. */
+export interface TransferCliOptions {
+  tool?: TransferTool;
+  direction?: 'upload' | 'download';
+  local?: string;
+  remote?: string;
+  recursive?: boolean;
+  compress?: boolean;
+  delete?: boolean;
+  dryRun?: boolean;
+  /** run detached in the background (key/agent auth only) */
+  bg?: boolean;
+}
+
+export async function transferFlow(name?: string, cli: TransferCliOptions = {}): Promise<number> {
   const server = await resolveServerLike(name, tr.actions.transferPick);
   if (!server) return 0;
-  ui.ensureInteractive(tr.actions.transferEnsure);
+  const def = settings.get().transfer;
+  const interactive = ui.isInteractive() && !ui.runtime.nonInteractive;
 
-  const toolChoices: Array<{ name: string; value: TransferTool }> = [
-    { name: tr.actions.scpChoice, value: 'scp' },
-  ];
-  if (commandExists('rsync')) {
-    toolChoices.unshift({
-      name: tr.actions.rsyncChoice,
-      value: 'rsync',
+  // tool: flag → interactive picker (rsync only when installed) → saved default.
+  let tool: TransferTool;
+  const rsyncOk = commandExists('rsync');
+  if (cli.tool) tool = cli.tool;
+  else if (interactive) {
+    const choices: Array<{ name: string; value: TransferTool }> = [
+      { name: tr.actions.scpChoice, value: 'scp' },
+    ];
+    if (rsyncOk) choices.unshift({ name: tr.actions.rsyncChoice, value: 'rsync' });
+    tool =
+      choices.length > 1
+        ? await ui.choose<TransferTool>({
+            message: tr.actions.toolQuestion,
+            choices,
+            default: rsyncOk ? def.tool : 'scp',
+          })
+        : 'scp';
+  } else tool = def.tool;
+
+  // direction + paths: flag → prompt → (scripted) a clear error instead of hanging.
+  let direction = cli.direction;
+  if (!direction) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedDirection);
+    direction = await ui.choose<'upload' | 'download'>({
+      message: tr.actions.directionQuestion,
+      choices: [
+        { name: tr.actions.uploadChoice, value: 'upload' },
+        { name: tr.actions.downloadChoice, value: 'download' },
+      ],
     });
   }
-  const tool =
-    toolChoices.length > 1
-      ? await ui.choose<TransferTool>({ message: tr.actions.toolQuestion, choices: toolChoices })
-      : 'scp';
+  let localPath = cli.local;
+  if (localPath === undefined) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedLocal);
+    localPath = await ui.text({
+      message: tr.actions.localPath,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+  }
+  let remotePath = cli.remote;
+  if (remotePath === undefined) {
+    if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
+    remotePath = await ui.text({
+      message: tr.actions.remotePath,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+  }
 
-  const direction = await ui.choose<'upload' | 'download'>({
-    message: tr.actions.directionQuestion,
-    choices: [
-      { name: tr.actions.uploadChoice, value: 'upload' },
-      { name: tr.actions.downloadChoice, value: 'download' },
-    ],
-  });
-  const localPath = await ui.text({
-    message: tr.actions.localPath,
-    validate: (v) => v.trim().length > 0 || tr.common.empty,
-  });
-  const remotePath = await ui.text({
-    message: tr.actions.remotePath,
-    validate: (v) => v.trim().length > 0 || tr.common.empty,
-  });
-
+  // each toggle: explicit flag → interactive prompt → saved default. Under `--yes`
+  // (assumeYes) we must NOT route through ui.confirm: it answers "yes" to every
+  // confirmation, which would silently force --delete (destructive) and --dry-run
+  // (a no-op transfer that still reports success). Treat --yes as "accept the
+  // configured default" for these toggles, not "turn everything on".
+  const ask = async (
+    flag: boolean | undefined,
+    message: string,
+    dflt: boolean,
+  ): Promise<boolean> => {
+    if (flag !== undefined) return flag;
+    if (interactive && !ui.runtime.assumeYes) return ui.confirm({ message, default: dflt });
+    return dflt;
+  };
   const opts: TransferOptions = { direction, localPath, remotePath, tool };
   if (tool === 'rsync') {
     opts.archive = true;
-    opts.compress = await ui.confirm({ message: tr.actions.rsyncCompress, default: true });
-    opts.delete = await ui.confirm({
-      message: tr.actions.rsyncDelete,
-      default: false,
-    });
-    opts.dryRun = await ui.confirm({ message: tr.actions.rsyncDryRun, default: false });
+    opts.compress = await ask(cli.compress, tr.actions.rsyncCompress, def.compress);
+    opts.delete = await ask(cli.delete, tr.actions.rsyncDelete, def.delete);
+    opts.dryRun = await ask(cli.dryRun, tr.actions.rsyncDryRun, false);
   } else {
-    opts.recursive = await ui.confirm({ message: tr.actions.scpRecursive, default: false });
+    opts.recursive = await ask(cli.recursive, tr.actions.scpRecursive, def.recursive);
+  }
+
+  // Background: spawn detached, log to a file, register a session to monitor.
+  if (cli.bg) {
+    // A detached process can't carry the SSHPASS lifecycle safely (same reason
+    // background tunnels are key/agent-only), so refuse password auth here.
+    if (server.auth === 'password') {
+      ui.printError(tr.actions.transferBgNoPassword);
+      return 1;
+    }
+    const { program, args } = transferArgv(server, opts);
+    if (!commandExists(program)) {
+      ui.printError(
+        program === 'rsync' ? tr.ssh.featuresRsyncNotFound : tr.ssh.featuresScpNotFound,
+      );
+      return 1;
+    }
+    const id = newId();
+    const { pid, logFile } = startTransferDetached(program, args, id);
+    if (pid <= 0) {
+      ui.printError(tr.actions.transferBgFailed);
+      return 1;
+    }
+    const dest = `${destination(server)}:${remotePath}`;
+    const summary = direction === 'upload' ? `${localPath} → ${dest}` : `${dest} → ${localPath}`;
+    transferSessions.add({ id, name: server.name, tool, direction, summary, pid, logFile });
+    ui.printOk(tr.actions.transferBgStarted(pid));
+    ui.printInfo(tr.actions.transferBgMonitor(id));
+    return 0;
   }
 
   const password = await resolvePassword(server);
@@ -343,4 +433,73 @@ export async function transferFlow(name?: string): Promise<number> {
     ui.printError((e as Error).message);
     return 1;
   }
+}
+
+/** List the file transfers currently running in the background (reaps finished). */
+export function transferSessionsFlow(opts: { json?: boolean } = {}): void {
+  const live = transferSessions.list();
+  if (opts.json) {
+    console.log(JSON.stringify(live, null, 2));
+    return;
+  }
+  if (!live.length) {
+    ui.printWarn(tr.actions.transferBgNone);
+    return;
+  }
+  ui.printSection('🟢', tr.actions.transferBgSection(live.length));
+  for (const s of live) {
+    console.log(
+      `  ${ui.chalk.bold(s.name)}  ${ui.chalk.dim(`${s.tool} ${s.direction}`)}  ${s.summary}` +
+        `  ${ui.chalk.dim(`pid ${s.pid} · ${s.id.slice(0, 8)}`)}`,
+    );
+  }
+}
+
+/** Show (and optionally follow) a background transfer's log, picked by id/name. */
+export async function transferLogsFlow(
+  id?: string,
+  opts: { tail?: number; follow?: boolean } = {},
+): Promise<number> {
+  const live = transferSessions.list();
+  if (!live.length) {
+    ui.printWarn(tr.actions.transferBgNone);
+    return 0;
+  }
+  let target: TransferSession;
+  if (id) {
+    const found = live.find(
+      (s) => s.id === id || s.id.startsWith(id) || s.name.toLowerCase() === id.toLowerCase(),
+    );
+    if (!found) {
+      ui.printError(tr.actions.transferBgNotFound(id));
+      return 1;
+    }
+    target = found;
+  } else if (live.length === 1) {
+    target = live[0]!;
+  } else {
+    ui.ensureInteractive(tr.actions.transferBgLogsEnsure);
+    const picked = await ui.pickFromList<TransferSession>({
+      message: tr.actions.transferBgPick,
+      items: live,
+      render: (s) => `${ui.chalk.bold(s.name)}  ${ui.chalk.dim(s.summary)}  pid ${s.pid}`,
+      search: (s) => `${s.name} ${s.summary}`,
+      pageSize: 14,
+    });
+    if (picked === ui.BACK) return 0;
+    target = picked;
+  }
+
+  if (!fs.existsSync(target.logFile)) {
+    ui.printWarn(tr.actions.transferBgLogMissing(tilde(target.logFile)));
+    return 1;
+  }
+  ui.printSection('📜', tr.actions.transferBgLogsSection(target.name, tilde(target.logFile)));
+  const lines = tailLines(fs.readFileSync(target.logFile, 'utf8'), opts.tail ?? 40);
+  if (lines.length) console.log(lines.join('\n'));
+  if (opts.follow) {
+    ui.printInfo(ui.chalk.dim(tr.actions.transferBgFollowHint));
+    await followLog(target.logFile);
+  }
+  return 0;
 }

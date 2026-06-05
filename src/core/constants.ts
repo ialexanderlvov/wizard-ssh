@@ -42,4 +42,10 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     touchId: false,
   },
+  transfer: {
+    tool: 'scp',
+    recursive: false,
+    compress: false,
+    delete: false,
+  },
 };

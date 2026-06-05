@@ -13,12 +13,14 @@ class SettingsStore {
       ...DEFAULT_SETTINGS,
       ...data,
       vault: { ...DEFAULT_SETTINGS.vault, ...(data.vault ?? {}) },
+      transfer: { ...DEFAULT_SETTINGS.transfer, ...(data.transfer ?? {}) },
     };
     return this.cache;
   }
 
   get(): Settings {
-    return { ...this.load(), vault: { ...this.load().vault } };
+    const s = this.load();
+    return { ...s, vault: { ...s.vault }, transfer: { ...s.transfer } };
   }
 
   update(patch: Partial<Settings>): Settings {
@@ -27,6 +29,7 @@ class SettingsStore {
       ...current,
       ...patch,
       vault: { ...current.vault, ...(patch.vault ?? {}) },
+      transfer: { ...current.transfer, ...(patch.transfer ?? {}) },
     };
     writeJson(FILES.settings, this.cache);
     return this.get();

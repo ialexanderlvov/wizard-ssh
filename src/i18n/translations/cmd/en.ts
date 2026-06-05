@@ -74,6 +74,20 @@ const en: Dict = {
   copyIdDesc: 'install SSH key on server (ssh-copy-id)',
   runDesc: 'run a command on a server: wssh run <name> -- <cmd>',
   transferDesc: 'transfer files via scp or rsync',
+  transferOptTool: 'tool: scp or rsync',
+  transferOptUpload: 'direction: upload to the server',
+  transferOptDownload: 'direction: download from the server',
+  transferOptLocal: 'local path',
+  transferOptRemote: 'remote path',
+  transferOptRecursive: 'scp: recursive (folder)',
+  transferOptCompress: 'rsync: compress in transit (-z)',
+  transferOptDelete: 'rsync: delete extraneous on the receiver (--delete)',
+  transferOptDryRun: 'rsync: dry run (--dry-run)',
+  transferBothDirections: 'Pick only one: --upload or --download.',
+  transferBadTool: (tools) => `--tool must be one of: ${tools}.`,
+  transferOptBg: 'run in the background (agent/key)',
+  transfersDesc: 'background transfers: list (or a log via --log)',
+  transfersOptLog: 'show a transfer log by id/name',
 
   // status
   statusDesc: 'bulk availability check (dashboard)',
@@ -111,6 +125,20 @@ const en: Dict = {
   // misc
   pathDesc: 'path to data directory',
   menuDesc: 'open interactive menu',
+  backupDesc: 'back up all of ~/.ssh to an archive (incl. private keys)',
+  completionDesc: 'shell completion script (bash|zsh|fish)',
+  completionBadShell: (shells) => `Supported shells: ${shells}.`,
+  manDesc: 'show the man page (--roff prints the source for installation)',
+  manOptRoff: 'print the roff source (to install into man)',
+  manIntro:
+    'An interactive CLI for managing SSH servers, tunnels and ~/.ssh/config: ' +
+    'full CRUD, connect, forward/reverse tunnels and an encrypted password vault.',
+  manEnvLang: 'UI language (ru|en); takes precedence over the setting and the system locale',
+  manEnvHome: 'override the data directory (default ~/.wizard-ssh)',
+  manEnvVault: 'vault passphrase for non-interactive runs',
+  manEnvDebug: 'print full error stack traces',
+  manFilesData: 'data directory: servers (usage.json), tunnels, settings, vault, backups, logs',
+  manFilesSsh: 'servers live here as Host blocks with #wssh annotations',
 
   // parseSort error
   sortInvalid: (keys) => `--sort must be one of: ${keys}`,
