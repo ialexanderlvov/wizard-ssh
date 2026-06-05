@@ -29,6 +29,9 @@ import { tr } from '../i18n/index.js';
  *  written. (formatBlock guards too, but this surfaces a clean count instead of
  *  aborting the whole import on the first bad record.) */
 function serverIsSafe(s: Partial<Server>): boolean {
+  // A hostile/hand-edited bundle may hold a null/scalar element; guard before
+  // dereferencing so one bad record skips cleanly instead of crashing the import.
+  if (!s || typeof s !== 'object') return false;
   if (!isValidSshAlias(String(s.name ?? s.sshHost ?? ''))) return false;
   if (s.host && !isValidHostOrIp(String(s.host))) return false;
   if (s.user && !isValidUser(String(s.user))) return false;
@@ -41,6 +44,7 @@ function serverIsSafe(s: Partial<Server>): boolean {
 }
 
 function tunnelIsSafe(t: Partial<Tunnel>): boolean {
+  if (!t || typeof t !== 'object') return false;
   if (!isValidName(String(t.name ?? ''))) return false;
   if (t.hostMode === 'sshconfig') {
     if (!isValidSshAlias(String(t.sshHost ?? ''))) return false;
@@ -148,8 +152,10 @@ export async function importData(file: string, opts: { replace?: boolean } = {})
     });
   }
 
-  const rawServers = data.servers ?? [];
-  const rawTunnels = data.tunnels ?? [];
+  // data.servers is already array-checked above; tunnels may be missing or a
+  // non-array in a hand-edited bundle — coerce so .filter never throws.
+  const rawServers = Array.isArray(data.servers) ? data.servers : [];
+  const rawTunnels = Array.isArray(data.tunnels) ? data.tunnels : [];
   const importedServers = rawServers.filter(serverIsSafe);
   const importedTunnels = rawTunnels.filter(tunnelIsSafe);
   const skipped =
