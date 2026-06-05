@@ -476,7 +476,7 @@ export async function vaultFlow(): Promise<void> {
         } else {
           const p1 = await ui.secret({
             message: tr.settings.rekeyNewPassphrase,
-            validate: (v) => v.length >= 4 || tr.settings.rekeyMinLength,
+            validate: (v) => v.length >= 12 || tr.settings.rekeyMinLength,
           });
           const p2 = await ui.secret({ message: tr.settings.rekeyRepeat });
           if (p1 !== p2) ui.printError(tr.settings.rekeyMismatch);

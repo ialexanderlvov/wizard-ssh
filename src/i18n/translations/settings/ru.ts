@@ -113,7 +113,7 @@ const ru = {
   sessionCleared: 'Сессия сброшена.',
   needUnlockFirst: 'Сначала нужно разблокировать.',
   rekeyNewPassphrase: 'Новая парольная фраза',
-  rekeyMinLength: 'Минимум 4 символа',
+  rekeyMinLength: 'Минимум 12 символов',
   rekeyRepeat: 'Повторите',
   rekeyMismatch: 'Не совпадают.',
   rekeyDone: 'Парольная фраза изменена.',

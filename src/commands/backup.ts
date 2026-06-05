@@ -44,6 +44,26 @@ export function backupSshDir(destDir: string = FILES.backupsDir): BackupResult |
   // Colons/dots aren't path-safe everywhere, so flatten the ISO stamp.
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dest = path.join(path.resolve(destDir), `ssh-${stamp}.tar.gz`);
+  // Pre-create the archive owner-only (0600) BEFORE tar writes it: `tar -czf`
+  // opens an existing output with O_TRUNC (which doesn't change the mode), so the
+  // bytes are never momentarily group/world-readable in the create→chmod window —
+  // it holds PRIVATE KEYS. O_EXCL|O_NOFOLLOW also blocks a pre-planted symlink at
+  // the (timestamped) dest when destDir is shared. Best-effort: if it can't be
+  // created here (collision / platform), the chmod after tar still applies.
+  try {
+    fs.closeSync(
+      fs.openSync(
+        dest,
+        fs.constants.O_CREAT |
+          fs.constants.O_EXCL |
+          fs.constants.O_WRONLY |
+          (fs.constants.O_NOFOLLOW ?? 0),
+        0o600,
+      ),
+    );
+  } catch {
+    /* best-effort — falls back to the chmod below */
+  }
   // `-C $HOME .ssh` stores entries as `.ssh/...` (restorable with `tar -xzf` from
   // $HOME) and keeps the parent path out of the archive. tar preserves the inner
   // file modes; we still lock the archive itself down since it holds private keys.

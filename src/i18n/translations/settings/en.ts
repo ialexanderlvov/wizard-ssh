@@ -112,7 +112,7 @@ const en: Dict = {
   sessionCleared: 'Session cleared.',
   needUnlockFirst: 'Unlock first.',
   rekeyNewPassphrase: 'New passphrase',
-  rekeyMinLength: 'Minimum 4 characters',
+  rekeyMinLength: 'Minimum 12 characters',
   rekeyRepeat: 'Repeat',
   rekeyMismatch: 'Passphrases do not match.',
   rekeyDone: 'Passphrase changed.',

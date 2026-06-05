@@ -5,7 +5,8 @@ const ru = {
   setupSection: 'Хранилище паролей',
   setupIntro: 'Пароли шифруются AES-256-GCM. Парольную фразу вводите один раз за сессию.',
   newPassphrase: '🔑 Придумайте парольную фразу хранилища',
-  minChars: 'Минимум 4 символа',
+  minChars:
+    'Минимум 12 символов (зашифрованное хранилище попадает в экспорт — короткую фразу можно подобрать офлайн)',
   repeatPassphrase: '🔑 Повторите парольную фразу',
   passphraseMismatch: 'Парольные фразы не совпадают.',
   touchIdNote:
@@ -27,6 +28,7 @@ const ru = {
   pickEnsure: 'Выбор из списка',
   notFound: (q: string) => `«${q}» не найдено.`,
   multipleMatches: (q: string) => `Несколько совпадений по «${q}»:`,
+  resolvedFuzzy: (q: string, name: string) => `По «${q}» выбрано: ${name}`,
 };
 
 export default ru;
