@@ -38,7 +38,18 @@ export function atomicWrite(target: string, data: string | Buffer, mode = 0o600)
     throw e;
   }
   fs.closeSync(fd);
-  fs.renameSync(tmp, target);
+  try {
+    fs.renameSync(tmp, target);
+  } catch (e) {
+    // Don't leave the temp file behind if the rename itself fails (e.g. EXDEV, or
+    // the parent dir vanished) — clean it up, mirroring the write-failure path.
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* best-effort */
+    }
+    throw e;
+  }
   // fsync the directory so the rename itself is durable (the file contents were
   // already fsync'd above). Best-effort: not all platforms allow opening a dir.
   try {

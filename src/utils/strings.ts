@@ -28,8 +28,12 @@ export function slugify(s: string): string {
   return out || 'item';
 }
 
+// Anchored to ESC so it strips real SGR colour sequences (chalk output) only —
+// not innocent literal text like `[36m` typed into a filter. `\x1b` escape (not a
+// raw byte) keeps the source free of literal control bytes, like CONTROL_RE below.
+// For full terminal-escape neutralization use stripControl, not this.
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\[[0-9;]*m/g;
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** Remove ANSI colour codes (for filtering / width math). */
 export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '');

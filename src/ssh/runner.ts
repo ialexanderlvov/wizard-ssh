@@ -445,6 +445,11 @@ export function startTransferDetached(
   }
   try {
     const child = spawn(program, args, { stdio: ['ignore', fd, fd], detached: true });
+    // A ChildProcess emits 'error' ASYNCHRONOUSLY on a spawn failure (ENOENT, or
+    // EMFILE/EAGAIN under fd/process exhaustion). With no listener Node treats it
+    // as unhandled and crashes the parent — defeating the `pid <= 0` degradation
+    // the caller relies on (child.pid is already undefined → -1 in that case).
+    child.on('error', () => {});
     child.unref();
     return { pid: child.pid ?? -1, logFile };
   } finally {
@@ -486,6 +491,9 @@ export function startTunnelDetached(tunnel: Tunnel): DetachedTunnel {
       stdio: ['ignore', fd, fd],
       detached: true,
     });
+    // Swallow the async spawn-failure 'error' (see startTransferDetached) so an
+    // EMFILE/ENOENT surfaces through the caller's `pid <= 0` path, not a crash.
+    child.on('error', () => {});
     child.unref();
     return { pid: child.pid ?? -1, logFile };
   } finally {

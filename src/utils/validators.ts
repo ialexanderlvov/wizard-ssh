@@ -81,5 +81,14 @@ export const isValidProxyJump = (v: unknown): boolean => {
   const s = v.trim();
   if (!s || s.length > 512 || hasUnsafeChars(s)) return false;
   if (s.toLowerCase() === 'none') return true;
-  return s.split(',').every((hop) => PROXY_HOP.test(hop.trim()));
+  return s.split(',').every((hop) => {
+    const h = hop.trim();
+    if (!PROXY_HOP.test(h)) return false;
+    // PROXY_HOP only shape-matches the optional `:port` as \d{1,5} (so it would
+    // accept :0 and :65536-99999). Range-check a real trailing port — a bracketed
+    // IPv6 ends with `]`, so `]?:` only fires on an actual port, not on the
+    // address colons inside the brackets.
+    const m = /]?:(\d{1,5})$/.exec(h);
+    return !m || isValidPort(m[1]);
+  });
 };
