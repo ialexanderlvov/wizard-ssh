@@ -8,7 +8,7 @@ import type { TunnelSession } from '../store/sessions.store.js';
 import { chalk, TYPE_BADGE } from './theme.js';
 import { targetSummary, forwardSummary } from './format.js';
 import { relativeTime } from '../utils/time.js';
-import { tilde } from '../utils/strings.js';
+import { tilde, stripControl } from '../utils/strings.js';
 import { tr } from '../i18n/index.js';
 
 const ROUND = {
@@ -100,11 +100,15 @@ export function renderSessionsTable(rows: TunnelSession[]): string {
     chars: ROUND,
   });
   for (const s of rows) {
+    // Sanitize the human/display fields: a hand-edited sessions.json could embed
+    // terminal escapes in name/forward/target (the same sanitize-on-display
+    // standard the config parser and log viewer follow).
     table.push([
       chalk.green('●'),
-      chalk.bold.white(s.name) + (s.store === 'temp' ? chalk.dim(tr.ui.table.temp) : ''),
-      chalk.gray(s.forward),
-      chalk.dim(s.target),
+      chalk.bold.white(stripControl(s.name)) +
+        (s.store === 'temp' ? chalk.dim(tr.ui.table.temp) : ''),
+      chalk.gray(stripControl(s.forward)),
+      chalk.dim(stripControl(s.target)),
       chalk.yellow(String(s.pid)),
       relativeTime(s.startedAt),
     ]);

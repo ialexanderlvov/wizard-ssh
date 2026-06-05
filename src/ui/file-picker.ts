@@ -29,7 +29,7 @@ import {
   isBackspaceKey,
 } from '@inquirer/core';
 import { chalk, brand } from './theme.js';
-import { tilde, expandHome } from '../utils/strings.js';
+import { tilde, expandHome, stripControl } from '../utils/strings.js';
 import { PromptAbortError } from '../core/errors.js';
 import { BACK, type Picked } from './list-prompt.js';
 import { tr } from '../i18n/index.js';
@@ -362,9 +362,15 @@ const filePicker = createPrompt<string | typeof BACK, FilePickerConfig>((cfg, do
     if (row.kind === 'create') return `${pointer} ${chalk.yellow(tr.ui.filePicker.create)}`;
     if (row.kind === 'parent') return `${pointer} ${chalk.cyan(tr.ui.filePicker.parent)}`;
     const e = row.entry;
-    if (e.isDir) return `${pointer} ${chalk.cyan.bold(e.name + tr.ui.filePicker.dirBadge)}`;
+    // Sanitize the displayed name: a directory we browse may hold an attacker-
+    // placed filename with raw terminal escapes (cursor moves / line clears /
+    // OSC-8 spoofing) that could repaint rows and trick the operator into picking
+    // a different path than they see. The real fs name (path.join below) is left
+    // untouched — only the rendered string is stripped.
+    const name = stripControl(e.name);
+    if (e.isDir) return `${pointer} ${chalk.cyan.bold(name + tr.ui.filePicker.dirBadge)}`;
     const size = e.size ? chalk.dim(`  ${humanSize(e.size)}`) : '';
-    return `${pointer} ${e.name}${size}`;
+    return `${pointer} ${name}${size}`;
   };
 
   const page = usePagination<Row>({
@@ -379,7 +385,8 @@ const filePicker = createPrompt<string | typeof BACK, FilePickerConfig>((cfg, do
 
   const sep = chalk.dim(' › ');
   const header = `${brand('wssh')}${sep}${chalk.bold.cyan(cfg.message)}`;
-  const where = chalk.dim('📂 ') + chalk.white(tilde(cwd)) + (readOk ? '' : ' ' + chalk.red(''));
+  const where =
+    chalk.dim('📂 ') + chalk.white(stripControl(tilde(cwd))) + (readOk ? '' : ' ' + chalk.red(''));
   const filterLine =
     goto !== null
       ? chalk.yellow('→ ') + tr.ui.filePicker.namePrompt + chalk.dim(': ') + goto + chalk.dim('▏')
