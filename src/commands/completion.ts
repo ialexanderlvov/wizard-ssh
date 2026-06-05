@@ -125,8 +125,8 @@ export function completionScript(shell: Shell): string {
     // as literal lines and prefix-match them ourselves — no candidate is ever
     // evaluated. (namesFor() also restricts candidates to a safe charset.)
     return `# wizard-ssh bash completion.
-# Install:  wssh completion bash | sudo tee /etc/bash_completion.d/wssh
-#       or:  echo 'source <(wssh completion bash)' >> ~/.bashrc
+# Install:  wssh completion install            (recommended — wires up ~/.bashrc)
+#  manual:  echo 'source <(wssh completion bash)' >> ~/.bashrc
 _wssh_complete() {
   local cur line
   cur="\${COMP_WORDS[COMP_CWORD]}"
@@ -146,7 +146,7 @@ complete -F _wssh_complete wssh wizard-ssh
     // body IS the completion function (the #compdef line wires it to the commands).
     return `#compdef wssh wizard-ssh
 # wizard-ssh zsh completion.
-# Install:  wssh completion zsh > "\${fpath[1]}/_wssh"   (then: compinit / restart zsh)
+# Install:  wssh completion install   (recommended — drops _wssh on $fpath, rebuilds compinit)
 local -a w cands
 w=("\${(@)words[2,$CURRENT]}")
 cands=("\${(@f)$(command wssh complete -- "\${w[@]}" 2>/dev/null)}")
@@ -154,7 +154,7 @@ compadd -- "\${cands[@]}"
 `;
   }
   return `# wizard-ssh fish completion.
-# Install:  wssh completion fish > ~/.config/fish/completions/wssh.fish
+# Install:  wssh completion install   (recommended — writes ~/.config/fish/completions/wssh.fish)
 function __wssh_complete
     set -l toks (commandline -opc) (commandline -ct)
     set -e toks[1]

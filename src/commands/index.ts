@@ -22,6 +22,12 @@ import { settingsFlow, vaultFlow } from './settings.js';
 import { exportData, importData } from './import-export.js';
 import { backupSshFlow } from './backup.js';
 import { completeFromProgram, completionScript, type Shell } from './completion.js';
+import {
+  detectShell,
+  installCompletion,
+  uninstallCompletion,
+  tildify,
+} from './completion-install.js';
 import { manFlow } from './man.js';
 
 /** Normalize commander's `--tmux [session]`: bare flag (true) → default name. */
@@ -522,13 +528,45 @@ export function registerCommands(program: Command): void {
 
   // ---- shell completion ----
   const SHELLS: Shell[] = ['bash', 'zsh', 'fish'];
-  program
-    .command('completion <shell>')
+  // Resolve an explicit `[shell]` arg, or fall back to detecting it from $SHELL.
+  const resolveShell = (raw: string | undefined, detect: boolean): Shell => {
+    const s = (raw?.toLowerCase() ?? (detect ? detectShell() : undefined)) as Shell | undefined;
+    if (!s && detect) throw new WizardError(tr.cmd.completionDetectFail(SHELLS.join(', ')));
+    if (!s || !SHELLS.includes(s))
+      throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
+    return s;
+  };
+  // `completion <shell>` keeps printing the script (for piping / manual installs);
+  // the `install` / `uninstall` subcommands do the real wiring.
+  const completion = program
+    .command('completion [shell]')
     .description(tr.cmd.completionDesc)
-    .action((shell: string) => {
-      const s = shell.toLowerCase() as Shell;
-      if (!SHELLS.includes(s)) throw new WizardError(tr.cmd.completionBadShell(SHELLS.join(', ')));
-      console.log(completionScript(s));
+    .action((shell: string | undefined) => {
+      console.log(completionScript(resolveShell(shell, false)));
+    });
+  completion
+    .command('install [shell]')
+    .description(tr.cmd.completionInstallDesc)
+    .action((shell: string | undefined) => {
+      const r = installCompletion(resolveShell(shell, true));
+      ui.printOk(tr.cmd.completionInstalledTitle(r.shell));
+      ui.printInfo(tr.cmd.completionWroteFile(tildify(r.file)));
+      if (r.ohMyZsh) ui.printInfo(tr.cmd.completionOmzDetected);
+      if (r.rcEdited && r.rcFile) ui.printInfo(tr.cmd.completionRcUpdated(tildify(r.rcFile)));
+      for (const hint of r.reloadHints) ui.printInfo(tr.cmd.completionReloadHint(hint));
+    });
+  completion
+    .command('uninstall [shell]')
+    .description(tr.cmd.completionUninstallDesc)
+    .action((shell: string | undefined) => {
+      const r = uninstallCompletion(resolveShell(shell, true));
+      if (!r.removed.length && !r.rcEdited) {
+        ui.printWarn(tr.cmd.completionNothingRemoved);
+        return;
+      }
+      ui.printOk(tr.cmd.completionRemovedTitle(r.shell));
+      for (const f of r.removed) ui.printInfo(tr.cmd.completionRemovedFile(tildify(f)));
+      if (r.rcEdited && r.rcFile) ui.printInfo(tr.cmd.completionRcUpdated(tildify(r.rcFile)));
     });
   // Hidden helper the completion scripts call on <TAB>: prints candidates, one per
   // line. It must NEVER throw or print noise to stdout (it would corrupt the shell
