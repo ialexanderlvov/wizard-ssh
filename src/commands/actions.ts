@@ -34,6 +34,7 @@ import { commandExists } from '../utils/exec.js';
 import { newId } from '../utils/id.js';
 import { tailFile, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
+import { pickRemotePath } from './remote-picker.js';
 import { tr } from '../i18n/index.js';
 
 /** Resolve a server, or fall back to a tunnel (both are connection targets). */
@@ -516,7 +517,15 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
   let remotePath = cli.remote;
   if (remotePath === undefined || !remotePath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
-    remotePath = await ui.text({
+    // Browse the server instead of typing the path blind (agent/key only — a
+    // captured password run would need an sshpass lifecycle). Backing out of the
+    // browser, or any listing failure, falls through to the manual prompt.
+    remotePath = undefined;
+    if (server.auth !== 'password') {
+      const picked = await pickRemotePath(server, { message: tr.actions.remotePath });
+      if (picked !== null) remotePath = picked;
+    }
+    remotePath ??= await ui.text({
       message: tr.actions.remotePath,
       validate: (v) => v.trim().length > 0 || tr.common.empty,
     });
