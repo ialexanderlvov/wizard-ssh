@@ -27,6 +27,23 @@ export function copyToClipboard(text: string): string | null {
   return null;
 }
 
+/** Best-effort desktop notification (osascript on macOS, notify-send on Linux).
+ *  Used for rare, important events only (e.g. a tunnel that gave up reconnecting)
+ *  — never for routine progress. Silently a no-op when no tool is available. */
+export function notifyDesktop(title: string, body: string): void {
+  try {
+    if (isMac) {
+      // JSON.stringify produces valid AppleScript string literals (escapes " and \).
+      const script = `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`;
+      spawn('osascript', ['-e', script], { stdio: 'ignore', detached: true }).unref();
+    } else if (isLinux) {
+      spawn('notify-send', ['--', title, body], { stdio: 'ignore', detached: true }).unref();
+    }
+  } catch {
+    /* best effort */
+  }
+}
+
 export function openInBrowser(url: string): void {
   try {
     if (isMac) {

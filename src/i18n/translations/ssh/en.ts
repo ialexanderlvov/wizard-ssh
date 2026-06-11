@@ -36,6 +36,9 @@ const en: Dict = {
   runnerReconnecting: (code, secs, attempt) =>
     `Connection dropped (code ${code}). Reconnecting in ${secs}s… (attempt ${attempt})`,
   runnerTunnelClosed: 'Tunnel closed.',
+  runnerReconnectSummary: (n) => `Reconnects this session: ${n}.`,
+  runnerNotifyGaveUp: (name) =>
+    `Tunnel “${name}” dropped and could not reconnect — it has stopped.`,
   runnerPossibleConnectError: (port) =>
     `Looks like a connection/forward error. Check SSH access and that local port ${port} is free.`,
   // hostkey

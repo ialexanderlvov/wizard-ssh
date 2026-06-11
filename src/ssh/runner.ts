@@ -10,7 +10,7 @@ import { FILES, ensureDir } from '../core/paths.js';
 import { capture, commandExists } from '../utils/exec.js';
 import { expandHome } from '../utils/strings.js';
 import { isValidPort } from '../utils/validators.js';
-import { openInBrowser } from '../utils/platform.js';
+import { openInBrowser, notifyDesktop } from '../utils/platform.js';
 import { chalk, accent } from '../ui/theme.js';
 import { printSection, printInfo, printOk, printWarn, printError } from '../ui/messages.js';
 import { confirm, isInteractive } from '../ui/prompts.js';
@@ -331,6 +331,7 @@ export async function runTunnel(
   let attempt = 0;
   let stop = false;
   let triedForget = false;
+  let gaveUp = false;
   let lastCode = 0;
   let lastStartedAt = Date.now();
 
@@ -384,7 +385,10 @@ export async function runTunnel(
       if (!autoReconnect) break;
       const decision = decideReconnect(code, Date.now() - startedAt, attempt);
       if (!decision.reconnect) {
-        if (decision.reason === 'gave-up') printWarn(tr.ssh.runnerTooManyRetries);
+        if (decision.reason === 'gave-up') {
+          gaveUp = true;
+          printWarn(tr.ssh.runnerTooManyRetries);
+        }
         break;
       }
       attempt = decision.nextAttempt;
@@ -401,6 +405,11 @@ export async function runTunnel(
   console.log('');
   if (code === 0 || code === 130 || code === 255) printInfo(chalk.dim(tr.ssh.runnerTunnelClosed));
   else printError(tr.ssh.runnerSshExited(code));
+  // Session health summary + a desktop nudge when the tunnel died for good: a
+  // long-lived foreground tunnel often runs in a buried terminal, so a final
+  // give-up would otherwise go unseen until the user wonders why the port is dead.
+  if (raises > 1) printInfo(chalk.dim(tr.ssh.runnerReconnectSummary(raises - 1)));
+  if (gaveUp) notifyDesktop('wizard-ssh', tr.ssh.runnerNotifyGaveUp(tunnel.name));
   if (!autoReconnect && fast && code && code !== 130) {
     printWarn(tr.ssh.runnerPossibleConnectError(tunnel.localPort));
   }
