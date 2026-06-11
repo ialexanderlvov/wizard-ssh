@@ -100,6 +100,13 @@ const ru = {
   keysGenDesc: 'сгенерировать новый ключ (ssh-keygen)',
   keysRemoveDesc: 'удалить ключ (покажет, кто на него ссылается)',
 
+  // ssh-agent
+  agentGroupDesc: 'ssh-agent: какие ключи загружены, добавить/убрать',
+  agentListDesc: 'ключи, загруженные в агент',
+  agentAddDesc: 'добавить ключ в агент (ssh-add)',
+  agentRemoveDesc: 'убрать ключ из агента (или все: --all)',
+  agentRemoveOptAll: 'убрать все ключи',
+
   // forget-host / known_hosts
   forgetHostDesc: 'known_hosts: удалить запись (ssh-keygen -R) или показать (--list)',
   forgetHostOptList: 'показать записи known_hosts',

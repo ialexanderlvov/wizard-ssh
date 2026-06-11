@@ -101,6 +101,13 @@ const en: Dict = {
   keysGenDesc: 'generate a new key (ssh-keygen)',
   keysRemoveDesc: 'remove key (shows who references it)',
 
+  // ssh-agent
+  agentGroupDesc: 'ssh-agent: which keys are loaded, add/remove',
+  agentListDesc: 'keys loaded into the agent',
+  agentAddDesc: 'add a key to the agent (ssh-add)',
+  agentRemoveDesc: 'remove a key from the agent (or all: --all)',
+  agentRemoveOptAll: 'remove all keys',
+
   // forget-host / known_hosts
   forgetHostDesc: 'known_hosts: remove entry (ssh-keygen -R) or show (--list)',
   forgetHostOptList: 'show known_hosts entries',

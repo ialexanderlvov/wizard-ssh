@@ -60,6 +60,22 @@ const ru = {
   actionInstall: '📡 Установить на сервер (ssh-copy-id)',
   actionDelete: '🗑 Удалить ключ',
   mainMenuCrumb: 'Главное меню',
+
+  // ssh-agent (wssh agent …)
+  agentUnavailable:
+    'ssh-agent недоступен: нет ssh-add или агент не запущен (проверьте SSH_AUTH_SOCK).',
+  agentEmpty: 'Агент запущен, но ключей в нём нет. Добавить: wssh agent add',
+  agentSection: (n: number) => `Ключи в ssh-agent (${n})`,
+  agentEnsure: 'ssh-agent',
+  agentPickAdd: '🗝 Какой ключ добавить в агент?',
+  agentAdded: (path: string) => `Ключ добавлен в агент: ${path}`,
+  agentAddFailed: (code: number) => `ssh-add завершился с кодом ${code}.`,
+  agentKeychainQuestion: 'Сохранить пароль ключа в Keychain (--apple-use-keychain)?',
+  agentPickRemove: '🧹 Какой ключ убрать из агента?',
+  agentRemoved: 'Ключ убран из агента.',
+  agentRemovedAll: 'Все ключи убраны из агента.',
+  agentRemoveFailed: (code: number) => `ssh-add завершился с кодом ${code}.`,
+  agentConfirmRemoveAll: (n: number) => `Убрать из агента все ключи (${n})?`,
 };
 
 export default ru;

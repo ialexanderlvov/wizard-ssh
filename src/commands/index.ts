@@ -13,6 +13,7 @@ import * as tunnelCmd from './tunnels.js';
 import * as configCmd from './config.js';
 import * as actions from './actions.js';
 import * as keysCmd from './keys.js';
+import * as agentCmd from './agent.js';
 import { addServerNonInteractive, addTunnelNonInteractive } from './noninteractive.js';
 import { doctor } from './doctor.js';
 import { info } from './info.js';
@@ -421,6 +422,39 @@ export function registerCommands(program: Command): void {
     .description(tr.cmd.keysRemoveDesc)
     .action((p?: string) => keysCmd.deleteKeyCommand(p));
   keys.action(() => keysCmd.keysMenu());
+
+  // ---- ssh-agent ----
+  const agent = program.command('agent').description(tr.cmd.agentGroupDesc);
+  agent
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.agentListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => {
+      const code = agentCmd.agentListFlow(o);
+      if (code) process.exitCode = code;
+    });
+  agent
+    .command('add [path]')
+    .description(tr.cmd.agentAddDesc)
+    .action(async (p?: string) => {
+      const code = await agentCmd.agentAddFlow(p);
+      if (code) process.exitCode = code;
+    });
+  agent
+    .command('remove [path]')
+    .alias('rm')
+    .alias('delete')
+    .description(tr.cmd.agentRemoveDesc)
+    .option('--all', tr.cmd.agentRemoveOptAll)
+    .action(async (p: string | undefined, o: { all?: boolean }) => {
+      const code = await agentCmd.agentRemoveFlow(p, o);
+      if (code) process.exitCode = code;
+    });
+  agent.action(() => {
+    const code = agentCmd.agentListFlow();
+    if (code) process.exitCode = code;
+  });
 
   // ---- known_hosts ----
   program
