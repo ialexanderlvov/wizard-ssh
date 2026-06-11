@@ -7,6 +7,27 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.7.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.6.0...wizard-ssh-v1.7.0) (2026-06-11)
+
+
+### Features
+
+* **agent:** ssh-agent management commands (list/add/remove) ([3303272](https://github.com/ialexanderlvov/wizard-ssh/commit/330327295fb2242e8f88dc64784ebb58ead7e081))
+* **doctor:** report ssh-agent and Linux keyring status ([e221d79](https://github.com/ialexanderlvov/wizard-ssh/commit/e221d79e0e3209ad41f1dbec5ff96a1525e867da))
+* **group:** run a command on every tagged server in parallel ([5998214](https://github.com/ialexanderlvov/wizard-ssh/commit/5998214538ce08d6a5d46d1e027591e7beff6c20))
+* **run:** saved command snippets (wssh snippet add/ls/rm, run --snippet) ([cdcd37a](https://github.com/ialexanderlvov/wizard-ssh/commit/cdcd37a1dc8a9ae74709bee3ff3618d0545504fe))
+* **transfer:** interactive remote path browser ([b9fb141](https://github.com/ialexanderlvov/wizard-ssh/commit/b9fb141a6a83d0ff3101cf3ccb7c8aec26a9ae5b))
+* **tunnels:** boot-time autostart via launchd/systemd user units ([f54b41e](https://github.com/ialexanderlvov/wizard-ssh/commit/f54b41e3723452dcda8f757de888b00c996f0c21))
+* **tunnels:** probe forward health in tunnel ps ([594a711](https://github.com/ialexanderlvov/wizard-ssh/commit/594a7115818a277faca4a68f8c8a02f4a5d05b61))
+* **tunnels:** reconnect summary and desktop notice when a tunnel gives up ([810bb75](https://github.com/ialexanderlvov/wizard-ssh/commit/810bb755876e58c9193ebdbcb7cae75dcc26a7a6))
+* **tunnels:** tag profiles for background tunnels (start/down --tag) ([2113114](https://github.com/ialexanderlvov/wizard-ssh/commit/211311461ba5a300ddc9eb615e2013757f650201))
+* **vault:** unlock via OS keystore, with Secret Service keyring on Linux ([bc0f95c](https://github.com/ialexanderlvov/wizard-ssh/commit/bc0f95cf0e2af649398f90c239a6f6fb2b0c4531))
+
+
+### Bug Fixes
+
+* **tunnels:** honor --yes for tunnel down --all without a TTY ([0eac165](https://github.com/ialexanderlvov/wizard-ssh/commit/0eac165261be8f946150dc3e685937e26c89f246))
+
 ## [1.6.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.5.0...wizard-ssh-v1.6.0) (2026-06-05)
 
 
