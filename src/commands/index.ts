@@ -13,6 +13,9 @@ import * as tunnelCmd from './tunnels.js';
 import * as configCmd from './config.js';
 import * as actions from './actions.js';
 import * as keysCmd from './keys.js';
+import * as agentCmd from './agent.js';
+import * as snippetCmd from './snippets.js';
+import * as autostartCmd from './autostart.js';
 import { addServerNonInteractive, addTunnelNonInteractive } from './noninteractive.js';
 import { doctor } from './doctor.js';
 import { info } from './info.js';
@@ -174,8 +177,18 @@ export function registerCommands(program: Command): void {
     .command('start [name]')
     .alias('bg')
     .description(tr.cmd.tunnelStartDesc)
-    .action(async (n?: string) => {
-      const code = await tunnelCmd.tunnelUpFlow(n);
+    .option('--tag <tag>', tr.cmd.tunnelStartOptTag)
+    .action(async (n: string | undefined, o: { tag?: string }) => {
+      // A name AND --tag select different sets — refuse instead of silently
+      // ignoring the explicit name.
+      if (o.tag && n) {
+        ui.printError(tr.cmd.tunnelTagConflict);
+        process.exitCode = 1;
+        return;
+      }
+      const code = o.tag
+        ? await tunnelCmd.tunnelUpByTagFlow(o.tag)
+        : await tunnelCmd.tunnelUpFlow(n);
       if (code) process.exitCode = code;
     });
   tunnel
@@ -189,8 +202,18 @@ export function registerCommands(program: Command): void {
     .alias('stop')
     .description(tr.cmd.tunnelDownDesc)
     .option('--all', tr.cmd.tunnelDownOptAll)
-    .action(async (n: string | undefined, o: { all?: boolean }) => {
-      const code = await tunnelCmd.tunnelDownFlow(n, o);
+    .option('--tag <tag>', tr.cmd.tunnelDownOptTag)
+    .action(async (n: string | undefined, o: { all?: boolean; tag?: string }) => {
+      // A name/--all AND --tag select different sets — refuse instead of
+      // silently ignoring the explicit argument.
+      if (o.tag && (n || o.all)) {
+        ui.printError(tr.cmd.tunnelTagConflict);
+        process.exitCode = 1;
+        return;
+      }
+      const code = o.tag
+        ? tunnelCmd.tunnelDownByTagFlow(o.tag)
+        : await tunnelCmd.tunnelDownFlow(n, o);
       if (code) process.exitCode = code;
     });
   tunnel
@@ -226,6 +249,33 @@ export function registerCommands(program: Command): void {
     .alias('cp')
     .description(tr.cmd.tunnelCloneDesc)
     .action((n?: string, nn?: string) => tunnelCmd.cloneTunnelFlow(n, nn));
+  // boot-time autostart units (launchd / systemd user)
+  const autostart = tunnel.command('autostart').description(tr.cmd.tunnelAutostartDesc);
+  autostart
+    .command('add [name]')
+    .alias('enable')
+    .description(tr.cmd.tunnelAutostartAddDesc)
+    .action(async (n?: string) => {
+      const code = await autostartCmd.autostartAddFlow(n);
+      if (code) process.exitCode = code;
+    });
+  autostart
+    .command('remove [name]')
+    .alias('rm')
+    .alias('disable')
+    .description(tr.cmd.tunnelAutostartRemoveDesc)
+    .action(async (n?: string) => {
+      const code = await autostartCmd.autostartRemoveFlow(n);
+      if (code) process.exitCode = code;
+    });
+  autostart
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.tunnelAutostartListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => autostartCmd.autostartListFlow(o));
+  autostart.action(() => autostartCmd.autostartListFlow());
+
   tunnel
     .command('logs [name]')
     .alias('log')
@@ -304,12 +354,41 @@ export function registerCommands(program: Command): void {
   program
     .command('run [name] [command...]')
     .description(tr.cmd.runDesc)
+    .option('--snippet <name>', tr.cmd.runOptSnippet)
     .passThroughOptions()
     .allowUnknownOption()
-    .action(async (n: string | undefined, command: string[]) => {
-      const code = await actions.runFlow(n, command ?? []);
+    .action(async (n: string | undefined, command: string[], o: { snippet?: string }) => {
+      const code = await actions.runFlow(n, command ?? [], { snippet: o.snippet });
       if (code) process.exitCode = code;
     });
+
+  // ---- command snippets ----
+  const snippet = program.command('snippet').alias('snip').description(tr.cmd.snippetGroupDesc);
+  snippet
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.snippetListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => snippetCmd.listSnippetsFlow(o));
+  snippet
+    .command('add [name]')
+    .alias('new')
+    .description(tr.cmd.snippetAddDesc)
+    .option('--command <cmd>', tr.cmd.snippetAddOptCommand)
+    .option('--server <name>', tr.cmd.snippetAddOptServer)
+    .action((name: string | undefined, o: { command?: string; server?: string }) =>
+      snippetCmd.addSnippetFlow(name, o),
+    );
+  snippet
+    .command('remove [name]')
+    .alias('rm')
+    .alias('delete')
+    .description(tr.cmd.snippetRemoveDesc)
+    .action(async (name?: string) => {
+      const code = await snippetCmd.removeSnippetFlow(name);
+      if (code) process.exitCode = code;
+    });
+  snippet.action(() => snippetCmd.listSnippetsFlow());
   program
     .command('transfer [name]')
     .alias('scp')
@@ -422,6 +501,39 @@ export function registerCommands(program: Command): void {
     .action((p?: string) => keysCmd.deleteKeyCommand(p));
   keys.action(() => keysCmd.keysMenu());
 
+  // ---- ssh-agent ----
+  const agent = program.command('agent').description(tr.cmd.agentGroupDesc);
+  agent
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.agentListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => {
+      const code = agentCmd.agentListFlow(o);
+      if (code) process.exitCode = code;
+    });
+  agent
+    .command('add [path]')
+    .description(tr.cmd.agentAddDesc)
+    .action(async (p?: string) => {
+      const code = await agentCmd.agentAddFlow(p);
+      if (code) process.exitCode = code;
+    });
+  agent
+    .command('remove [path]')
+    .alias('rm')
+    .alias('delete')
+    .description(tr.cmd.agentRemoveDesc)
+    .option('--all', tr.cmd.agentRemoveOptAll)
+    .action(async (p: string | undefined, o: { all?: boolean }) => {
+      const code = await agentCmd.agentRemoveFlow(p, o);
+      if (code) process.exitCode = code;
+    });
+  agent.action(() => {
+    const code = agentCmd.agentListFlow();
+    if (code) process.exitCode = code;
+  });
+
   // ---- known_hosts ----
   program
     .command('forget-host [name]')
@@ -452,6 +564,18 @@ export function registerCommands(program: Command): void {
     .option('--json', tr.cmd.optOutputJson)
     .action(async (tag: string, o: { json?: boolean }) => {
       const code = await actions.groupCheckFlow(tag, o);
+      if (code) process.exitCode = code;
+    });
+  group
+    .command('run <tag> [command...]')
+    .description(tr.cmd.groupRunDesc)
+    // passThroughOptions: anything after the tag operand goes to the remote
+    // command, so the help must say the flag belongs BEFORE the tag.
+    .option('--json', tr.cmd.groupRunOptJson)
+    .passThroughOptions()
+    .allowUnknownOption()
+    .action(async (tag: string, command: string[], o: { json?: boolean }) => {
+      const code = await actions.groupRunFlow(tag, command ?? [], o);
       if (code) process.exitCode = code;
     });
   group.action(() => group.help());

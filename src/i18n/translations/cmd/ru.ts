@@ -48,6 +48,13 @@ const ru = {
   tunnelSessionsDesc: 'список фоновых туннелей',
   tunnelDownDesc: 'остановить фоновый туннель (или все: --all)',
   tunnelDownOptAll: 'остановить все',
+  tunnelStartOptTag: 'поднять все туннели с тегом (профиль)',
+  tunnelDownOptTag: 'остановить все туннели с тегом (профиль)',
+  tunnelTagConflict: 'Укажите либо имя туннеля (или --all), либо --tag — не одновременно.',
+  tunnelAutostartDesc: 'автозапуск туннеля при загрузке (launchd/systemd)',
+  tunnelAutostartAddDesc: 'установить автозапуск для туннеля',
+  tunnelAutostartRemoveDesc: 'убрать автозапуск',
+  tunnelAutostartListDesc: 'список настроенных автозапусков',
   tunnelTempDesc: 'временный туннель на любой хост (без сохранения)',
   tunnelEditDesc: 'редактировать туннель',
   tunnelRemoveDesc: 'удалить туннель(и)',
@@ -100,14 +107,32 @@ const ru = {
   keysGenDesc: 'сгенерировать новый ключ (ssh-keygen)',
   keysRemoveDesc: 'удалить ключ (покажет, кто на него ссылается)',
 
+  // ssh-agent
+  agentGroupDesc: 'ssh-agent: какие ключи загружены, добавить/убрать',
+  agentListDesc: 'ключи, загруженные в агент',
+  agentAddDesc: 'добавить ключ в агент (ssh-add)',
+  agentRemoveDesc: 'убрать ключ из агента (или все: --all)',
+  agentRemoveOptAll: 'убрать все ключи',
+
   // forget-host / known_hosts
   forgetHostDesc: 'known_hosts: удалить запись (ssh-keygen -R) или показать (--list)',
   forgetHostOptList: 'показать записи known_hosts',
+
+  // snippets
+  snippetGroupDesc: 'сниппеты команд для wssh run',
+  snippetListDesc: 'список сниппетов',
+  snippetAddDesc: 'сохранить сниппет (имя + команда)',
+  snippetAddOptCommand: 'команда сниппета (выполняется через sh -lc)',
+  snippetAddOptServer: 'привязать к серверу (имя/алиас)',
+  snippetRemoveDesc: 'удалить сниппет',
+  runOptSnippet: 'выполнить сохранённый сниппет (флаг ставится до имени сервера)',
 
   // group
   groupDesc: 'группы серверов/туннелей по тегам',
   groupListDesc: 'теги и их размеры',
   groupCheckDesc: 'проверить доступность всех с тегом',
+  groupRunDesc: 'выполнить команду на всех серверах с тегом (параллельно)',
+  groupRunOptJson: 'вывести JSON (флаг ставится до тега)',
 
   // diagnostics / info
   doctorDesc: 'диагностика окружения (бинари, права, конфиг)',

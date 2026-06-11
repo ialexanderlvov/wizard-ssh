@@ -129,6 +129,29 @@ export function healthCheckAll(
   });
 }
 
+export interface FleetRunResult {
+  name: string;
+  /** ssh exit code; null when the run timed out / failed to spawn */
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** Run one command on many servers concurrently (output captured, bounded
+ *  concurrency). BatchMode=yes so an agent/key failure errors fast instead of
+ *  hanging on a password prompt — callers must filter out password-auth servers. */
+export function runCommandOnAll(
+  targets: readonly Server[],
+  command: string[],
+  opts: { concurrency?: number; timeoutMs?: number } = {},
+): Promise<FleetRunResult[]> {
+  return mapPool(targets, opts.concurrency ?? 8, async (s) => {
+    const args = ['-o', 'BatchMode=yes', ...buildRunArgs(s, command)];
+    const res = await captureAsync('ssh', args, opts.timeoutMs ?? 120_000);
+    return { name: s.name, code: res.status, stdout: res.stdout, stderr: res.stderr };
+  });
+}
+
 /** Copy a public key to the server (`ssh-copy-id`). */
 export async function copyId(
   server: Server,

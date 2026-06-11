@@ -62,6 +62,21 @@ const en: Dict = {
   actionInstall: '📡 Install on server (ssh-copy-id)',
   actionDelete: '🗑 Delete key',
   mainMenuCrumb: 'Main menu',
+
+  // ssh-agent (wssh agent …)
+  agentUnavailable: 'ssh-agent unavailable: no ssh-add, or no agent running (check SSH_AUTH_SOCK).',
+  agentEmpty: 'The agent is running but holds no keys. Add one: wssh agent add',
+  agentSection: (n) => `Keys in ssh-agent (${n})`,
+  agentEnsure: 'ssh-agent',
+  agentPickAdd: '🗝 Which key to add to the agent?',
+  agentAdded: (path) => `Key added to the agent: ${path}`,
+  agentAddFailed: (code) => `ssh-add exited with code ${code}.`,
+  agentKeychainQuestion: 'Store the key passphrase in the Keychain (--apple-use-keychain)?',
+  agentPickRemove: '🧹 Which key to remove from the agent?',
+  agentRemoved: 'Key removed from the agent.',
+  agentRemovedAll: 'All keys removed from the agent.',
+  agentRemoveFailed: (code) => `ssh-add exited with code ${code}.`,
+  agentConfirmRemoveAll: (n) => `Remove all keys (${n}) from the agent?`,
 };
 
 export default en;

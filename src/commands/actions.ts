@@ -8,12 +8,14 @@ import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
 import { transferSessions, type TransferSession } from '../store/transfer-sessions.store.js';
+import { snippets, type Snippet } from '../store/snippets.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import {
   healthCheck,
   healthCheckAll,
   copyId,
   runCommand,
+  runCommandOnAll,
   transfer,
   transferArgv,
 } from '../ssh/features.js';
@@ -23,6 +25,7 @@ import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
 import { startTransferDetached } from '../ssh/runner.js';
 import { destination } from '../ssh/args.js';
+import { shQuote } from '../utils/shell.js';
 import * as ui from '../ui/index.js';
 import { renderStatusTable } from '../ui/tables.js';
 import { targetSummary } from '../ui/format.js';
@@ -31,6 +34,7 @@ import { commandExists } from '../utils/exec.js';
 import { newId } from '../utils/id.js';
 import { tailFile, followLog } from '../utils/logtail.js';
 import { resolveEntity, resolvePassword } from './helpers.js';
+import { pickRemotePath } from './remote-picker.js';
 import { tr } from '../i18n/index.js';
 
 /** Resolve a server, or fall back to a tunnel (both are connection targets). */
@@ -254,6 +258,97 @@ export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {})
   return statusFlow({ tag: tag.trim(), json: opts.json });
 }
 
+/** Run one command on every server carrying a tag, in parallel, with a per-host
+ *  output dump and an exit-code summary (a tiny pssh). Password-auth servers are
+ *  skipped: a parallel captured run can't host the interactive sshpass lifecycle
+ *  (same rule as background tunnels/transfers). */
+export async function groupRunFlow(
+  tag: string,
+  command: string[],
+  opts: { json?: boolean } = {},
+): Promise<number> {
+  if (!tag.trim()) {
+    ui.printError(tr.actions.groupRunNeedsTag);
+    return 1;
+  }
+  const tagged = servers.all().filter((s) => s.tags.includes(tag.trim()));
+  if (!tagged.length) {
+    if (opts.json) console.log('[]');
+    else ui.printWarn(tr.actions.groupRunNoServers(tag.trim()));
+    return 0;
+  }
+  const skipped = tagged.filter((s) => s.auth === 'password');
+  const targets = tagged.filter((s) => s.auth !== 'password');
+
+  let cmd = command;
+  if (!cmd.length) {
+    // JSON mode is for scripts — never open an interactive prompt there (a
+    // non-TTY would die on ensureInteractive AFTER promising machine output).
+    if (opts.json) {
+      ui.printError(tr.actions.groupRunJsonNeedsCommand);
+      return 1;
+    }
+    ui.ensureInteractive(tr.actions.runEnsure);
+    const line = await ui.text({
+      message: tr.actions.runPrompt,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+    // ssh space-joins the remote argv and the remote shell re-splits it, so the
+    // line must travel as ONE quoted sh argument or only its first word runs.
+    cmd = ['sh', '-lc', shQuote(line)];
+  }
+
+  // Skipped password-auth hosts must stay visible in JSON too — otherwise a
+  // script concludes every tagged host ran the command.
+  const skippedJson = skipped.map((s) => ({
+    name: s.name,
+    code: null,
+    stdout: '',
+    stderr: '',
+    skipped: 'password-auth',
+  }));
+  if (skipped.length && !opts.json)
+    ui.printWarn(tr.actions.groupRunSkippedPassword(skipped.map((s) => s.name).join(', ')));
+  if (!targets.length) {
+    if (opts.json) console.log(JSON.stringify(skippedJson, null, 2));
+    else ui.printError(tr.actions.groupRunNoTargets(tag.trim()));
+    return 1;
+  }
+
+  if (!opts.json) ui.printSection('⚡', tr.actions.groupRunSection(tag.trim(), targets.length));
+  const results = await runCommandOnAll(targets, cmd, { concurrency: 8 });
+  for (const s of targets) servers.touch(s.id);
+
+  if (opts.json) {
+    console.log(JSON.stringify([...results, ...skippedJson], null, 2));
+    return results.some((r) => r.code !== 0) ? 1 : 0;
+  }
+  for (const r of results) {
+    const ok = r.code === 0;
+    const head = ok
+      ? `${ui.chalk.green('✔')} ${ui.chalk.bold(r.name)}`
+      : `${ui.chalk.red('✖')} ${ui.chalk.bold(r.name)}  ${ui.chalk.red(
+          r.code === null ? tr.actions.groupRunTimedOut : tr.actions.groupRunExit(r.code),
+        )}`;
+    console.log('\n' + head);
+    // Success → stdout only (stderr is usually motd/banner noise); failure →
+    // both streams, since the reason typically lands on stderr.
+    const body = (ok ? r.stdout : `${r.stdout}${r.stderr}`).trimEnd();
+    if (body)
+      console.log(
+        body
+          .split('\n')
+          .map((l) => '  ' + l)
+          .join('\n'),
+      );
+  }
+  const fail = results.filter((r) => r.code !== 0).length;
+  console.log('');
+  if (fail) ui.printWarn(tr.actions.groupRunSummaryFail(fail, results.length));
+  else ui.printOk(tr.actions.groupRunSummaryOk(results.length));
+  return fail ? 1 : 0;
+}
+
 export async function copyIdFlow(name?: string): Promise<number> {
   const server = await resolveServerLike(name, tr.actions.copyIdPick);
   if (!server) return 0;
@@ -287,17 +382,65 @@ export async function copyIdFlow(name?: string): Promise<number> {
   }
 }
 
-export async function runFlow(name: string | undefined, command: string[]): Promise<number> {
+export async function runFlow(
+  name: string | undefined,
+  command: string[],
+  opts: { snippet?: string } = {},
+): Promise<number> {
   const server = await resolveServerLike(name, tr.actions.runPick);
   if (!server) return 0;
   let cmd = command;
+  if (!cmd.length && opts.snippet) {
+    const sn = snippets.findByName(opts.snippet);
+    if (!sn) {
+      ui.printError(tr.actions.snippetNotFound(opts.snippet));
+      return 1;
+    }
+    // A server-bound snippet must not run elsewhere — the interactive picker
+    // enforces this via forServer(), the flag path has to as well.
+    if (sn.server && sn.server.toLowerCase() !== server.name.toLowerCase()) {
+      ui.printError(tr.actions.snippetWrongServer(sn.name, sn.server));
+      return 1;
+    }
+    cmd = ['sh', '-lc', shQuote(sn.command)];
+  }
   if (!cmd.length) {
     ui.ensureInteractive(tr.actions.runEnsure);
-    const line = await ui.text({
-      message: tr.actions.runPrompt,
-      validate: (v) => v.trim().length > 0 || tr.common.empty,
-    });
-    cmd = ['sh', '-lc', line];
+    // Offer the saved snippets applicable to this server before falling back to
+    // a typed command — the repeated-command case is what snippets exist for.
+    let line: string | null = null;
+    const available = snippets.forServer(server.name);
+    if (available.length) {
+      type Item = { kind: 'manual' } | { kind: 'snippet'; snippet: Snippet };
+      const items: Item[] = [
+        { kind: 'manual' },
+        ...available.map((snippet) => ({ kind: 'snippet' as const, snippet })),
+      ];
+      const picked = await ui.pickFromList<Item>({
+        message: tr.actions.runPickSnippet,
+        items,
+        render: (it) =>
+          it.kind === 'manual'
+            ? ui.chalk.green(tr.actions.runManualEntry)
+            : `${ui.chalk.bold(it.snippet.name)}  ${ui.chalk.dim(it.snippet.command)}`,
+        search: (it) =>
+          it.kind === 'manual'
+            ? tr.actions.manualSearch
+            : `${it.snippet.name} ${it.snippet.command}`,
+        pageSize: 14,
+      });
+      if (picked === ui.BACK) return 0;
+      if (picked.kind === 'snippet') line = picked.snippet.command;
+    }
+    if (line === null) {
+      line = await ui.text({
+        message: tr.actions.runPrompt,
+        validate: (v) => v.trim().length > 0 || tr.common.empty,
+      });
+    }
+    // ssh space-joins the remote argv and the remote shell re-splits it, so the
+    // line must travel as ONE quoted sh argument or only its first word runs.
+    cmd = ['sh', '-lc', shQuote(line)];
   }
   const password = await resolvePassword(server);
   servers.touch(server.id);
@@ -374,7 +517,15 @@ export async function transferFlow(name?: string, cli: TransferCliOptions = {}):
   let remotePath = cli.remote;
   if (remotePath === undefined || !remotePath.trim()) {
     if (!interactive) throw new WizardError(tr.actions.transferNeedRemote);
-    remotePath = await ui.text({
+    // Browse the server instead of typing the path blind (agent/key only — a
+    // captured password run would need an sshpass lifecycle). Backing out of the
+    // browser, or any listing failure, falls through to the manual prompt.
+    remotePath = undefined;
+    if (server.auth !== 'password') {
+      const picked = await pickRemotePath(server, { message: tr.actions.remotePath });
+      if (picked !== null) remotePath = picked;
+    }
+    remotePath ??= await ui.text({
       message: tr.actions.remotePath,
       validate: (v) => v.trim().length > 0 || tr.common.empty,
     });

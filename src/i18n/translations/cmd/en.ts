@@ -49,6 +49,13 @@ const en: Dict = {
   tunnelSessionsDesc: 'list background tunnels',
   tunnelDownDesc: 'stop background tunnel (or all: --all)',
   tunnelDownOptAll: 'stop all',
+  tunnelStartOptTag: 'raise every tunnel with a tag (profile)',
+  tunnelDownOptTag: 'stop every tunnel with a tag (profile)',
+  tunnelTagConflict: 'Use either a tunnel name (or --all) or --tag, not both.',
+  tunnelAutostartDesc: 'start the tunnel at login (launchd/systemd)',
+  tunnelAutostartAddDesc: 'install autostart for a tunnel',
+  tunnelAutostartRemoveDesc: 'remove autostart',
+  tunnelAutostartListDesc: 'list configured autostarts',
   tunnelTempDesc: 'temporary tunnel to any host (not saved)',
   tunnelEditDesc: 'edit tunnel',
   tunnelRemoveDesc: 'remove tunnel(s)',
@@ -101,14 +108,32 @@ const en: Dict = {
   keysGenDesc: 'generate a new key (ssh-keygen)',
   keysRemoveDesc: 'remove key (shows who references it)',
 
+  // ssh-agent
+  agentGroupDesc: 'ssh-agent: which keys are loaded, add/remove',
+  agentListDesc: 'keys loaded into the agent',
+  agentAddDesc: 'add a key to the agent (ssh-add)',
+  agentRemoveDesc: 'remove a key from the agent (or all: --all)',
+  agentRemoveOptAll: 'remove all keys',
+
   // forget-host / known_hosts
   forgetHostDesc: 'known_hosts: remove entry (ssh-keygen -R) or show (--list)',
   forgetHostOptList: 'show known_hosts entries',
+
+  // snippets
+  snippetGroupDesc: 'command snippets for wssh run',
+  snippetListDesc: 'list snippets',
+  snippetAddDesc: 'save a snippet (name + command)',
+  snippetAddOptCommand: 'snippet command (runs via sh -lc)',
+  snippetAddOptServer: 'bind to a server (name/alias)',
+  snippetRemoveDesc: 'remove a snippet',
+  runOptSnippet: 'run a saved snippet (place the flag before the server name)',
 
   // group
   groupDesc: 'server/tunnel groups by tag',
   groupListDesc: 'tags and their sizes',
   groupCheckDesc: 'check availability of all with a tag',
+  groupRunDesc: 'run a command on every server with a tag (in parallel)',
+  groupRunOptJson: 'output JSON (place the flag before the tag)',
 
   // diagnostics / info
   doctorDesc: 'diagnose environment (binaries, permissions, config)',

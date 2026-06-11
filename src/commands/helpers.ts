@@ -6,6 +6,7 @@ import type { ConnectionTarget, Entity } from '../core/types.js';
 import { PromptCancelError } from '../core/errors.js';
 import { settings } from '../store/settings.store.js';
 import { vault } from '../vault/vault.js';
+import { kind as keystoreKind, label as keystoreLabel } from '../vault/keystore.js';
 import { destination } from '../ssh/args.js';
 import { capture } from '../utils/exec.js';
 import { filterEntities } from '../search/index.js';
@@ -68,11 +69,12 @@ export async function ensureVaultSetup(): Promise<boolean> {
   }
   let touchId = false;
   if (vault.touchIdSupported()) {
-    // Be honest about the trade-off: enabling Touch ID adds a same-user-readable
-    // copy of the master key to the Keychain, so the user decides on a true model.
-    ui.printInfo(tr.helpers.touchIdNote);
+    // Be honest about the trade-off: enabling the OS keystore adds a same-user-
+    // readable copy of the master key (Keychain on macOS, Secret Service on
+    // Linux), so the user decides on a true model.
+    ui.printInfo(keystoreKind() === 'keyring' ? tr.helpers.keyringNote : tr.helpers.touchIdNote);
     touchId = await ui.confirm({
-      message: tr.helpers.enableTouchId,
+      message: tr.helpers.enableTouchId(keystoreLabel()),
       default: true,
     });
   }
@@ -102,7 +104,7 @@ export async function unlockVault(): Promise<boolean> {
       const method = await ui.choose<'touchid' | 'passphrase'>({
         message: tr.helpers.unlockMethod,
         choices: [
-          { name: tr.helpers.unlockWithTouchId, value: 'touchid' },
+          { name: tr.helpers.unlockWithTouchId(keystoreLabel()), value: 'touchid' },
           { name: tr.helpers.unlockWithPassphrase, value: 'passphrase' },
         ],
         default: 'touchid',

@@ -26,12 +26,18 @@ const ru = {
   sshConfigUnparseable: 'не удалось разобрать',
   sshConfigOk: (hosts: number, perms: string) => `${hosts} хостов · права ${perms}`,
   sshConfigMissing: 'нет файла (будет создан)',
+  // ssh-agent
+  agentUnavailable: 'не запущен или нет ssh-add (проверьте SSH_AUTH_SOCK)',
+  agentEmpty: 'запущен, но без ключей (wssh agent add)',
+  agentKeys: (n: number) => `запущен · ключей: ${n}`,
   // vault / touch id
   vaultLabel: 'хранилище паролей',
   vaultCreated: 'создано',
   vaultNotCreated: 'не создано',
   touchIdSupported: 'поддерживается',
   touchIdUnavailable: 'недоступен (нужен Xcode CLT)',
+  keyringSupported: 'поддерживается (Secret Service / secret-tool)',
+  keyringUnavailable: 'недоступен (нужны secret-tool/libsecret и сессия D-Bus)',
   // corrupt backups
   corruptLabel: 'повреждённые данные',
   corruptFound: (files: string) =>

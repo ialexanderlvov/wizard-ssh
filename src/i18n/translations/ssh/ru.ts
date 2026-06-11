@@ -36,6 +36,9 @@ const ru = {
   runnerReconnecting: (code: number, secs: number, attempt: number) =>
     `Соединение прервано (код ${code}). Переподключение через ${secs}с… (попытка ${attempt})`,
   runnerTunnelClosed: 'Туннель закрыт.',
+  runnerReconnectSummary: (n: number) => `Переподключений за сессию: ${n}.`,
+  runnerNotifyGaveUp: (name: string) =>
+    `Туннель «${name}» упал и не смог переподключиться — он остановлен.`,
   runnerPossibleConnectError: (port: number) =>
     `Похоже на ошибку подключения/форварда. Проверь SSH-доступ и что локальный порт ${port} свободен.`,
   // hostkey

@@ -7,12 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { DATA_DIR, FILES, SSH_DIR, SSH_CONFIG_FILE } from '../core/paths.js';
 import { capture, commandExists } from '../utils/exec.js';
-import { isMac, isWindows } from '../utils/platform.js';
+import { isMac, isLinux, isWindows } from '../utils/platform.js';
 import { listHosts } from '../ssh-config/index.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
 import { listKeys, auditKeys, type KeyAudit, type KeyIssue } from '../ssh/keys.js';
+import { probeAgent } from '../ssh/agent.js';
 import { expandHome, tilde } from '../utils/strings.js';
 import * as ui from '../ui/index.js';
 import { tr } from '../i18n/index.js';
@@ -145,6 +146,22 @@ export function collectChecks(keyAudit: KeyAudit[] = collectKeyAudit()): Check[]
     checks.push({ label: '~/.ssh/config', status: 'warn', detail: tr.doctor.sshConfigMissing });
   }
 
+  // ssh-agent: most flows assume agent auth, so a dead/empty agent is the most
+  // common "why can't I connect" answer — surface it in the health report.
+  {
+    const agent = probeAgent();
+    checks.push({
+      label: 'ssh-agent',
+      status: agent.status === 'unavailable' ? 'warn' : 'ok',
+      detail:
+        agent.status === 'unavailable'
+          ? tr.doctor.agentUnavailable
+          : agent.status === 'empty'
+            ? tr.doctor.agentEmpty
+            : tr.doctor.agentKeys(agent.identities.length),
+    });
+  }
+
   // vault / touch id
   checks.push({
     label: tr.doctor.vaultLabel,
@@ -156,6 +173,12 @@ export function collectChecks(keyAudit: KeyAudit[] = collectKeyAudit()): Check[]
       label: 'Touch ID',
       status: 'ok',
       detail: vault.touchIdSupported() ? tr.doctor.touchIdSupported : tr.doctor.touchIdUnavailable,
+    });
+  } else if (isLinux) {
+    checks.push({
+      label: 'Keyring',
+      status: 'ok',
+      detail: vault.touchIdSupported() ? tr.doctor.keyringSupported : tr.doctor.keyringUnavailable,
     });
   }
 

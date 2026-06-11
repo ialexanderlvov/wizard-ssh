@@ -10,9 +10,41 @@ const ru = {
   tunnelRaised: (name: string, pid: number) => `Туннель «${name}» поднят в фоне (pid ${pid}).`,
   tunnelLog: (log: string, name: string) => `Лог: ${log} · остановить: wssh tunnel down ${name}`,
 
+  // tag profiles (tunnel start/down --tag)
+  tagNeedsTag: 'Укажите тег: wssh tunnel start --tag <tag>',
+  tagNoTunnels: (tag: string) => `Нет туннелей с тегом «${tag}».`,
+  tagUpSection: (tag: string, n: number) => `Профиль #${tag} — поднимаю туннели: ${n}`,
+  tagUpDone: (n: number) => `Профиль поднят: туннелей в фоне — ${n}.`,
+  tagUpFail: (fail: number, total: number) => `Не поднялось: ${fail} из ${total}.`,
+  tagDownNone: (tag: string) => `Нет запущенных туннелей с тегом «${tag}».`,
+
+  // autostart (launchd / systemd)
+  autostartUnsupported: 'Автозапуск поддерживается только на macOS (launchd) и Linux (systemd).',
+  autostartPickAdd: '🚀 Какой туннель запускать при загрузке?',
+  autostartAgentCaveat:
+    'Авторизация через agent: при загрузке агент ещё пуст, туннель поднимется только после добавления ключа. Надёжнее — авторизация по файлу ключа.',
+  autostartFailed: (detail: string) => `Не удалось установить автозапуск: ${detail}`,
+  autostartInstalled: (name: string) =>
+    `Автозапуск для «${name}» установлен — туннель будет подниматься при входе в систему.`,
+  autostartUnitFile: (file: string) => `Юнит: ${file}`,
+  autostartLogsLaunchd: (id: string) => `Лог: ~/.wizard-ssh/logs/autostart-${id}.log`,
+  autostartLogsSystemd: (id: string) => `Лог: journalctl --user -u wssh-tunnel-${id}`,
+  autostartEditNote:
+    'Команда ssh зафиксирована в юните: после правки туннеля переустановите автозапуск.',
+  autostartNone: 'Автозапуск не настроен ни для одного туннеля.',
+  autostartEnsure: 'Автозапуск туннелей',
+  autostartNotFound: (name: string) => `Для «${name}» автозапуск не настроен.`,
+  autostartPickRemove: '🗑 Какой автозапуск убрать?',
+  autostartRemoved: 'Автозапуск убран.',
+  autostartNothingRemoved: 'Юнит не найден — нечего убирать.',
+  autostartOrphan: (id: string) => `(туннель удалён) ${id}`,
+  autostartSection: (n: number) => `Автозапуск туннелей (${n})`,
+
   // listSessions
   noBackground: 'Нет фоновых туннелей. Поднять: wssh tunnel start <имя>',
   backgroundSection: (count: number) => `Фоновые туннели (${count})`,
+  sessionNotListening: (name: string) =>
+    `«${name}»: процесс жив, но локальный порт не слушается — проброс не работает. Лог: wssh tunnel logs ${name}`,
 
   // tunnelDownFlow
   noBackgroundDown: 'Нет фоновых туннелей.',

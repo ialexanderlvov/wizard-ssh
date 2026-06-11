@@ -19,7 +19,7 @@ import {
   isValidKdf,
   keyMatchesCheck,
 } from './crypto.js';
-import * as touchid from './touchid.js';
+import * as keystore from './keystore.js';
 import { tr } from '../i18n/index.js';
 
 interface VaultFile {
@@ -131,7 +131,7 @@ class Vault {
   }
 
   touchIdSupported(): boolean {
-    return touchid.isSupported();
+    return keystore.isSupported();
   }
 
   /** Best-effort zeroization of the in-memory master key before dropping it, so
@@ -165,14 +165,14 @@ class Vault {
   /** Store the live key in the Keychain so Touch ID can release it later. */
   enableTouchId(): boolean {
     if (!this.key || !this.read()) return false;
-    if (!touchid.isSupported()) return false;
-    if (!touchid.storeKey(this.key.toString('base64'))) return false;
+    if (!keystore.isSupported()) return false;
+    if (!keystore.storeKey(this.key.toString('base64'))) return false;
     this.write({ ...(this.read() as VaultFile), touchId: true });
     return true;
   }
 
   disableTouchId(): void {
-    touchid.deleteKey();
+    keystore.deleteKey();
     const f = this.read();
     if (f) this.write({ ...f, touchId: false });
   }
@@ -184,9 +184,9 @@ class Vault {
     if (!file) return false;
 
     // 1) Touch ID path.
-    if (file.touchId && opts.allowTouchId !== false && touchid.isSupported()) {
-      if (touchid.authenticate()) {
-        const stored = touchid.loadKey();
+    if (file.touchId && opts.allowTouchId !== false && keystore.isSupported()) {
+      if (keystore.authenticate()) {
+        const stored = keystore.loadKey();
         if (stored) {
           const key = Buffer.from(stored, 'base64');
           if (keyMatchesCheck(key, file.check)) {
@@ -205,8 +205,8 @@ class Vault {
       if (keyMatchesCheck(key, file.check)) {
         this.key = key;
         // Heal a missing keychain entry so Touch ID keeps working.
-        if (file.touchId && touchid.isSupported() && !touchid.loadKey()) {
-          touchid.storeKey(key.toString('base64'));
+        if (file.touchId && keystore.isSupported() && !keystore.loadKey()) {
+          keystore.storeKey(key.toString('base64'));
         }
         return true;
       }
@@ -262,7 +262,7 @@ class Vault {
   /** Wipe the whole vault (e.g. forgotten passphrase). Callers must also clear
    *  any secretId references on entities so they revert to asking each time. */
   reset(): void {
-    touchid.deleteKey();
+    keystore.deleteKey();
     try {
       fs.rmSync(FILES.vault, { force: true });
     } catch {
@@ -297,8 +297,8 @@ class Vault {
     // silently breaking every future Touch ID unlock — so drop the keychain entry
     // and persist touchId=false instead of advertising a Touch ID that can't work.
     let keepTouchId = file.touchId;
-    if (file.touchId && touchid.isSupported() && !touchid.storeKey(key.toString('base64'))) {
-      touchid.deleteKey();
+    if (file.touchId && keystore.isSupported() && !keystore.storeKey(key.toString('base64'))) {
+      keystore.deleteKey();
       keepTouchId = false;
     }
     this.write({
