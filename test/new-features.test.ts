@@ -133,6 +133,59 @@ describe('snippets store', () => {
   });
 });
 
+describe('tagCounts (shared tag inventory)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+  });
+
+  const tunnelInput = (name: string, tags: string[]) => ({
+    name,
+    description: '',
+    tags,
+    kind: 'tunnel' as const,
+    hostMode: 'manual' as const,
+    sshHost: '',
+    host: 'h.example.com',
+    user: 'root',
+    sshPort: 22,
+    auth: 'agent' as const,
+    keyPath: null,
+    secretId: null,
+    type: 'local' as const,
+    localPort: 8080,
+    remoteHost: '127.0.0.1',
+    remotePort: 80,
+    openBrowser: false,
+  });
+
+  it("'tunnels' includes temporary tunnels (profiles span both stores); 'all' mirrors the group/status surface", async () => {
+    const { tunnels, tempTunnels } = await import('../src/store/tunnels.store.js');
+    tunnels.create(tunnelInput('main-1', ['work']));
+    tempTunnels.create(tunnelInput('tmp-1', ['demo']));
+    const { tagCounts } = await import('../src/commands/actions.js');
+    // profile picker ('tunnels') must offer the temp-only tag — down --tag stops it
+    expect(Object.fromEntries(tagCounts('tunnels'))).toEqual({ work: 1, demo: 1 });
+    // groups/status don't cover temp tunnels, so 'all' must not offer 'demo'
+    expect(Object.fromEntries(tagCounts('all'))).toEqual({ work: 1 });
+    expect(tagCounts('servers')).toEqual([]);
+  });
+
+  it('sorts by count desc, then name asc, and accepts a pre-scanned pool', async () => {
+    const { tagCounts } = await import('../src/commands/actions.js');
+    const mk = (tags: string[]) => ({ tags });
+    const rows = tagCounts('all', {
+      servers: [mk(['b']), mk(['a']), mk(['a'])] as never[],
+      tunnels: [],
+      tempTunnels: [],
+    });
+    expect(rows).toEqual([
+      ['a', 2],
+      ['b', 1],
+    ]);
+  });
+});
+
 describe('tunnel tag profiles', () => {
   beforeEach(() => {
     vi.resetModules();
