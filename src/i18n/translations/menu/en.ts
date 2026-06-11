@@ -51,11 +51,22 @@ const en: Dict = {
   },
   background: {
     title: 'Background tunnels',
+    crumb: 'Background',
     list: 'List running',
     up: 'Start in background',
+    upTag: 'Start a profile (all with a tag)',
     down: 'Stop',
+    downTag: 'Stop a profile (all with a tag)',
     downAll: 'Stop all',
     logs: 'Show log',
+    autostart: 'Autostart at login ▸',
+    pickTag: '🏷 Which tag (profile)?',
+  },
+  autostart: {
+    title: 'Tunnel autostart',
+    list: 'List configured',
+    add: 'Add a tunnel to autostart',
+    remove: 'Remove from autostart',
   },
   actions: {
     title: 'SSH actions',
@@ -65,7 +76,21 @@ const en: Dict = {
     run: 'Run a command',
     transfer: 'File transfer',
     bgTransfers: 'Background transfers (log)',
-    groups: 'Groups by tags',
+    snippets: 'Command snippets ▸',
+    groups: 'Groups by tags ▸',
+  },
+  groups: {
+    title: 'Groups by tags',
+    list: 'List tags',
+    check: 'Check reachability by tag',
+    run: 'Run a command by tag',
+    pickTag: '🏷 Which tag?',
+  },
+  snippets: {
+    title: 'Command snippets',
+    list: 'List',
+    add: 'Add',
+    remove: 'Remove',
   },
 };
 
