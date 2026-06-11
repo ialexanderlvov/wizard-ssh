@@ -12,6 +12,14 @@ const en: Dict = {
   tunnelRaised: (name, pid) => `Tunnel «${name}» raised in the background (pid ${pid}).`,
   tunnelLog: (log, name) => `Log: ${log} · stop: wssh tunnel down ${name}`,
 
+  // tag profiles (tunnel start/down --tag)
+  tagNeedsTag: 'Provide a tag: wssh tunnel start --tag <tag>',
+  tagNoTunnels: (tag) => `No tunnels tagged “${tag}”.`,
+  tagUpSection: (tag, n) => `Profile #${tag} — raising ${n} tunnel(s)`,
+  tagUpDone: (n) => `Profile up: ${n} tunnel(s) in the background.`,
+  tagUpFail: (fail, total) => `Failed to raise: ${fail} of ${total}.`,
+  tagDownNone: (tag) => `No running tunnels tagged “${tag}”.`,
+
   // listSessions
   noBackground: 'No background tunnels. Raise one: wssh tunnel start <name>',
   backgroundSection: (count) => `Background tunnels (${count})`,

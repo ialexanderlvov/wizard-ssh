@@ -10,6 +10,14 @@ const ru = {
   tunnelRaised: (name: string, pid: number) => `Туннель «${name}» поднят в фоне (pid ${pid}).`,
   tunnelLog: (log: string, name: string) => `Лог: ${log} · остановить: wssh tunnel down ${name}`,
 
+  // tag profiles (tunnel start/down --tag)
+  tagNeedsTag: 'Укажите тег: wssh tunnel start --tag <tag>',
+  tagNoTunnels: (tag: string) => `Нет туннелей с тегом «${tag}».`,
+  tagUpSection: (tag: string, n: number) => `Профиль #${tag} — поднимаю туннели: ${n}`,
+  tagUpDone: (n: number) => `Профиль поднят: туннелей в фоне — ${n}.`,
+  tagUpFail: (fail: number, total: number) => `Не поднялось: ${fail} из ${total}.`,
+  tagDownNone: (tag: string) => `Нет запущенных туннелей с тегом «${tag}».`,
+
   // listSessions
   noBackground: 'Нет фоновых туннелей. Поднять: wssh tunnel start <имя>',
   backgroundSection: (count: number) => `Фоновые туннели (${count})`,

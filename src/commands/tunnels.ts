@@ -84,7 +84,15 @@ export async function connectTunnel(tunnel: Tunnel, store: TunnelStore = tunnels
 export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels): Promise<number> {
   const tunnel = await resolveEntity(store, name, tr.tunnels.pickTunnelUp);
   if (!tunnel) return 0;
+  return startTunnelBackground(tunnel, store);
+}
 
+/** The background-start core shared by the single-tunnel flow and the tag
+ *  ("profile") flow: guards, port check, detach, session registration. */
+export async function startTunnelBackground(
+  tunnel: Tunnel,
+  store: TunnelStore = tunnels,
+): Promise<number> {
   if (tunnel.auth === 'password') {
     ui.printError(tr.tunnels.bgNoPassword);
     return 1;
@@ -123,6 +131,65 @@ export async function tunnelUpFlow(name?: string, store: TunnelStore = tunnels):
   });
   ui.printOk(tr.tunnels.tunnelRaised(running.name, pid));
   ui.printInfo(tr.tunnels.tunnelLog(tilde(logFile), tunnel.name));
+  return 0;
+}
+
+/** Bring up every saved tunnel carrying a tag — a one-command "profile"
+ *  (e.g. `wssh tunnel start --tag work`). Sequential on purpose: each start may
+ *  prompt interactively about a busy local port. */
+export async function tunnelUpByTagFlow(tag: string): Promise<number> {
+  const t = tag.trim();
+  if (!t) {
+    ui.printError(tr.tunnels.tagNeedsTag);
+    return 1;
+  }
+  const list = tunnels.all().filter((x) => x.tags.includes(t));
+  if (!list.length) {
+    ui.printWarn(tr.tunnels.tagNoTunnels(t));
+    return 0;
+  }
+  ui.printSection('🚇', tr.tunnels.tagUpSection(t, list.length));
+  let failed = 0;
+  for (const tunnel of list) {
+    if ((await startTunnelBackground(tunnel, tunnels)) !== 0) failed++;
+  }
+  if (failed) {
+    ui.printWarn(tr.tunnels.tagUpFail(failed, list.length));
+    return 1;
+  }
+  ui.printOk(tr.tunnels.tagUpDone(list.length));
+  return 0;
+}
+
+/** Stop every running background tunnel whose tunnel carries a tag. */
+export function tunnelDownByTagFlow(tag: string): number {
+  const t = tag.trim();
+  if (!t) {
+    ui.printError(tr.tunnels.tagNeedsTag);
+    return 1;
+  }
+  const matching = sessions.list().filter((s) => {
+    const coll = s.store === 'temp' ? tempTunnels : tunnels;
+    return coll.findById(s.tunnelId)?.tags.includes(t) ?? false;
+  });
+  if (!matching.length) {
+    ui.printWarn(tr.tunnels.tagDownNone(t));
+    return 0;
+  }
+  let stopped = 0;
+  for (const s of matching) {
+    // Same PID-reuse TOCTOU guard as tunnelDownFlow: re-verify before signalling.
+    if (sessionAlive(s)) {
+      try {
+        process.kill(s.pid, 'SIGTERM');
+        stopped++;
+      } catch {
+        /* already gone */
+      }
+    }
+    sessions.remove(s.tunnelId);
+  }
+  ui.printOk(tr.tunnels.stopped(stopped));
   return 0;
 }
 

@@ -175,8 +175,18 @@ export function registerCommands(program: Command): void {
     .command('start [name]')
     .alias('bg')
     .description(tr.cmd.tunnelStartDesc)
-    .action(async (n?: string) => {
-      const code = await tunnelCmd.tunnelUpFlow(n);
+    .option('--tag <tag>', tr.cmd.tunnelStartOptTag)
+    .action(async (n: string | undefined, o: { tag?: string }) => {
+      // A name AND --tag select different sets — refuse instead of silently
+      // ignoring the explicit name.
+      if (o.tag && n) {
+        ui.printError(tr.cmd.tunnelTagConflict);
+        process.exitCode = 1;
+        return;
+      }
+      const code = o.tag
+        ? await tunnelCmd.tunnelUpByTagFlow(o.tag)
+        : await tunnelCmd.tunnelUpFlow(n);
       if (code) process.exitCode = code;
     });
   tunnel
@@ -190,8 +200,18 @@ export function registerCommands(program: Command): void {
     .alias('stop')
     .description(tr.cmd.tunnelDownDesc)
     .option('--all', tr.cmd.tunnelDownOptAll)
-    .action(async (n: string | undefined, o: { all?: boolean }) => {
-      const code = await tunnelCmd.tunnelDownFlow(n, o);
+    .option('--tag <tag>', tr.cmd.tunnelDownOptTag)
+    .action(async (n: string | undefined, o: { all?: boolean; tag?: string }) => {
+      // A name/--all AND --tag select different sets — refuse instead of
+      // silently ignoring the explicit argument.
+      if (o.tag && (n || o.all)) {
+        ui.printError(tr.cmd.tunnelTagConflict);
+        process.exitCode = 1;
+        return;
+      }
+      const code = o.tag
+        ? tunnelCmd.tunnelDownByTagFlow(o.tag)
+        : await tunnelCmd.tunnelDownFlow(n, o);
       if (code) process.exitCode = code;
     });
   tunnel
