@@ -566,6 +566,18 @@ export function registerCommands(program: Command): void {
       const code = await actions.groupCheckFlow(tag, o);
       if (code) process.exitCode = code;
     });
+  group
+    .command('run <tag> [command...]')
+    .description(tr.cmd.groupRunDesc)
+    // passThroughOptions: anything after the tag operand goes to the remote
+    // command, so the help must say the flag belongs BEFORE the tag.
+    .option('--json', tr.cmd.groupRunOptJson)
+    .passThroughOptions()
+    .allowUnknownOption()
+    .action(async (tag: string, command: string[], o: { json?: boolean }) => {
+      const code = await actions.groupRunFlow(tag, command ?? [], o);
+      if (code) process.exitCode = code;
+    });
   group.action(() => group.help());
 
   // ---- diagnostics ----

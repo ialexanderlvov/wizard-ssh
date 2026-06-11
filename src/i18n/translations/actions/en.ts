@@ -22,6 +22,18 @@ const en: Dict = {
   groupsEmpty: 'No tags yet. Add tags to servers/tunnels.',
   groupsSection: (n) => `Groups by tags (${n})`,
   groupNeedsTag: 'Provide a tag: wssh group check <tag>',
+  groupRunNeedsTag: 'Provide a tag: wssh group run <tag> [command…]',
+  groupRunNoServers: (tag) => `No servers tagged “${tag}”.`,
+  groupRunNoTargets: (tag) => `No runnable servers tagged “${tag}” (password-auth only).`,
+  groupRunSkippedPassword: (names) =>
+    `Skipped (password auth): ${names}. Group run works with agent/key auth only.`,
+  groupRunSection: (tag, n) => `Command by tag #${tag} — ${n} server(s)`,
+  groupRunExit: (code) => `exit ${code}`,
+  groupRunTimedOut: 'timed out / failed to start',
+  groupRunSummaryOk: (n) => `Done: all ${n} succeeded.`,
+  groupRunSummaryFail: (fail, total) => `Failed: ${fail} of ${total}.`,
+  groupRunJsonNeedsCommand:
+    'With --json provide the command explicitly: wssh group run <tag> <command…>',
   copyIdPick: '📋 Server to copy the key to (ssh-copy-id)',
   copyIdKeyQuestion: '🗝 Which key to install on the server?',
   copyIdDefaultChoice: 'Default (let ssh-copy-id choose)',

@@ -15,6 +15,7 @@ import {
   healthCheckAll,
   copyId,
   runCommand,
+  runCommandOnAll,
   transfer,
   transferArgv,
 } from '../ssh/features.js';
@@ -254,6 +255,97 @@ export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {})
     return 1;
   }
   return statusFlow({ tag: tag.trim(), json: opts.json });
+}
+
+/** Run one command on every server carrying a tag, in parallel, with a per-host
+ *  output dump and an exit-code summary (a tiny pssh). Password-auth servers are
+ *  skipped: a parallel captured run can't host the interactive sshpass lifecycle
+ *  (same rule as background tunnels/transfers). */
+export async function groupRunFlow(
+  tag: string,
+  command: string[],
+  opts: { json?: boolean } = {},
+): Promise<number> {
+  if (!tag.trim()) {
+    ui.printError(tr.actions.groupRunNeedsTag);
+    return 1;
+  }
+  const tagged = servers.all().filter((s) => s.tags.includes(tag.trim()));
+  if (!tagged.length) {
+    if (opts.json) console.log('[]');
+    else ui.printWarn(tr.actions.groupRunNoServers(tag.trim()));
+    return 0;
+  }
+  const skipped = tagged.filter((s) => s.auth === 'password');
+  const targets = tagged.filter((s) => s.auth !== 'password');
+
+  let cmd = command;
+  if (!cmd.length) {
+    // JSON mode is for scripts — never open an interactive prompt there (a
+    // non-TTY would die on ensureInteractive AFTER promising machine output).
+    if (opts.json) {
+      ui.printError(tr.actions.groupRunJsonNeedsCommand);
+      return 1;
+    }
+    ui.ensureInteractive(tr.actions.runEnsure);
+    const line = await ui.text({
+      message: tr.actions.runPrompt,
+      validate: (v) => v.trim().length > 0 || tr.common.empty,
+    });
+    // ssh space-joins the remote argv and the remote shell re-splits it, so the
+    // line must travel as ONE quoted sh argument or only its first word runs.
+    cmd = ['sh', '-lc', shQuote(line)];
+  }
+
+  // Skipped password-auth hosts must stay visible in JSON too — otherwise a
+  // script concludes every tagged host ran the command.
+  const skippedJson = skipped.map((s) => ({
+    name: s.name,
+    code: null,
+    stdout: '',
+    stderr: '',
+    skipped: 'password-auth',
+  }));
+  if (skipped.length && !opts.json)
+    ui.printWarn(tr.actions.groupRunSkippedPassword(skipped.map((s) => s.name).join(', ')));
+  if (!targets.length) {
+    if (opts.json) console.log(JSON.stringify(skippedJson, null, 2));
+    else ui.printError(tr.actions.groupRunNoTargets(tag.trim()));
+    return 1;
+  }
+
+  if (!opts.json) ui.printSection('⚡', tr.actions.groupRunSection(tag.trim(), targets.length));
+  const results = await runCommandOnAll(targets, cmd, { concurrency: 8 });
+  for (const s of targets) servers.touch(s.id);
+
+  if (opts.json) {
+    console.log(JSON.stringify([...results, ...skippedJson], null, 2));
+    return results.some((r) => r.code !== 0) ? 1 : 0;
+  }
+  for (const r of results) {
+    const ok = r.code === 0;
+    const head = ok
+      ? `${ui.chalk.green('✔')} ${ui.chalk.bold(r.name)}`
+      : `${ui.chalk.red('✖')} ${ui.chalk.bold(r.name)}  ${ui.chalk.red(
+          r.code === null ? tr.actions.groupRunTimedOut : tr.actions.groupRunExit(r.code),
+        )}`;
+    console.log('\n' + head);
+    // Success → stdout only (stderr is usually motd/banner noise); failure →
+    // both streams, since the reason typically lands on stderr.
+    const body = (ok ? r.stdout : `${r.stdout}${r.stderr}`).trimEnd();
+    if (body)
+      console.log(
+        body
+          .split('\n')
+          .map((l) => '  ' + l)
+          .join('\n'),
+      );
+  }
+  const fail = results.filter((r) => r.code !== 0).length;
+  console.log('');
+  if (fail) ui.printWarn(tr.actions.groupRunSummaryFail(fail, results.length));
+  else ui.printOk(tr.actions.groupRunSummaryOk(results.length));
+  return fail ? 1 : 0;
 }
 
 export async function copyIdFlow(name?: string): Promise<number> {

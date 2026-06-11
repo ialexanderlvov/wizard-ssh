@@ -132,6 +132,8 @@ const en: Dict = {
   groupDesc: 'server/tunnel groups by tag',
   groupListDesc: 'tags and their sizes',
   groupCheckDesc: 'check availability of all with a tag',
+  groupRunDesc: 'run a command on every server with a tag (in parallel)',
+  groupRunOptJson: 'output JSON (place the flag before the tag)',
 
   // diagnostics / info
   doctorDesc: 'diagnose environment (binaries, permissions, config)',

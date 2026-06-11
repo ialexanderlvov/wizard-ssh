@@ -21,6 +21,18 @@ const ru = {
   groupsEmpty: 'Тегов пока нет. Добавьте теги серверам/туннелям.',
   groupsSection: (n: number) => `Группы по тегам (${n})`,
   groupNeedsTag: 'Укажите тег: wssh group check <tag>',
+  groupRunNeedsTag: 'Укажите тег: wssh group run <tag> [команда…]',
+  groupRunNoServers: (tag: string) => `Нет серверов с тегом «${tag}».`,
+  groupRunNoTargets: (tag: string) =>
+    `С тегом «${tag}» не осталось серверов для запуска (только парольные).`,
+  groupRunSkippedPassword: (names: string) =>
+    `Пропущены (парольная аутентификация): ${names}. Групповой запуск — только agent/key.`,
+  groupRunSection: (tag: string, n: number) => `Команда по тегу #${tag} — серверов: ${n}`,
+  groupRunExit: (code: number) => `код ${code}`,
+  groupRunTimedOut: 'таймаут / не запустился',
+  groupRunSummaryOk: (n: number) => `Готово: все ${n} выполнили команду успешно.`,
+  groupRunSummaryFail: (fail: number, total: number) => `С ошибкой: ${fail} из ${total}.`,
+  groupRunJsonNeedsCommand: 'С --json укажите команду явно: wssh group run <tag> <команда…>',
   copyIdPick: '📋 Сервер для копирования ключа (ssh-copy-id)',
   copyIdKeyQuestion: '🗝 Какой ключ установить на сервер?',
   copyIdDefaultChoice: 'По умолчанию (ssh-copy-id сам выберет)',
