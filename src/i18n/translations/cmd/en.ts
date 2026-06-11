@@ -119,6 +119,15 @@ const en: Dict = {
   forgetHostDesc: 'known_hosts: remove entry (ssh-keygen -R) or show (--list)',
   forgetHostOptList: 'show known_hosts entries',
 
+  // snippets
+  snippetGroupDesc: 'command snippets for wssh run',
+  snippetListDesc: 'list snippets',
+  snippetAddDesc: 'save a snippet (name + command)',
+  snippetAddOptCommand: 'snippet command (runs via sh -lc)',
+  snippetAddOptServer: 'bind to a server (name/alias)',
+  snippetRemoveDesc: 'remove a snippet',
+  runOptSnippet: 'run a saved snippet (place the flag before the server name)',
+
   // group
   groupDesc: 'server/tunnel groups by tag',
   groupListDesc: 'tags and their sizes',

@@ -20,6 +20,8 @@ export const FILES = {
   /** ad-hoc "temporary" tunnels — kept in their own list, separate from tunnels */
   tempTunnels: path.join(DATA_DIR, 'temp-tunnels.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
+  /** saved command snippets for `wssh run` (global or per-server) */
+  snippets: path.join(DATA_DIR, 'snippets.json'),
   vault: path.join(DATA_DIR, 'vault.json'),
   /** registry of background tunnel sessions (PID + log file per running tunnel) */
   sessions: path.join(DATA_DIR, 'sessions.json'),

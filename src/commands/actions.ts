@@ -8,6 +8,7 @@ import { servers } from '../store/servers.store.js';
 import { tunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
 import { transferSessions, type TransferSession } from '../store/transfer-sessions.store.js';
+import { snippets, type Snippet } from '../store/snippets.store.js';
 import { findSshKeys } from '../ssh/keys.js';
 import {
   healthCheck,
@@ -23,6 +24,7 @@ import type { KnownHost } from '../ssh/hostkey.js';
 import { resolveEndpoint } from '../ssh/features.js';
 import { startTransferDetached } from '../ssh/runner.js';
 import { destination } from '../ssh/args.js';
+import { shQuote } from '../utils/shell.js';
 import * as ui from '../ui/index.js';
 import { renderStatusTable } from '../ui/tables.js';
 import { targetSummary } from '../ui/format.js';
@@ -287,17 +289,65 @@ export async function copyIdFlow(name?: string): Promise<number> {
   }
 }
 
-export async function runFlow(name: string | undefined, command: string[]): Promise<number> {
+export async function runFlow(
+  name: string | undefined,
+  command: string[],
+  opts: { snippet?: string } = {},
+): Promise<number> {
   const server = await resolveServerLike(name, tr.actions.runPick);
   if (!server) return 0;
   let cmd = command;
+  if (!cmd.length && opts.snippet) {
+    const sn = snippets.findByName(opts.snippet);
+    if (!sn) {
+      ui.printError(tr.actions.snippetNotFound(opts.snippet));
+      return 1;
+    }
+    // A server-bound snippet must not run elsewhere — the interactive picker
+    // enforces this via forServer(), the flag path has to as well.
+    if (sn.server && sn.server.toLowerCase() !== server.name.toLowerCase()) {
+      ui.printError(tr.actions.snippetWrongServer(sn.name, sn.server));
+      return 1;
+    }
+    cmd = ['sh', '-lc', shQuote(sn.command)];
+  }
   if (!cmd.length) {
     ui.ensureInteractive(tr.actions.runEnsure);
-    const line = await ui.text({
-      message: tr.actions.runPrompt,
-      validate: (v) => v.trim().length > 0 || tr.common.empty,
-    });
-    cmd = ['sh', '-lc', line];
+    // Offer the saved snippets applicable to this server before falling back to
+    // a typed command — the repeated-command case is what snippets exist for.
+    let line: string | null = null;
+    const available = snippets.forServer(server.name);
+    if (available.length) {
+      type Item = { kind: 'manual' } | { kind: 'snippet'; snippet: Snippet };
+      const items: Item[] = [
+        { kind: 'manual' },
+        ...available.map((snippet) => ({ kind: 'snippet' as const, snippet })),
+      ];
+      const picked = await ui.pickFromList<Item>({
+        message: tr.actions.runPickSnippet,
+        items,
+        render: (it) =>
+          it.kind === 'manual'
+            ? ui.chalk.green(tr.actions.runManualEntry)
+            : `${ui.chalk.bold(it.snippet.name)}  ${ui.chalk.dim(it.snippet.command)}`,
+        search: (it) =>
+          it.kind === 'manual'
+            ? tr.actions.manualSearch
+            : `${it.snippet.name} ${it.snippet.command}`,
+        pageSize: 14,
+      });
+      if (picked === ui.BACK) return 0;
+      if (picked.kind === 'snippet') line = picked.snippet.command;
+    }
+    if (line === null) {
+      line = await ui.text({
+        message: tr.actions.runPrompt,
+        validate: (v) => v.trim().length > 0 || tr.common.empty,
+      });
+    }
+    // ssh space-joins the remote argv and the remote shell re-splits it, so the
+    // line must travel as ONE quoted sh argument or only its first word runs.
+    cmd = ['sh', '-lc', shQuote(line)];
   }
   const password = await resolvePassword(server);
   servers.touch(server.id);

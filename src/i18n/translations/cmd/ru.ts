@@ -118,6 +118,15 @@ const ru = {
   forgetHostDesc: 'known_hosts: удалить запись (ssh-keygen -R) или показать (--list)',
   forgetHostOptList: 'показать записи known_hosts',
 
+  // snippets
+  snippetGroupDesc: 'сниппеты команд для wssh run',
+  snippetListDesc: 'список сниппетов',
+  snippetAddDesc: 'сохранить сниппет (имя + команда)',
+  snippetAddOptCommand: 'команда сниппета (выполняется через sh -lc)',
+  snippetAddOptServer: 'привязать к серверу (имя/алиас)',
+  snippetRemoveDesc: 'удалить сниппет',
+  runOptSnippet: 'выполнить сохранённый сниппет (флаг ставится до имени сервера)',
+
   // group
   groupDesc: 'группы серверов/туннелей по тегам',
   groupListDesc: 'теги и их размеры',

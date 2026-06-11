@@ -14,6 +14,7 @@ import * as configCmd from './config.js';
 import * as actions from './actions.js';
 import * as keysCmd from './keys.js';
 import * as agentCmd from './agent.js';
+import * as snippetCmd from './snippets.js';
 import * as autostartCmd from './autostart.js';
 import { addServerNonInteractive, addTunnelNonInteractive } from './noninteractive.js';
 import { doctor } from './doctor.js';
@@ -353,12 +354,41 @@ export function registerCommands(program: Command): void {
   program
     .command('run [name] [command...]')
     .description(tr.cmd.runDesc)
+    .option('--snippet <name>', tr.cmd.runOptSnippet)
     .passThroughOptions()
     .allowUnknownOption()
-    .action(async (n: string | undefined, command: string[]) => {
-      const code = await actions.runFlow(n, command ?? []);
+    .action(async (n: string | undefined, command: string[], o: { snippet?: string }) => {
+      const code = await actions.runFlow(n, command ?? [], { snippet: o.snippet });
       if (code) process.exitCode = code;
     });
+
+  // ---- command snippets ----
+  const snippet = program.command('snippet').alias('snip').description(tr.cmd.snippetGroupDesc);
+  snippet
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.snippetListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => snippetCmd.listSnippetsFlow(o));
+  snippet
+    .command('add [name]')
+    .alias('new')
+    .description(tr.cmd.snippetAddDesc)
+    .option('--command <cmd>', tr.cmd.snippetAddOptCommand)
+    .option('--server <name>', tr.cmd.snippetAddOptServer)
+    .action((name: string | undefined, o: { command?: string; server?: string }) =>
+      snippetCmd.addSnippetFlow(name, o),
+    );
+  snippet
+    .command('remove [name]')
+    .alias('rm')
+    .alias('delete')
+    .description(tr.cmd.snippetRemoveDesc)
+    .action(async (name?: string) => {
+      const code = await snippetCmd.removeSnippetFlow(name);
+      if (code) process.exitCode = code;
+    });
+  snippet.action(() => snippetCmd.listSnippetsFlow());
   program
     .command('transfer [name]')
     .alias('scp')
