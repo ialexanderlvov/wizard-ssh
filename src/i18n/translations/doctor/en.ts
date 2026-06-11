@@ -28,12 +28,18 @@ const en: Dict = {
   sshConfigUnparseable: 'failed to parse',
   sshConfigOk: (hosts, perms) => `${hosts} hosts · perms ${perms}`,
   sshConfigMissing: 'no file (will be created)',
+  // ssh-agent
+  agentUnavailable: 'not running, or no ssh-add (check SSH_AUTH_SOCK)',
+  agentEmpty: 'running, but holds no keys (wssh agent add)',
+  agentKeys: (n) => `running · keys: ${n}`,
   // vault / touch id
   vaultLabel: 'password vault',
   vaultCreated: 'created',
   vaultNotCreated: 'not created',
   touchIdSupported: 'supported',
   touchIdUnavailable: 'unavailable (Xcode CLT required)',
+  keyringSupported: 'supported (Secret Service / secret-tool)',
+  keyringUnavailable: 'unavailable (requires secret-tool/libsecret and a D-Bus session)',
   // corrupt backups
   corruptLabel: 'corrupted data',
   corruptFound: (files) => `corrupt backups found: ${files} — review and delete manually`,
