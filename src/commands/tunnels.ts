@@ -238,7 +238,8 @@ export async function tunnelDownFlow(name?: string, opts: { all?: boolean } = {}
     // `--all`: needs a confirmation, so it must be interactive (or `--yes`).
     // Without ensureInteractive, a scripted `tunnel down --all` would abort with
     // an opaque PromptAbortError instead of a clear "interactive / --yes" error.
-    ui.ensureInteractive(tr.tunnels.stopEnsure);
+    // Under --yes the confirm auto-answers, so no TTY is required.
+    if (!ui.runtime.assumeYes) ui.ensureInteractive(tr.tunnels.stopEnsure);
     if (!(await ui.confirm({ message: tr.tunnels.confirmStopAll(live.length), default: false }))) {
       ui.printInfo(tr.common.cancelled);
       return 0;
