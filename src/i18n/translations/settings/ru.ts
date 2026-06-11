@@ -58,10 +58,12 @@ const ru = {
   vaultSecretsCount: (n: number) => `секретов: ${n}`,
   vaultStatusLine: (state: string, lockState: string, secrets: string) =>
     `Состояние: ${state} · ${lockState} · ${secrets}`,
-  touchIdLine: (state: string, note: string) => `Touch ID: ${state}${note}`,
-  touchIdEnabled: 'включён',
-  touchIdDisabled: 'выключен',
-  touchIdUnavailable: '  (недоступен: нужен macOS + Xcode CLT)',
+  touchIdLine: (name: string, state: string, note: string) =>
+    `Разблокировка через ${name}: ${state}${note}`,
+  touchIdEnabled: 'включена',
+  touchIdDisabled: 'выключена',
+  touchIdUnavailable: '  (недоступно: нужен macOS + Xcode CLT)',
+  keyringUnavailable: '  (недоступно: нужны secret-tool/libsecret и сессия D-Bus)',
 
   // secretHolders (server/tunnel reuse tr.common; only temp-tunnel needs its own)
   kindLabelTempTunnel: 'врем. туннель',
@@ -105,8 +107,8 @@ const ru = {
   actionRevealSecret: 'Показать сохранённый пароль',
   actionRevealSecretCount: (n: number) => `Показать сохранённый пароль (${n})`,
   actionDeleteSecret: 'Удалить сохранённый пароль',
-  actionEnableTouch: 'Включить Touch ID',
-  actionDisableTouch: 'Выключить Touch ID',
+  actionEnableTouch: (name: string) => `Включить разблокировку через ${name}`,
+  actionDisableTouch: (name: string) => `Выключить разблокировку через ${name}`,
   actionReset: 'Сбросить хранилище (забыл фразу)',
   unlocked: 'Разблокировано.',
   unlockFailed: 'Не удалось разблокировать.',
@@ -118,9 +120,9 @@ const ru = {
   rekeyMismatch: 'Не совпадают.',
   rekeyDone: 'Парольная фраза изменена.',
   needUnlockTouch: 'Сначала разблокируйте.',
-  touchIdOn: 'Touch ID включён.',
-  touchIdOnFailed: 'Не удалось включить Touch ID.',
-  touchIdOff: 'Touch ID выключен.',
+  touchIdOn: (name: string) => `Разблокировка через ${name} включена.`,
+  touchIdOnFailed: (name: string) => `Не удалось включить ${name}.`,
+  touchIdOff: (name: string) => `Разблокировка через ${name} выключена.`,
 };
 
 export default ru;

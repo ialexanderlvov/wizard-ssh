@@ -13,10 +13,12 @@ const en: Dict = {
   passphraseMismatch: 'Passphrases do not match.',
   touchIdNote:
     'Note: Touch ID is a convenience prompt inside the CLI, not hardware-enforced protection. The key is kept in the Keychain and readable by any process running as you without Touch ID; the passphrase stays the root of trust.',
-  enableTouchId: '👆 Enable Touch ID unlock (macOS)?',
+  keyringNote:
+    'Note: the keyring unlocks with your login session, so the key is readable by any process running as you. It is a convenience, not protection; the passphrase stays the root of trust.',
+  enableTouchId: (name) => `👆 Enable ${name} unlock?`,
   vaultCreated: 'Vault created.',
   unlockMethod: 'How to unlock the vault?',
-  unlockWithTouchId: '👆 Touch ID',
+  unlockWithTouchId: (name) => `👆 ${name}`,
   unlockWithPassphrase: '🔑 Passphrase',
   unlockEnsure: 'Vault passphrase entry',
   passphrasePrompt: '🔑 Vault passphrase',

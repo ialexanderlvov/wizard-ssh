@@ -59,10 +59,11 @@ const en: Dict = {
   vaultStateLocked: 'locked',
   vaultSecretsCount: (n) => `secrets: ${n}`,
   vaultStatusLine: (state, lockState, secrets) => `Status: ${state} · ${lockState} · ${secrets}`,
-  touchIdLine: (state, note) => `Touch ID: ${state}${note}`,
+  touchIdLine: (name, state, note) => `${name} unlock: ${state}${note}`,
   touchIdEnabled: 'enabled',
   touchIdDisabled: 'disabled',
   touchIdUnavailable: '  (unavailable: requires macOS + Xcode CLT)',
+  keyringUnavailable: '  (unavailable: requires secret-tool/libsecret and a D-Bus session)',
 
   // secretHolders (server/tunnel reuse tr.common; only temp-tunnel needs its own)
   kindLabelTempTunnel: 'temp tunnel',
@@ -104,8 +105,8 @@ const en: Dict = {
   actionRevealSecret: 'Show saved password',
   actionRevealSecretCount: (n) => `Show saved password (${n})`,
   actionDeleteSecret: 'Delete saved password',
-  actionEnableTouch: 'Enable Touch ID',
-  actionDisableTouch: 'Disable Touch ID',
+  actionEnableTouch: (name) => `Enable ${name} unlock`,
+  actionDisableTouch: (name) => `Disable ${name} unlock`,
   actionReset: 'Reset vault (forgot passphrase)',
   unlocked: 'Unlocked.',
   unlockFailed: 'Could not unlock.',
@@ -117,9 +118,9 @@ const en: Dict = {
   rekeyMismatch: 'Passphrases do not match.',
   rekeyDone: 'Passphrase changed.',
   needUnlockTouch: 'Unlock first.',
-  touchIdOn: 'Touch ID enabled.',
-  touchIdOnFailed: 'Could not enable Touch ID.',
-  touchIdOff: 'Touch ID disabled.',
+  touchIdOn: (name) => `${name} unlock enabled.`,
+  touchIdOnFailed: (name) => `Could not enable ${name}.`,
+  touchIdOff: (name) => `${name} unlock disabled.`,
 };
 
 export default en;

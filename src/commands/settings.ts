@@ -6,7 +6,8 @@ import { settings } from '../store/settings.store.js';
 import { servers } from '../store/servers.store.js';
 import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { vault } from '../vault/vault.js';
-import { copyToClipboard } from '../utils/platform.js';
+import { label as keystoreLabel } from '../vault/keystore.js';
+import { copyToClipboard, isMac } from '../utils/platform.js';
 import * as ui from '../ui/index.js';
 import { isValidPort, isValidUser, isValidForwardHost } from '../utils/validators.js';
 import { ensureVaultSetup, unlockVault } from './helpers.js';
@@ -267,10 +268,13 @@ function vaultStatus(): void {
   );
   ui.printInfo(
     tr.settings.touchIdLine(
+      keystoreLabel(),
       vault.isTouchIdEnabled()
         ? ui.chalk.green(tr.settings.touchIdEnabled)
         : ui.chalk.dim(tr.settings.touchIdDisabled),
-      supported ? '' : ui.chalk.dim(tr.settings.touchIdUnavailable),
+      supported
+        ? ''
+        : ui.chalk.dim(isMac ? tr.settings.touchIdUnavailable : tr.settings.keyringUnavailable),
     ),
   );
 }
@@ -449,10 +453,10 @@ export async function vaultFlow(): Promise<void> {
         : []),
       ...(exists ? [{ value: 'deleteSecret', label: tr.settings.actionDeleteSecret }] : []),
       ...(exists && vault.touchIdSupported() && !vault.isTouchIdEnabled()
-        ? [{ value: 'enableTouch', label: tr.settings.actionEnableTouch }]
+        ? [{ value: 'enableTouch', label: tr.settings.actionEnableTouch(keystoreLabel()) }]
         : []),
       ...(exists && vault.isTouchIdEnabled()
-        ? [{ value: 'disableTouch', label: tr.settings.actionDisableTouch }]
+        ? [{ value: 'disableTouch', label: tr.settings.actionDisableTouch(keystoreLabel()) }]
         : []),
       ...(exists ? [{ value: 'reset', label: tr.settings.actionReset }] : []),
     ];
@@ -497,12 +501,12 @@ export async function vaultFlow(): Promise<void> {
         if (!(await unlockVault())) ui.printWarn(tr.settings.needUnlockTouch);
         else if (vault.enableTouchId()) {
           settings.update({ vault: { ...settings.get().vault, touchId: true } });
-          ui.printOk(tr.settings.touchIdOn);
-        } else ui.printError(tr.settings.touchIdOnFailed);
+          ui.printOk(tr.settings.touchIdOn(keystoreLabel()));
+        } else ui.printError(tr.settings.touchIdOnFailed(keystoreLabel()));
       } else if (action === 'disableTouch') {
         vault.disableTouchId();
         settings.update({ vault: { ...settings.get().vault, touchId: false } });
-        ui.printOk(tr.settings.touchIdOff);
+        ui.printOk(tr.settings.touchIdOff(keystoreLabel()));
       } else if (action === 'reset') {
         await resetVault();
       }

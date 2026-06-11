@@ -11,10 +11,12 @@ const ru = {
   passphraseMismatch: 'Парольные фразы не совпадают.',
   touchIdNote:
     'Примечание: Touch ID — это удобный экран внутри CLI, а не аппаратная защита. Ключ хранится в Keychain и доступен любому процессу под вашим пользователем без Touch ID; корнем доверия остаётся парольная фраза.',
-  enableTouchId: '👆 Включить разблокировку по Touch ID (macOS)?',
+  keyringNote:
+    'Примечание: keyring разблокируется вместе с сессией входа, поэтому ключ доступен любому процессу под вашим пользователем. Это удобство, а не защита; корнем доверия остаётся парольная фраза.',
+  enableTouchId: (name: string) => `👆 Включить разблокировку через ${name}?`,
   vaultCreated: 'Хранилище создано.',
   unlockMethod: 'Как разблокировать хранилище?',
-  unlockWithTouchId: '👆 Touch ID',
+  unlockWithTouchId: (name: string) => `👆 ${name}`,
   unlockWithPassphrase: '🔑 Парольная фраза',
   unlockEnsure: 'Ввод парольной фразы хранилища',
   passphrasePrompt: '🔑 Парольная фраза хранилища',
