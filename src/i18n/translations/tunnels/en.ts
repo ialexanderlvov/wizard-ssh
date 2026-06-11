@@ -23,6 +23,8 @@ const en: Dict = {
   // listSessions
   noBackground: 'No background tunnels. Raise one: wssh tunnel start <name>',
   backgroundSection: (count) => `Background tunnels (${count})`,
+  sessionNotListening: (name) =>
+    `“${name}”: the process is alive but the local port is not listening — the forward is broken. Log: wssh tunnel logs ${name}`,
 
   // tunnelDownFlow
   noBackgroundDown: 'No background tunnels.',

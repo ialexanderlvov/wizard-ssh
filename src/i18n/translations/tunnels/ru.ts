@@ -21,6 +21,8 @@ const ru = {
   // listSessions
   noBackground: 'Нет фоновых туннелей. Поднять: wssh tunnel start <имя>',
   backgroundSection: (count: number) => `Фоновые туннели (${count})`,
+  sessionNotListening: (name: string) =>
+    `«${name}»: процесс жив, но локальный порт не слушается — проброс не работает. Лог: wssh tunnel logs ${name}`,
 
   // tunnelDownFlow
   noBackgroundDown: 'Нет фоновых туннелей.',

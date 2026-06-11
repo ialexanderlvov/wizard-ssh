@@ -93,18 +93,21 @@ export function renderKeysTable(keys: KeyInfo[]): string {
   return table.toString();
 }
 
-export function renderSessionsTable(rows: TunnelSession[]): string {
+export function renderSessionsTable(
+  rows: Array<{ session: TunnelSession; listening: boolean | null }>,
+): string {
   const table = new Table({
     head: tr.ui.table.sessionsHead.map((h) => chalk.cyan.bold(h)),
     style: { head: [], border: ['grey'] },
     chars: ROUND,
   });
-  for (const s of rows) {
+  for (const { session: s, listening } of rows) {
     // Sanitize the human/display fields: a hand-edited sessions.json could embed
     // terminal escapes in name/forward/target (the same sanitize-on-display
     // standard the config parser and log viewer follow).
     table.push([
-      chalk.green('●'),
+      // red = the ssh process is alive but the local forward is not listening
+      listening === false ? chalk.red('●') : chalk.green('●'),
       chalk.bold.white(stripControl(s.name)) +
         (s.store === 'temp' ? chalk.dim(tr.ui.table.temp) : ''),
       chalk.gray(stripControl(s.forward)),

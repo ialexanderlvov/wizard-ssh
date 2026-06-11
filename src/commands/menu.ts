@@ -249,7 +249,7 @@ const backgroundTunnelsMenu = (): Promise<void> =>
       { label: tr.menu.background.downAll, value: 'downAll' },
     ],
     async (a) => {
-      if (a === 'list') tunnelCmd.listSessions();
+      if (a === 'list') await tunnelCmd.listSessions();
       else if (a === 'up') await tunnelCmd.tunnelUpFlow();
       else if (a === 'logs') await tunnelCmd.tunnelLogsFlow();
       else if (a === 'down') await tunnelCmd.tunnelDownFlow();

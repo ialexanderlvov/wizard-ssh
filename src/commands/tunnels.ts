@@ -193,18 +193,67 @@ export function tunnelDownByTagFlow(tag: string): number {
   return 0;
 }
 
-export function listSessions(opts: { json?: boolean } = {}): void {
+/** A live session enriched with health facts: is the local forward actually
+ *  listening (local/dynamic only — a remote forward binds on the server), and
+ *  the tail of its log when it isn't. */
+export interface SessionHealth {
+  session: TunnelSession;
+  listening: boolean | null;
+  lastError: string | null;
+}
+
+async function collectSessionHealth(live: TunnelSession[]): Promise<SessionHealth[]> {
+  return Promise.all(
+    live.map(async (session) => {
+      const coll = session.store === 'temp' ? tempTunnels : tunnels;
+      const tunnel = coll.findById(session.tunnelId);
+      let listening: boolean | null = null;
+      if (tunnel && tunnel.type !== 'remote') {
+        // The ssh PID being alive doesn't mean the forward works — probe the
+        // local bind: a free port under a live session = a dead/broken forward.
+        listening = !(await isPortFree(tunnel.localPort));
+      }
+      let lastError: string | null = null;
+      if (listening === false) {
+        const lines = tailFile(session.logFile, 5).filter((l) => l.trim());
+        lastError = lines.length ? (lines[lines.length - 1] ?? null) : null;
+      }
+      return { session, listening, lastError };
+    }),
+  );
+}
+
+export async function listSessions(opts: { json?: boolean } = {}): Promise<void> {
   const live = sessions.list();
-  if (opts.json) {
-    console.log(JSON.stringify(live, null, 2));
+  if (!live.length) {
+    if (opts.json) console.log('[]');
+    else ui.printWarn(tr.tunnels.noBackground);
     return;
   }
-  if (!live.length) {
-    ui.printWarn(tr.tunnels.noBackground);
+  const health = await collectSessionHealth(live);
+  if (opts.json) {
+    console.log(
+      JSON.stringify(
+        health.map((h) => ({
+          ...h.session,
+          uptimeSec: Math.max(0, Math.floor((Date.now() - Date.parse(h.session.startedAt)) / 1000)),
+          listening: h.listening,
+          lastError: h.lastError,
+        })),
+        null,
+        2,
+      ),
+    );
     return;
   }
   ui.printSection('🟢', tr.tunnels.backgroundSection(live.length));
-  console.log(renderSessionsTable(live));
+  console.log(renderSessionsTable(health));
+  for (const h of health) {
+    if (h.listening === false) {
+      ui.printWarn(tr.tunnels.sessionNotListening(h.session.name));
+      if (h.lastError) console.log('  ' + ui.chalk.dim(h.lastError));
+    }
+  }
 }
 
 /** Stop a background tunnel (by name) or all of them. */
