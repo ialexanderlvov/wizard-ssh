@@ -20,6 +20,27 @@ const en: Dict = {
   tagUpFail: (fail, total) => `Failed to raise: ${fail} of ${total}.`,
   tagDownNone: (tag) => `No running tunnels tagged “${tag}”.`,
 
+  // autostart (launchd / systemd)
+  autostartUnsupported: 'Autostart is supported on macOS (launchd) and Linux (systemd) only.',
+  autostartPickAdd: '🚀 Which tunnel to start at login?',
+  autostartAgentCaveat:
+    'Agent auth: at boot the agent holds no keys yet, so the tunnel only comes up after a key is added. Key-file auth is more reliable here.',
+  autostartFailed: (detail) => `Could not install autostart: ${detail}`,
+  autostartInstalled: (name) => `Autostart for “${name}” installed — it will come up at login.`,
+  autostartUnitFile: (file) => `Unit: ${file}`,
+  autostartLogsLaunchd: (id) => `Log: ~/.wizard-ssh/logs/autostart-${id}.log`,
+  autostartLogsSystemd: (id) => `Log: journalctl --user -u wssh-tunnel-${id}`,
+  autostartEditNote:
+    'The ssh command is frozen in the unit: re-install autostart after editing the tunnel.',
+  autostartNone: 'No tunnel has autostart configured.',
+  autostartEnsure: 'Tunnel autostart',
+  autostartNotFound: (name) => `No autostart configured for “${name}”.`,
+  autostartPickRemove: '🗑 Which autostart to remove?',
+  autostartRemoved: 'Autostart removed.',
+  autostartNothingRemoved: 'Unit not found — nothing to remove.',
+  autostartOrphan: (id) => `(tunnel deleted) ${id}`,
+  autostartSection: (n) => `Tunnel autostart (${n})`,
+
   // listSessions
   noBackground: 'No background tunnels. Raise one: wssh tunnel start <name>',
   backgroundSection: (count) => `Background tunnels (${count})`,

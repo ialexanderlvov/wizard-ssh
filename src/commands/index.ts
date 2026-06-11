@@ -14,6 +14,7 @@ import * as configCmd from './config.js';
 import * as actions from './actions.js';
 import * as keysCmd from './keys.js';
 import * as agentCmd from './agent.js';
+import * as autostartCmd from './autostart.js';
 import { addServerNonInteractive, addTunnelNonInteractive } from './noninteractive.js';
 import { doctor } from './doctor.js';
 import { info } from './info.js';
@@ -247,6 +248,33 @@ export function registerCommands(program: Command): void {
     .alias('cp')
     .description(tr.cmd.tunnelCloneDesc)
     .action((n?: string, nn?: string) => tunnelCmd.cloneTunnelFlow(n, nn));
+  // boot-time autostart units (launchd / systemd user)
+  const autostart = tunnel.command('autostart').description(tr.cmd.tunnelAutostartDesc);
+  autostart
+    .command('add [name]')
+    .alias('enable')
+    .description(tr.cmd.tunnelAutostartAddDesc)
+    .action(async (n?: string) => {
+      const code = await autostartCmd.autostartAddFlow(n);
+      if (code) process.exitCode = code;
+    });
+  autostart
+    .command('remove [name]')
+    .alias('rm')
+    .alias('disable')
+    .description(tr.cmd.tunnelAutostartRemoveDesc)
+    .action(async (n?: string) => {
+      const code = await autostartCmd.autostartRemoveFlow(n);
+      if (code) process.exitCode = code;
+    });
+  autostart
+    .command('list')
+    .alias('ls')
+    .description(tr.cmd.tunnelAutostartListDesc)
+    .option('--json', tr.cmd.optOutputJson)
+    .action((o: { json?: boolean }) => autostartCmd.autostartListFlow(o));
+  autostart.action(() => autostartCmd.autostartListFlow());
+
   tunnel
     .command('logs [name]')
     .alias('log')

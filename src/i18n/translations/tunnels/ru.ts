@@ -18,6 +18,28 @@ const ru = {
   tagUpFail: (fail: number, total: number) => `Не поднялось: ${fail} из ${total}.`,
   tagDownNone: (tag: string) => `Нет запущенных туннелей с тегом «${tag}».`,
 
+  // autostart (launchd / systemd)
+  autostartUnsupported: 'Автозапуск поддерживается только на macOS (launchd) и Linux (systemd).',
+  autostartPickAdd: '🚀 Какой туннель запускать при загрузке?',
+  autostartAgentCaveat:
+    'Авторизация через agent: при загрузке агент ещё пуст, туннель поднимется только после добавления ключа. Надёжнее — авторизация по файлу ключа.',
+  autostartFailed: (detail: string) => `Не удалось установить автозапуск: ${detail}`,
+  autostartInstalled: (name: string) =>
+    `Автозапуск для «${name}» установлен — туннель будет подниматься при входе в систему.`,
+  autostartUnitFile: (file: string) => `Юнит: ${file}`,
+  autostartLogsLaunchd: (id: string) => `Лог: ~/.wizard-ssh/logs/autostart-${id}.log`,
+  autostartLogsSystemd: (id: string) => `Лог: journalctl --user -u wssh-tunnel-${id}`,
+  autostartEditNote:
+    'Команда ssh зафиксирована в юните: после правки туннеля переустановите автозапуск.',
+  autostartNone: 'Автозапуск не настроен ни для одного туннеля.',
+  autostartEnsure: 'Автозапуск туннелей',
+  autostartNotFound: (name: string) => `Для «${name}» автозапуск не настроен.`,
+  autostartPickRemove: '🗑 Какой автозапуск убрать?',
+  autostartRemoved: 'Автозапуск убран.',
+  autostartNothingRemoved: 'Юнит не найден — нечего убирать.',
+  autostartOrphan: (id: string) => `(туннель удалён) ${id}`,
+  autostartSection: (n: number) => `Автозапуск туннелей (${n})`,
+
   // listSessions
   noBackground: 'Нет фоновых туннелей. Поднять: wssh tunnel start <имя>',
   backgroundSection: (count: number) => `Фоновые туннели (${count})`,
