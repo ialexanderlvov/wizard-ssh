@@ -38,10 +38,20 @@ export function parseAgentList(stdout: string): AgentIdentity[] {
   return out;
 }
 
+/** Whether ssh-add exists, probed once per process — the binary can't appear
+ *  or vanish mid-run, and probeAgent sits on the interactive agent-menu redraw
+ *  path where an extra `which` spawn per pass is pure waste (same caching
+ *  pattern as rsyncSupportsInfoProgress). */
+let sshAddOnPath: boolean | undefined;
+function hasSshAdd(): boolean {
+  sshAddOnPath ??= commandExists('ssh-add');
+  return sshAddOnPath;
+}
+
 /** `ssh-add -l` exit codes: 0 → identities listed; 1 → agent up but empty;
  *  2 → could not contact the agent. */
 export function probeAgent(): AgentProbe {
-  if (!commandExists('ssh-add')) return { status: 'unavailable', identities: [] };
+  if (!hasSshAdd()) return { status: 'unavailable', identities: [] };
   const res = capture('ssh-add', ['-l']);
   if (res.status === 0) return { status: 'running', identities: parseAgentList(res.stdout) };
   if (res.status === 1) return { status: 'empty', identities: [] };

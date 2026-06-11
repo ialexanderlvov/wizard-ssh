@@ -1,8 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { expandHome, tilde, slugify, parseTags, stripControl } from '../src/utils/strings.js';
-import { isValidProxyJump } from '../src/utils/validators.js';
+import {
+  isValidProxyJump,
+  isValidPort,
+  isValidHostOrIp,
+  isValidSshAlias,
+} from '../src/utils/validators.js';
 import { relativeTime, absoluteTime, safeIso, ts, nowIso } from '../src/utils/time.js';
 import { commandExists, capture } from '../src/utils/exec.js';
 import { isMac, isWindows, isLinux } from '../src/utils/platform.js';
@@ -150,5 +156,178 @@ describe('errors', () => {
   it('VaultLockedError', () => {
     expect(new VaultLockedError().exitCode).toBe(1);
     expect(new VaultLockedError('custom').message).toBe('custom');
+  });
+});
+
+describe('exec branches', () => {
+  it('capture pipes input and returns output', () => {
+    const r = capture(
+      'node',
+      ['-e', 'process.stdin.on("data",(d)=>process.stdout.write(d))'],
+      'echoed',
+    );
+    expect(r.stdout).toBe('echoed');
+  });
+  it('capture of a missing command yields empty strings + non-zero status', () => {
+    const r = capture('definitely-not-real-xyz', []);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toBe('');
+    expect(r.status).not.toBe(0);
+  });
+  it('commandExists uses "where" on Windows', async () => {
+    vi.resetModules();
+    const orig = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const { commandExists: ce } = await import('../src/utils/exec.js');
+      expect(typeof ce('node')).toBe('boolean'); // exercises the 'where' branch
+    } finally {
+      Object.defineProperty(process, 'platform', { value: orig, configurable: true });
+    }
+  });
+  it('commandExists is truthy for node', () => {
+    expect(commandExists('node')).toBe(true);
+  });
+});
+
+describe('validators branches', () => {
+  it('isValidPort rejects non-numbers and out-of-range', () => {
+    expect(isValidPort('abc')).toBe(false);
+    expect(isValidPort(NaN)).toBe(false);
+    expect(isValidPort('65536')).toBe(false);
+  });
+  it('isValidHostOrIp rejects non-strings, empty, bad octets', () => {
+    expect(isValidHostOrIp(123)).toBe(false);
+    expect(isValidHostOrIp('')).toBe(false);
+    expect(isValidHostOrIp('256.1.1.1')).toBe(false);
+  });
+  it('isValidSshAlias rejects non-strings', () => {
+    expect(isValidSshAlias(123)).toBe(false);
+    expect(isValidSshAlias('')).toBe(false);
+  });
+});
+
+describe('time helpers', () => {
+  it('safeIso keeps valid and falls back on garbage', () => {
+    const good = new Date().toISOString();
+    expect(safeIso(good, null)).toBe(good);
+    expect(safeIso('not-a-date', null)).toBeNull();
+  });
+  it('ts is total (0 for missing)', () => {
+    expect(ts(null)).toBe(0);
+    expect(ts('garbage')).toBe(0);
+    expect(ts(new Date(0).toISOString())).toBe(0);
+  });
+  it('relativeTime handles null', () => {
+    expect(relativeTime(null)).toBe('никогда');
+  });
+});
+
+describe('validators', () => {
+  it('ports', () => {
+    expect(isValidPort('22')).toBe(true);
+    expect(isValidPort('70000')).toBe(false);
+    expect(isValidPort('0')).toBe(false);
+  });
+  it('hosts', () => {
+    expect(isValidHostOrIp('203.0.113.7')).toBe(true);
+    expect(isValidHostOrIp('example.com')).toBe(true);
+    expect(isValidHostOrIp('999.1.1.1')).toBe(false);
+  });
+  it('aliases reject globs', () => {
+    expect(isValidSshAlias('homelab-proxy')).toBe(true);
+    expect(isValidSshAlias('*.internal')).toBe(false);
+  });
+});
+
+describe('validators: IPv6', () => {
+  it('accepts IPv6 literals', () => {
+    expect(isValidHostOrIp('fe80::1')).toBe(true);
+    expect(isValidHostOrIp('::1')).toBe(true);
+    expect(isValidHostOrIp('not a host!')).toBe(false);
+  });
+  it('rejects structurally invalid IPv6 (multiple :: / dangling colon)', () => {
+    expect(isValidHostOrIp('1::2::3')).toBe(false);
+    expect(isValidHostOrIp('1:2:')).toBe(false);
+  });
+});
+
+describe('validators: IPv4 leading zeros', () => {
+  it('rejects octal-ambiguous leading-zero octets', () => {
+    expect(isValidHostOrIp('010.0.0.1')).toBe(false);
+    expect(isValidHostOrIp('1.2.3.04')).toBe(false);
+    expect(isValidHostOrIp('10.0.0.1')).toBe(true);
+    expect(isValidHostOrIp('0.0.0.0')).toBe(true);
+  });
+});
+
+describe('I-2 background-log viewer strips terminal escapes', () => {
+  it('sanitizeLog/tailLines drop ESC/OSC bytes but keep newlines and tabs', async () => {
+    const { tailLines, sanitizeLog } = await import('../src/utils/logtail.js');
+    const ESC = String.fromCharCode(27);
+    const BEL = String.fromCharCode(7);
+    const malicious = `line1${ESC}]0;hijacked-title${BEL}\tcol\nline2`;
+    expect(sanitizeLog(malicious)).toBe('line1]0;hijacked-title\tcol\nline2');
+    expect(tailLines(malicious, 5)).toEqual(['line1]0;hijacked-title\tcol', 'line2']);
+    // a non-integer/zero tail count means "all", not a crash
+    expect(tailLines('a\nb\nc', NaN)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('utility hardening', () => {
+  it('L-13 tilde does not collapse a sibling home directory', async () => {
+    const { tilde } = await import('../src/utils/strings.js');
+    const home = os.homedir();
+    expect(tilde(home)).toBe('~');
+    expect(tilde(path.join(home, 'x'))).toBe(`~${path.sep}x`);
+    expect(tilde(home + 'by/secret')).toBe(home + 'by/secret'); // sibling untouched
+  });
+
+  it('I-17 safeIso accepts ISO shapes and rejects locale formats', async () => {
+    const { safeIso } = await import('../src/utils/time.js');
+    expect(safeIso('2026-06-09T10:00:00.000Z', null)).toBe('2026-06-09T10:00:00.000Z');
+    expect(safeIso('2026-06-09', null)).toBe('2026-06-09');
+    expect(safeIso('12/31/2020', null)).toBeNull(); // locale format rejected
+    expect(safeIso('not a date', null)).toBeNull();
+  });
+});
+
+describe('S-13: isValidProxyJump range-checks the hop port', () => {
+  it('accepts valid hops', () => {
+    expect(isValidProxyJump('bastion')).toBe(true);
+    expect(isValidProxyJump('user@host:22')).toBe(true);
+    expect(isValidProxyJump('host:65535')).toBe(true);
+    expect(isValidProxyJump('[::1]:2222')).toBe(true);
+    expect(isValidProxyJump('a,b:22,c')).toBe(true);
+    expect(isValidProxyJump('none')).toBe(true);
+  });
+  it('rejects an out-of-range hop port', () => {
+    expect(isValidProxyJump('host:0')).toBe(false);
+    expect(isValidProxyJump('host:99999')).toBe(false);
+    expect(isValidProxyJump('host:65536')).toBe(false);
+  });
+});
+
+describe('utils/net — port probes', () => {
+  it('detects a bound port as busy and finds a free one above it', async () => {
+    const { isPortFree, findFreePort } = await import('../src/utils/net.js');
+    const srv = net.createServer();
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+    const port = (srv.address() as net.AddressInfo).port;
+
+    expect(await isPortFree(port)).toBe(false);
+    const free = await findFreePort(port + 1, 200);
+    expect(free).not.toBeNull();
+    expect(free).toBeGreaterThan(port);
+    expect(await isPortFree(free as number)).toBe(true);
+
+    await new Promise<void>((r) => srv.close(() => r()));
+  });
+
+  it('rejects invalid ports', async () => {
+    const { isPortFree } = await import('../src/utils/net.js');
+    expect(await isPortFree(0)).toBe(false);
+    expect(await isPortFree(70_000)).toBe(false);
+    expect(await isPortFree(-1)).toBe(false);
   });
 });

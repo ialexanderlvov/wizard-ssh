@@ -76,6 +76,14 @@ const ru = {
   agentRemovedAll: 'Все ключи убраны из агента.',
   agentRemoveFailed: (code: number) => `ssh-add завершился с кодом ${code}.`,
   agentConfirmRemoveAll: (n: number) => `Убрать из агента все ключи (${n})?`,
+  agentMenuEntry: '🔑 ssh-agent (загруженные ключи) ▸',
+  // must contain the row's visible name: the list filter matches typed tokens
+  // against THIS string only (hyphens are not split, so 'ssh-agent' is one token)
+  agentMenuSearch: 'ssh-agent agent агент ssh-add загруженные',
+  agentMenuTitle: 'ssh-agent',
+  agentMenuAdd: 'Добавить ключ в агент',
+  agentMenuRemove: 'Убрать ключ из агента',
+  agentMenuRemoveAll: 'Убрать все ключи',
 };
 
 export default ru;

@@ -1,3 +1,4 @@
+// Tests for CLI-level command wiring/guards — non-TTY guards, list commands, connect flows, searchFlow.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { freshHome } from './helpers.js';
 

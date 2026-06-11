@@ -20,9 +20,9 @@ reverse tunnels, and an **encrypted password vault** (master passphrase or Touch
   ╚══╝╚══╝ ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝     ╚══════╝╚══════╝╚═╝  ╚═╝
 ```
 
-> Successor to the former "SSH Tunnel Manager" — rewritten in TypeScript, with
-> servers, `~/.ssh/config` management, reverse tunnels, and password encryption.
-> Data from the previous version is imported automatically.
+> Interactive CLI for SSH servers, tunnels and `~/.ssh/config`: full CRUD, fuzzy
+> search, instant connect, forward & reverse tunnels, and an encrypted password
+> vault.
 
 ## ✨ Features
 
@@ -30,8 +30,8 @@ reverse tunnels, and an **encrypted password vault** (master passphrase or Touch
   source of truth): each server is a `Host` block, while its description/tags/auth method
   and the reference to a saved password sit in a `#wssh {…}` comment above the block. Full
   CRUD with an automatic config backup before every write; multi-alias blocks and `Include`
-  are connectable but not edited automatically. The "Servers" and "~/.ssh/config" menus are
-  merged into one.
+  are connectable but not edited automatically. One menu covers both servers and
+  `~/.ssh/config`.
 - 🚇 **Tunnels** — forward `-L`, **reverse `-R`**, and dynamic `-D` (SOCKS5). Full CRUD,
   **auto-reconnect** on drop (autossh-style, with backoff, until `Ctrl+C`), and a **background
   mode** — `wssh tunnel start` brings a tunnel up in the background, `tunnel sessions` lists
@@ -150,7 +150,7 @@ src/
   cli.ts              entry point (commander)
   core/               types, paths (~/.wizard-ssh), constants, errors
   utils/              validators, time, strings, exec, platform
-  store/              servers over ~/.ssh/config + usage.json (stats), tunnels/settings (JSON), background sessions, migration
+  store/              servers over ~/.ssh/config + usage.json (stats), tunnels/settings/snippets (JSON), background sessions
   vault/              crypto (AES-GCM/scrypt), Touch ID, vault
   ssh-config/         parser + writer (CRUD over ~/.ssh/config) with #wssh annotations
   ssh/                ssh-argument building, runner (+ auto-reconnect, background tunnels), features (check/status/copy-id/run/scp/rsync), keys, known_hosts

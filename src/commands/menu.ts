@@ -10,79 +10,45 @@ import * as ui from '../ui/index.js';
 import { detailBox } from '../ui/format.js';
 import { tr } from '../i18n/index.js';
 
+import { loop, menuChoose } from './menu-kit.js';
 import * as serverCmd from './servers.js';
 import * as tunnelCmd from './tunnels.js';
 import * as actions from './actions.js';
 import * as keysCmd from './keys.js';
+import * as snippetCmd from './snippets.js';
+import * as autostartCmd from './autostart.js';
 import { quickConnect } from './connect.js';
 import { searchFlow } from './search.js';
 import { settingsFlow, vaultFlow } from './settings.js';
 import { importExportMenu } from './import-export.js';
 import { backupSshFlow } from './backup.js';
 
-interface MenuItem {
-  label: string;
-  value: string;
-}
-
 /** Title shown as the root breadcrumb; read lazily so a language switch applies. */
 const root = (): string => tr.menu.root;
 
-/** A navigation menu using the list prompt; returns the chosen value or BACK.
- *  `crumbs` are the ancestor titles shown before the active one. */
-async function menuChoose(
+/** Pick a tag from a pre-scanned inventory, then run `fn` on it. Returns what
+ *  the loop() handler needs: `true` (navigation, skip the pause) when the user
+ *  backed out of the picker with nothing printed; void when the empty-inventory
+ *  warning or the flow's own output is on screen and should be read. The
+ *  entities are scanned ONCE and handed to the flow via `pool`, so one menu
+ *  action never parses ~/.ssh/config twice. */
+async function withTag(
+  source: actions.TagSource,
   message: string,
-  items: MenuItem[],
-  crumbs: string[] = [],
-): Promise<string | typeof ui.BACK> {
-  const res = await ui.pickFromList<MenuItem>({
-    message,
-    items,
-    render: (i) => i.label,
-    search: (i) => i.label,
-    pageSize: 14,
-    crumbs,
-    indent: crumbs.length * 2,
-  });
-  return res === ui.BACK ? ui.BACK : res.value;
-}
-
-/** A submenu loop: PromptAbort inside an action returns to this menu, not exit.
- *  An action handler may return `true` to mark itself as pure NAVIGATION — it ran
- *  its own sub-view (a browse list or a nested menu) that already handled backing
- *  out and left nothing one-shot to read. The loop then skips the trailing
- *  "↩ Enter — назад" pause and drops straight back to this menu, so Esc out of a
- *  sub-list lands here immediately instead of on an extra press-Enter screen.
- *  One-shot actions (add/edit/status/…) return void and still pause so their
- *  output is readable before the screen clears. */
-async function loop(
-  title: string,
-  crumbs: string[],
-  items: MenuItem[],
-  run: (action: string) => Promise<boolean | void>,
-): Promise<void> {
-  for (;;) {
-    ui.clearScreen();
-    let action: string | typeof ui.BACK;
-    try {
-      action = await menuChoose(title, items, crumbs);
-    } catch (e) {
-      if (e instanceof PromptAbortError) return;
-      throw e;
-    }
-    if (action === ui.BACK) return;
-    ui.clearScreen(); // wipe the menu before the action's own output
-    let navigated = false;
-    try {
-      navigated = (await run(action)) === true;
-    } catch (e) {
-      // Esc / Ctrl+C out of an action → return straight to this menu, no extra
-      // press-Enter pause (a real error still pauses so it can be read).
-      if (e instanceof PromptAbortError) navigated = true;
-      else ui.printError(tr.common.error(e instanceof Error ? e.message : String(e)));
-    }
-    if (!navigated) await ui.pause();
+  fn: (tag: string, pool: actions.TagPool) => Promise<unknown> | unknown,
+): Promise<boolean | void> {
+  const pool: actions.TagPool = {
+    ...(source !== 'tunnels' ? { servers: servers.all() } : {}),
+    ...(source !== 'servers' ? { tunnels: tunnels.all(), tempTunnels: tempTunnels.all() } : {}),
+  };
+  const rows = actions.tagCounts(source, pool);
+  if (!rows.length) {
+    ui.printWarn(tr.actions.groupsEmpty);
+    return; // pause: keep the warning readable
   }
+  const tag = await actions.pickTagFrom(rows, message);
+  if (tag === null) return true; // backed out — nothing printed, skip the pause
+  await fn(tag, pool);
 }
 
 /** Filterable browse of entities → per-item action menu (connect/check/edit/delete). */
@@ -244,16 +210,86 @@ const backgroundTunnelsMenu = (): Promise<void> =>
     [
       { label: tr.menu.background.list, value: 'list' },
       { label: tr.menu.background.up, value: 'up' },
+      { label: tr.menu.background.upTag, value: 'upTag' },
       { label: tr.menu.background.logs, value: 'logs' },
       { label: tr.menu.background.down, value: 'down' },
+      { label: tr.menu.background.downTag, value: 'downTag' },
       { label: tr.menu.background.downAll, value: 'downAll' },
+      { label: tr.menu.background.autostart, value: 'autostart' },
     ],
     async (a) => {
       if (a === 'list') await tunnelCmd.listSessions();
       else if (a === 'up') await tunnelCmd.tunnelUpFlow();
+      else if (a === 'upTag')
+        return withTag('tunnels', tr.menu.background.pickTag, (tag) =>
+          tunnelCmd.tunnelUpByTagFlow(tag),
+        );
       else if (a === 'logs') await tunnelCmd.tunnelLogsFlow();
       else if (a === 'down') await tunnelCmd.tunnelDownFlow();
+      else if (a === 'downTag')
+        return withTag('tunnels', tr.menu.background.pickTag, (tag) =>
+          tunnelCmd.tunnelDownByTagFlow(tag),
+        );
       else if (a === 'downAll') await tunnelCmd.tunnelDownFlow(undefined, { all: true });
+      else if (a === 'autostart') {
+        await autostartMenu();
+        return true; // navigation
+      }
+    },
+  );
+
+const autostartMenu = (): Promise<void> =>
+  loop(
+    tr.menu.autostart.title,
+    [root(), tr.menu.tunnels.title, tr.menu.background.crumb],
+    [
+      { label: tr.menu.autostart.list, value: 'list' },
+      { label: tr.menu.autostart.add, value: 'add' },
+      { label: tr.menu.autostart.remove, value: 'remove' },
+    ],
+    async (a) => {
+      if (a === 'list') autostartCmd.autostartListFlow();
+      else if (a === 'add') await autostartCmd.autostartAddFlow();
+      else if (a === 'remove') await autostartCmd.autostartRemoveFlow();
+    },
+  );
+
+const groupsMenu = (): Promise<void> =>
+  loop(
+    tr.menu.groups.title,
+    [root(), tr.menu.actions.title],
+    [
+      { label: tr.menu.groups.list, value: 'list' },
+      { label: tr.menu.groups.check, value: 'check' },
+      { label: tr.menu.groups.run, value: 'run' },
+    ],
+    async (a) => {
+      if (a === 'list') actions.groupListFlow();
+      else if (a === 'check')
+        return withTag('all', tr.menu.groups.pickTag, (tag, pool) =>
+          actions.groupCheckFlow(tag, { pool }),
+        );
+      else if (a === 'run')
+        // group run targets servers, so offer server tags only
+        return withTag('servers', tr.menu.groups.pickTag, (tag, pool) =>
+          actions.groupRunFlow(tag, [], { pool: pool.servers }),
+        );
+    },
+  );
+
+const snippetsMenu = (): Promise<void> =>
+  loop(
+    tr.menu.snippets.title,
+    [root(), tr.menu.actions.title],
+    [
+      { label: tr.menu.snippets.list, value: 'list' },
+      { label: tr.menu.snippets.add, value: 'add' },
+      { label: tr.menu.snippets.remove, value: 'remove' },
+    ],
+    async (a) => {
+      if (a === 'list') snippetCmd.listSnippetsFlow();
+      else if (a === 'add') await snippetCmd.addSnippetFlow();
+      else if (a === 'remove') await snippetCmd.removeSnippetFlow();
     },
   );
 
@@ -268,6 +304,7 @@ const actionsMenu = (): Promise<void> =>
       { label: tr.menu.actions.run, value: 'run' },
       { label: tr.menu.actions.transfer, value: 'transfer' },
       { label: tr.menu.actions.bgTransfers, value: 'bgTransfers' },
+      { label: tr.menu.actions.snippets, value: 'snippets' },
       { label: tr.menu.actions.groups, value: 'groups' },
     ],
     async (a) => {
@@ -277,7 +314,13 @@ const actionsMenu = (): Promise<void> =>
       else if (a === 'run') await actions.runFlow(undefined, []);
       else if (a === 'transfer') await actions.transferFlow();
       else if (a === 'bgTransfers') await actions.transferLogsFlow();
-      else if (a === 'groups') actions.groupListFlow();
+      else if (a === 'snippets') {
+        await snippetsMenu();
+        return true; // navigation
+      } else if (a === 'groups') {
+        await groupsMenu();
+        return true; // navigation
+      }
     },
   );
 

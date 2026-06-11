@@ -22,6 +22,7 @@ import {
   isSkKeyType,
 } from '../ssh/keys.js';
 import { copyId } from '../ssh/features.js';
+import { agentMenu } from './agent.js';
 import { commandExists } from '../utils/exec.js';
 import { copyToClipboard } from '../utils/platform.js';
 import { expandHome, tilde } from '../utils/strings.js';
@@ -288,14 +289,26 @@ export async function keysMenu(crumbs: string[] = [tr.keys.mainMenuCrumb]): Prom
     if (keys.length) console.log(renderKeysTable(keys) + '\n');
 
     const GEN = '__gen__';
+    const AGENT = '__agent__';
     const picked = await ui.pickFromList<KeyInfo | { __action: string }>({
       message: tr.keys.menuMessage,
-      items: [{ __action: GEN } as { __action: string }, ...keys],
+      items: [
+        { __action: GEN } as { __action: string },
+        { __action: AGENT } as { __action: string },
+        ...keys,
+      ],
       render: (it) =>
         '__action' in it
-          ? ui.chalk.green(tr.keys.menuGenerate)
+          ? it.__action === GEN
+            ? ui.chalk.green(tr.keys.menuGenerate)
+            : ui.chalk.cyan(tr.keys.agentMenuEntry)
           : `${ui.chalk.bold(tilde((it as KeyInfo).path))}  ${ui.chalk.magenta((it as KeyInfo).type)}  ${ui.chalk.dim((it as KeyInfo).fingerprint || tr.common.dash)}`,
-      search: (it) => ('__action' in it ? tr.keys.menuSearch : (it as KeyInfo).path),
+      search: (it) =>
+        '__action' in it
+          ? it.__action === GEN
+            ? tr.keys.menuSearch
+            : tr.keys.agentMenuSearch
+          : (it as KeyInfo).path,
       pageSize: 14,
       crumbs,
       indent: crumbs.length * 2,
@@ -305,6 +318,10 @@ export async function keysMenu(crumbs: string[] = [tr.keys.mainMenuCrumb]): Prom
     ui.clearScreen();
     try {
       if ('__action' in picked) {
+        if (picked.__action === AGENT) {
+          await agentMenu([...crumbs, tr.keys.menuMessage]);
+          continue; // the submenu handled its own pauses/back-out
+        }
         await generateKeyFlow();
         await ui.pause();
         continue;

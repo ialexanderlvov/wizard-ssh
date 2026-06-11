@@ -134,24 +134,30 @@ export async function startTunnelBackground(
   return 0;
 }
 
-/** Bring up every saved tunnel carrying a tag — a one-command "profile"
- *  (e.g. `wssh tunnel start --tag work`). Sequential on purpose: each start may
- *  prompt interactively about a busy local port. */
+/** Bring up every tunnel carrying a tag — a one-command "profile"
+ *  (e.g. `wssh tunnel start --tag work`). Profiles span BOTH stores (saved +
+ *  temporary), mirroring tunnelDownByTagFlow which stops temp sessions too.
+ *  Sequential on purpose: each start may prompt about a busy local port. */
 export async function tunnelUpByTagFlow(tag: string): Promise<number> {
   const t = tag.trim();
   if (!t) {
     ui.printError(tr.tunnels.tagNeedsTag);
     return 1;
   }
-  const list = tunnels.all().filter((x) => x.tags.includes(t));
+  const byTag = (store: TunnelStore): Array<{ tunnel: Tunnel; store: TunnelStore }> =>
+    store
+      .all()
+      .filter((x) => x.tags.includes(t))
+      .map((tunnel) => ({ tunnel, store }));
+  const list = [...byTag(tunnels), ...byTag(tempTunnels)];
   if (!list.length) {
     ui.printWarn(tr.tunnels.tagNoTunnels(t));
     return 0;
   }
   ui.printSection('🚇', tr.tunnels.tagUpSection(t, list.length));
   let failed = 0;
-  for (const tunnel of list) {
-    if ((await startTunnelBackground(tunnel, tunnels)) !== 0) failed++;
+  for (const { tunnel, store } of list) {
+    if ((await startTunnelBackground(tunnel, store)) !== 0) failed++;
   }
   if (failed) {
     ui.printWarn(tr.tunnels.tagUpFail(failed, list.length));

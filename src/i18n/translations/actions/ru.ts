@@ -20,6 +20,7 @@ const ru = {
   manualPrompt: 'IP или хост (например 10.0.0.5 или [example.com]:2222)',
   groupsEmpty: 'Тегов пока нет. Добавьте теги серверам/туннелям.',
   groupsSection: (n: number) => `Группы по тегам (${n})`,
+  tagPickEnsure: 'Выбор тега',
   groupNeedsTag: 'Укажите тег: wssh group check <tag>',
   groupRunNeedsTag: 'Укажите тег: wssh group run <tag> [команда…]',
   groupRunNoServers: (tag: string) => `Нет серверов с тегом «${tag}».`,

@@ -1,4 +1,7 @@
+// Tests for src/ssh/features — reachability (checkTcp), endpoint resolution, copy-id, run, transfer and fleet health checks.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import net from 'node:net';
+import { freshHome } from './helpers.js';
 
 const h = vi.hoisted(() => ({
   cmds: new Set<string>(['ssh', 'ssh-copy-id', 'scp', 'rsync']),
@@ -19,8 +22,16 @@ vi.mock('../src/ssh/runner.js', async (orig) => {
   return { ...actual, runProgram: h.runProgram, runSshInherit: h.runSshInherit };
 });
 
-import { copyId, runCommand, transfer, resolveEndpoint } from '../src/ssh/features.js';
-import type { Server } from '../src/core/types.js';
+import {
+  checkTcp,
+  copyId,
+  healthCheckAll,
+  resolveEndpoint,
+  runCommand,
+  transfer,
+} from '../src/ssh/features.js';
+import type { FleetTarget } from '../src/ssh/features.js';
+import type { ConnectionTarget, Server } from '../src/core/types.js';
 
 const server = (o: Partial<Server> = {}): Server => ({
   kind: 'server',
@@ -41,6 +52,18 @@ const server = (o: Partial<Server> = {}): Server => ({
   keyPath: null,
   secretId: null,
   linkedSshHost: null,
+  ...o,
+});
+
+const manual = (o: Partial<ConnectionTarget> = {}): ConnectionTarget => ({
+  hostMode: 'manual',
+  sshHost: '',
+  host: '203.0.113.7',
+  user: 'root',
+  sshPort: 22,
+  auth: 'agent',
+  keyPath: null,
+  secretId: null,
   ...o,
 });
 
@@ -243,5 +266,135 @@ describe('transfer via rsync', () => {
     await expect(
       transfer(server(), { tool: 'rsync', direction: 'upload', localPath: 'a', remotePath: 'b' }),
     ).rejects.toThrow(/rsync/);
+  });
+});
+
+describe('healthCheckAll', () => {
+  const manual = (o: Partial<ConnectionTarget>): ConnectionTarget => ({
+    hostMode: 'manual',
+    sshHost: '',
+    host: '127.0.0.1',
+    user: 'root',
+    sshPort: 22,
+    auth: 'agent',
+    keyPath: null,
+    secretId: null,
+    ...o,
+  });
+
+  it('checks many targets concurrently, preserving order, marking up/down', async () => {
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as net.AddressInfo).port;
+    const targets: FleetTarget[] = [
+      { name: 'up', kind: 'server', target: manual({ sshPort: port }) },
+      { name: 'down', kind: 'tunnel', target: manual({ sshPort: 1 }) },
+    ];
+    try {
+      const res = await healthCheckAll(targets, { concurrency: 2, timeoutMs: 1500 });
+      expect(res.map((r) => r.name)).toEqual(['up', 'down']); // order preserved
+      expect(res[0]?.result.open).toBe(true);
+      expect(res[0]?.result.port).toBe(port);
+      expect(res[1]?.result.open).toBe(false);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('returns [] for no targets', async () => {
+    expect(await healthCheckAll([])).toEqual([]);
+  });
+});
+
+describe('checkTcp', () => {
+  it('reports an open port as reachable', async () => {
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const res = await checkTcp('127.0.0.1', port, 2000);
+      expect(res.open).toBe(true);
+      expect(res.port).toBe(port);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('reports a closed port as unreachable', async () => {
+    const res = await checkTcp('127.0.0.1', 1, 1500);
+    expect(res.open).toBe(false);
+  });
+
+  it('treats an invalid port as unreachable without throwing', async () => {
+    expect((await checkTcp('127.0.0.1', 70000, 1000)).open).toBe(false);
+  });
+});
+
+describe('checkTcp (edge cases)', () => {
+  // Regression: an out-of-range port must not throw synchronously and hang the
+  // Promise — it should resolve quickly as unreachable.
+  it('resolves invalid ports as unreachable without hanging', async () => {
+    for (const port of [70000, 0, -1]) {
+      const r = await checkTcp('127.0.0.1', port, 500);
+      expect(r.open).toBe(false);
+    }
+  });
+});
+
+describe('resolveEndpoint', () => {
+  it('manual mode returns host + ssh port directly', () => {
+    expect(resolveEndpoint(manual({ host: '1.2.3.4', sshPort: 2200 }))).toEqual({
+      host: '1.2.3.4',
+      port: 2200,
+    });
+  });
+});
+
+describe('ssh/features resolveEndpoint (ssh -G)', () => {
+  it('follows ssh -G for config hosts', async () => {
+    vi.resetModules();
+    freshHome();
+    vi.doMock('../src/utils/exec.js', async (orig) => {
+      const a = await orig<typeof import('../src/utils/exec.js')>();
+      return {
+        ...a,
+        capture: () => ({ status: 0, stdout: 'hostname 5.5.5.5\nport 2222\n', stderr: '' }),
+      };
+    });
+    const { resolveEndpoint } = await import('../src/ssh/features.js');
+    expect(
+      resolveEndpoint({
+        hostMode: 'sshconfig',
+        sshHost: 'x',
+        host: '',
+        user: '',
+        sshPort: 22,
+        auth: 'agent',
+        keyPath: null,
+        secretId: null,
+      }),
+    ).toEqual({ host: '5.5.5.5', port: 2222 });
+  });
+
+  it('falls back to the alias when ssh -G fails', async () => {
+    vi.resetModules();
+    freshHome();
+    vi.doMock('../src/utils/exec.js', async (orig) => {
+      const a = await orig<typeof import('../src/utils/exec.js')>();
+      return { ...a, capture: () => ({ status: 1, stdout: '', stderr: '' }) };
+    });
+    const { resolveEndpoint } = await import('../src/ssh/features.js');
+    expect(
+      resolveEndpoint({
+        hostMode: 'sshconfig',
+        sshHost: 'h',
+        host: '',
+        user: '',
+        sshPort: 22,
+        auth: 'agent',
+        keyPath: null,
+        secretId: null,
+      }),
+    ).toEqual({ host: 'h', port: 22 });
   });
 });

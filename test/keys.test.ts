@@ -32,3 +32,19 @@ describe('findSshKeys', () => {
     expect(findSshKeys()).toEqual([]);
   });
 });
+
+describe('ssh key audit', () => {
+  it('keyIssues classifies weakness/hygiene flags', async () => {
+    const { keyIssues } = await import('../src/ssh/keys.js');
+    expect(keyIssues({ type: 'RSA', bits: 1024, hasPub: true }, true, false)).toEqual(['weak-rsa']);
+    expect(keyIssues({ type: 'RSA', bits: 4096, hasPub: true }, false, false)).toEqual([
+      'unencrypted',
+    ]);
+    expect(keyIssues({ type: 'ED25519', bits: 256, hasPub: false }, true, true)).toEqual([
+      'no-pub',
+      'orphan',
+    ]);
+    // strong, encrypted, has pub, referenced → clean; unknown encryption ignored
+    expect(keyIssues({ type: 'ED25519', bits: 256, hasPub: true }, null, false)).toEqual([]);
+  });
+});

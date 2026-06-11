@@ -91,3 +91,29 @@ describe('touchid', () => {
     expect(touch.authenticate()).toBe(false);
   });
 });
+
+describe('touchid on a non-macOS platform', () => {
+  it('reports unsupported and no-ops keychain ops', async () => {
+    vi.resetModules();
+    const orig = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      vi.doMock('../src/utils/exec.js', async (o) => {
+        const a = await o<typeof import('../src/utils/exec.js')>();
+        return {
+          ...a,
+          commandExists: () => true,
+          capture: () => ({ status: 0, stdout: '', stderr: '' }),
+        };
+      });
+      const touch = await import('../src/vault/touchid.js');
+      expect(touch.isSupported()).toBe(false);
+      expect(touch.storeKey('k')).toBe(false);
+      expect(touch.loadKey()).toBeNull();
+      touch.deleteKey();
+      expect(touch.authenticate()).toBe(false);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: orig, configurable: true });
+    }
+  });
+});

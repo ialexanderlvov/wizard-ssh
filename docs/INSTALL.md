@@ -83,16 +83,11 @@ alias wssh='node /полный/путь/к/wizard-ssh/dist/cli.js'
 
 ## Где лежат данные
 
-- По умолчанию: `~/.wizard-ssh/` (`servers.json`, `tunnels.json`, `settings.json`,
-  `vault.json`, `backups/`, `bin/`).
+- Серверы хранятся в `~/.ssh/config` (Host-блоки с аннотациями `#wssh`).
+- Остальные данные: `~/.wizard-ssh/` (`tunnels.json`, `settings.json`, `snippets.json`,
+  `usage.json`, `vault.json`, `sessions.json`, `backups/`, `logs/`, `bin/`).
 - Переопределить: `export WIZARD_SSH_HOME=/путь` (удобно для изоляции/тестов).
 - Узнать текущий путь: `wssh path`.
-
-## Миграция со старой версии
-
-Если есть `~/.ssh-tunnel-manager/tunnels.json` от прежнего «SSH Tunnel Manager»,
-туннели и базовые настройки импортируются автоматически при первом запуске
-(один раз, пока в `~/.wizard-ssh` ещё нет `tunnels.json`).
 
 ## Обновление
 

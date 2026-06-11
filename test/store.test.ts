@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import fs from 'node:fs';
+import fs, { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readJson, writeJson } from '../src/store/json-file.js';
@@ -208,5 +208,146 @@ describe('migration from legacy ~/.ssh-tunnel-manager', () => {
   it('no legacy file → no migration', async () => {
     const { runMigration } = await import('../src/store/migrate.js');
     expect(runMigration()).toBe(0);
+  });
+});
+
+describe('normalize branches', () => {
+  it('asRaw coerces non-objects to {}', () => {
+    expect(asRaw(null)).toEqual({});
+    expect(asRaw(42)).toEqual({});
+    expect(asRaw('x')).toEqual({});
+  });
+  it('normalizeConnection coerces numbers + null secret/key', () => {
+    const c = normalizeConnection(asRaw({ sshPort: '2222', keyPath: '', secretId: '' }));
+    expect(c.sshPort).toBe(2222);
+    expect(c.keyPath).toBeNull();
+    expect(c.secretId).toBeNull();
+  });
+  it('normalizeBase coerces a non-array tags field to []', () => {
+    expect(normalizeBase(asRaw({ name: 'x', tags: 'notarray' })).tags).toEqual([]);
+  });
+});
+
+describe('collection branches', () => {
+  const tmp = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'col-')), 'd.json');
+  const make = (f: string) => new EntityCollection<BaseEntity>(f, (r) => normalizeBase(asRaw(r)));
+
+  it('sorted falls back to recent for an unknown key', () => {
+    const c = make(tmp());
+    c.create({ name: 'b' });
+    c.create({ name: 'a' });
+    // @ts-expect-error intentional bad sort key → recent fallback
+    expect(c.sorted('bogus')).toHaveLength(2);
+  });
+  it('findByName("") returns null', () => {
+    const c = make(tmp());
+    expect(c.findByName('')).toBeNull();
+  });
+  it('update on a missing id returns null', () => {
+    expect(make(tmp()).update('nope', { name: 'x' })).toBeNull();
+  });
+});
+
+const ESC = String.fromCharCode(27); // \x1b — the prefix of every terminal escape
+const BEL = String.fromCharCode(7); // \x07 — OSC string terminator
+
+function writeSshConfig(text: string, file = 'config'): string {
+  const dir = path.join(os.homedir(), '.ssh');
+  fs.mkdirSync(dir, { recursive: true });
+  const p = path.join(dir, file);
+  fs.writeFileSync(p, text);
+  return p;
+}
+
+describe('#2 control/escape bytes are stripped from connection fields', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+  });
+
+  it('server fields parsed from ~/.ssh/config carry no control bytes', async () => {
+    writeSshConfig(
+      `Host evil${ESC}[31m\n` +
+        `    HostName 1.2.3.4${ESC}]0;pwned${BEL}\n` +
+        `    User ad${ESC}min\n` +
+        `    ProxyJump bast${ESC}ion\n`,
+    );
+    const { servers } = await import('../src/store/servers.store.js');
+    const s = servers.all()[0];
+    expect(s).toBeTruthy();
+    for (const v of [s!.name, s!.sshHost, s!.host, s!.user, s!.proxyJump ?? '']) {
+      expect(v).not.toContain(ESC);
+      expect(v).not.toContain(BEL);
+    }
+  });
+
+  it('normalizeConnection strips control bytes from tunnel fields', async () => {
+    const { normalizeConnection } = await import('../src/store/normalize.js');
+    const c = normalizeConnection({
+      host: `a${ESC}b`,
+      user: `u${BEL}`,
+      sshHost: `s${ESC}h`,
+      keyPath: `/k${ESC}p`,
+    });
+    expect(c.host).toBe('ab');
+    expect(c.user).toBe('u');
+    expect(c.sshHost).toBe('sh');
+    expect(c.keyPath).toBe('/kp');
+  });
+});
+
+describe('C-2 readJson never crashes on a valid-JSON non-object', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+  });
+
+  it('a file containing `null` reads as the fallback + a corrupt backup', async () => {
+    const { readJson } = await import('../src/store/json-file.js');
+    const file = path.join(os.homedir(), 'store.json');
+    for (const bad of ['null', '42', '"x"', '[1,2]']) {
+      fs.writeFileSync(file, bad);
+      const res = readJson<{ items?: unknown[] }>(file, { items: [] });
+      expect(res.data).toEqual({ items: [] }); // fallback, not the parsed scalar
+      expect(res.corruptBackup).toBeTruthy();
+      // The original dereference site would now be safe:
+      expect(Array.isArray(res.data.items)).toBe(true);
+    }
+  });
+});
+
+const tmpFileAf3 = (): string =>
+  path.join(mkdtempSync(path.join(os.tmpdir(), 'wssh-af3-')), 'data.json');
+
+describe('M-2: replaceAll over an existing file on a cold cache persists the new items', () => {
+  const entity = (id: string): BaseEntity => ({
+    id,
+    name: id,
+    description: '',
+    tags: [],
+    createdAt: '',
+    updatedAt: '',
+    lastUsedAt: null,
+    useCount: 0,
+  });
+  const norm = (raw: unknown): BaseEntity => {
+    const r = (raw ?? {}) as Partial<BaseEntity>;
+    return { ...entity(r.id ?? 'x'), ...r, name: r.name ?? r.id ?? 'x' };
+  };
+
+  it('does not silently re-read and drop the imported items', () => {
+    const file = tmpFileAf3();
+    // An existing store file (mtime > 0) — the situation `import --replace` hits.
+    fs.writeFileSync(file, JSON.stringify({ version: 1, items: [entity('old')] }));
+
+    // A FRESH collection → cold cache (sig=''), mirroring the non-interactive
+    // import path where the collection was never loaded at bootstrap.
+    const coll = new EntityCollection(file, norm);
+    coll.replaceAll([entity('new')]);
+
+    const onDisk = JSON.parse(fs.readFileSync(file, 'utf8')) as { items: BaseEntity[] };
+    expect(onDisk.items.map((i) => i.id)).toEqual(['new']);
+    // And a brand-new reader sees only the imported item.
+    expect(new EntityCollection(file, norm).all().map((i) => i.id)).toEqual(['new']);
   });
 });
