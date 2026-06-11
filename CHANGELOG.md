@@ -7,6 +7,31 @@ This file is maintained automatically by
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit
 released sections by hand.
 
+## [1.8.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.7.0...wizard-ssh-v1.8.0) (2026-06-11)
+
+
+### Features
+
+* **actions:** shared tag inventory and interactive tag picker ([ce75baf](https://github.com/ialexanderlvov/wizard-ssh/commit/ce75bafcf6662ec8f489f153ccc2d5d6402e019d))
+* **agent:** interactive ssh-agent submenu ([fc8ad83](https://github.com/ialexanderlvov/wizard-ssh/commit/fc8ad8363f97fe07bf71e38f70334a41920370a0))
+* **keys:** ssh-agent entry in the keys menu ([ffa2b21](https://github.com/ialexanderlvov/wizard-ssh/commit/ffa2b210829c5ce849914256fdc514b0a48d9308))
+* **menu:** TUI submenus for tag groups, snippets, tunnel profiles and autostart ([a4f590e](https://github.com/ialexanderlvov/wizard-ssh/commit/a4f590e4c04c7abcc3a518764e1af89f7923565a))
+
+
+### Bug Fixes
+
+* **tunnels:** start --tag raises temporary tunnels too ([5af40ee](https://github.com/ialexanderlvov/wizard-ssh/commit/5af40eeea806f673635ece2c68b67c3619f86ce3))
+
+
+### Code Refactoring
+
+* **menu:** extract the shared submenu loop into menu-kit ([5a2536a](https://github.com/ialexanderlvov/wizard-ssh/commit/5a2536a7a225eb0d0f96ef891e0fb444b04cf7d8))
+
+
+### Documentation
+
+* describe the present state only ([f5379c1](https://github.com/ialexanderlvov/wizard-ssh/commit/f5379c139bb33df43117b6a7442a0f36449e0e79))
+
 ## [1.7.0](https://github.com/ialexanderlvov/wizard-ssh/compare/wizard-ssh-v1.6.0...wizard-ssh-v1.7.0) (2026-06-11)
 
 
