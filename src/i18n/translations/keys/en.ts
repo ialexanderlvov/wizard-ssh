@@ -77,6 +77,12 @@ const en: Dict = {
   agentRemovedAll: 'All keys removed from the agent.',
   agentRemoveFailed: (code) => `ssh-add exited with code ${code}.`,
   agentConfirmRemoveAll: (n) => `Remove all keys (${n}) from the agent?`,
+  agentMenuEntry: '🔑 ssh-agent (loaded keys) ▸',
+  agentMenuSearch: 'ssh-agent agent ssh-add loaded',
+  agentMenuTitle: 'ssh-agent',
+  agentMenuAdd: 'Add a key to the agent',
+  agentMenuRemove: 'Remove a key from the agent',
+  agentMenuRemoveAll: 'Remove all keys',
 };
 
 export default en;
