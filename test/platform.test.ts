@@ -28,3 +28,28 @@ describe('platform', () => {
     expect(() => openInBrowser('http://x')).not.toThrow();
   });
 });
+
+describe('platform openInBrowser per-OS', () => {
+  it('uses cmd on Windows and xdg-open on Linux', async () => {
+    for (const [plat, expected] of [
+      ['win32', 'cmd'],
+      ['linux', 'xdg-open'],
+    ] as const) {
+      vi.resetModules();
+      const spawn = vi.fn(() => ({ unref: () => {} }));
+      vi.doMock('node:child_process', async (orig) => {
+        const a = await orig<typeof import('node:child_process')>();
+        return { ...a, spawn };
+      });
+      const orig = process.platform;
+      Object.defineProperty(process, 'platform', { value: plat, configurable: true });
+      try {
+        const { openInBrowser } = await import('../src/utils/platform.js');
+        openInBrowser('http://x');
+        expect(spawn.mock.calls[0]?.[0]).toBe(expected);
+      } finally {
+        Object.defineProperty(process, 'platform', { value: orig, configurable: true });
+      }
+    }
+  });
+});

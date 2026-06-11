@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { freshHome } from './helpers.js';
 
 // Hoisted so the (also-hoisted) vi.mock factories can see them.
 const h = vi.hoisted(() => {
@@ -205,5 +206,70 @@ describe('runTunnel "up" box (fake timers)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('#1 tunnel id can never carry path traversal into the log path', () => {
+  // Scaffolding from audit-fixes.test.ts (file-level beforeEach), scoped here.
+  // The detached spawn reuses this file's node:child_process mock (h.spawn).
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('normalizeBase regenerates an id with path/dangerous bytes, keeps a safe one', async () => {
+    const { normalizeBase } = await import('../src/store/normalize.js');
+    const bad = normalizeBase({ id: '../../../../../../tmp/pwn', name: 't' });
+    expect(bad.id).not.toContain('/');
+    expect(bad.id).not.toContain('..');
+    expect(bad.id).toMatch(/^[A-Za-z0-9_-]+$/);
+
+    // A well-formed id (uuid or legacy alphanumeric) is preserved verbatim.
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    expect(normalizeBase({ id: uuid }).id).toBe(uuid);
+    expect(normalizeBase({ id: 'legacy_ID-7' }).id).toBe('legacy_ID-7');
+    // An empty/absent id still mints a fresh one.
+    expect(normalizeBase({}).id).toMatch(/^[A-Za-z0-9-]{36}$/);
+  });
+
+  it('a malicious id in tunnels.json is sanitized on load', async () => {
+    const { FILES } = await import('../src/core/paths.js');
+    fs.mkdirSync(path.dirname(FILES.tunnels), { recursive: true });
+    fs.writeFileSync(
+      FILES.tunnels,
+      JSON.stringify({
+        version: 1,
+        items: [{ id: '../../../../etc/evil', name: 'x', kind: 'tunnel', type: 'local' }],
+      }),
+    );
+    const { tunnels } = await import('../src/store/tunnels.store.js');
+    const t = tunnels.all()[0];
+    expect(t?.id).not.toMatch(/[/.]/);
+  });
+
+  it('startTunnelDetached keeps the log file inside logsDir for a hostile id', async () => {
+    const { FILES } = await import('../src/core/paths.js');
+    const { startTunnelDetached } = await import('../src/ssh/runner.js');
+    const res = startTunnelDetached({
+      id: '../../../../../../tmp/pwn',
+      name: 't',
+      kind: 'tunnel',
+      type: 'local',
+      hostMode: 'sshconfig',
+      sshHost: 'box',
+      host: '',
+      user: '',
+      sshPort: 22,
+      auth: 'agent',
+      keyPath: null,
+      localPort: 8080,
+      remoteHost: '127.0.0.1',
+      remotePort: 80,
+    } as never);
+    expect(path.dirname(path.resolve(res.logFile))).toBe(path.resolve(FILES.logsDir));
+    expect(fs.existsSync(path.join(path.parse(os.homedir()).root, 'tmp', 'pwn.log'))).toBe(false);
+    expect(h.spawn).toHaveBeenCalledOnce();
   });
 });

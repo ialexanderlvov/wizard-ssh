@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { filterEntities } from '../src/search/index.js';
 import type { Server } from '../src/core/types.js';
-import { freshHome } from './helpers.js';
+import { freshHome, listMock, PICK_BACK, promptMock } from './helpers.js';
 
 describe('filterEntities edge', () => {
   const mk = (name: string): Server => ({
@@ -79,5 +79,93 @@ describe('searchEverything (isolated home)', () => {
     expect(r).not.toHaveProperty('configHosts');
 
     expect(searchEverything('nomatchxyz').total).toBe(0);
+  });
+});
+
+describe('fuzzy filter', () => {
+  const mk = (name: string, host: string, tags: string[] = []): Server => ({
+    kind: 'server',
+    id: name,
+    name,
+    description: '',
+    tags,
+    createdAt: '',
+    updatedAt: '',
+    lastUsedAt: null,
+    useCount: 0,
+    hostMode: 'manual',
+    sshHost: '',
+    host,
+    user: 'root',
+    sshPort: 22,
+    auth: 'agent',
+    keyPath: null,
+    secretId: null,
+    linkedSshHost: null,
+  });
+  it('finds by name/tag, empty term returns all', () => {
+    const items = [mk('web-prod', '10.0.0.1', ['prod']), mk('db-stage', '10.0.0.2', ['stage'])];
+    expect(filterEntities(items, '').length).toBe(2);
+    expect(filterEntities(items, 'prod').map((e) => e.name)).toContain('web-prod');
+    expect(filterEntities(items, 'db').map((e) => e.name)).toContain('db-stage');
+  });
+});
+
+// Scaffolding from branches4.test.ts for the command-flow tests below.
+const q = {
+  text: [] as unknown[],
+  choose: [] as unknown[],
+  confirm: [] as unknown[],
+  secret: [] as unknown[],
+  multi: [] as unknown[],
+  search: [] as unknown[],
+  pick: [] as unknown[],
+};
+const resetQ = (): void => (Object.keys(q) as Array<keyof typeof q>).forEach((k) => (q[k] = []));
+function cmdMocks(): void {
+  vi.doMock('../src/ui/prompts.js', () => promptMock(q));
+  vi.doMock('../src/ui/list-prompt.js', () => listMock(q));
+  vi.doMock('../src/ssh/runner.js', () => ({
+    runInteractive: async () => 0,
+    runTunnel: async () => 0,
+    runSshInherit: async () => 0,
+    runProgram: async () => 0,
+    preflight: () => null,
+  }));
+  vi.doMock('../src/vault/touchid.js', () => ({
+    isSupported: () => false,
+    authenticate: () => false,
+    storeKey: () => false,
+    loadKey: () => null,
+    deleteKey: () => {},
+  }));
+}
+
+describe('search early returns + decline', () => {
+  // Scaffolding from branches4.test.ts (file-level beforeEach), scoped here.
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+    resetQ();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    cmdMocks();
+  });
+
+  it('blank query returns immediately', async () => {
+    const { searchFlow } = await import('../src/commands/search.js');
+    await expect(searchFlow('   ')).resolves.toBeUndefined();
+  });
+  it('no results warns', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'web', host: '1.1.1.1', kind: 'server' });
+    const { searchFlow } = await import('../src/commands/search.js');
+    await expect(searchFlow('zzzznomatch')).resolves.toBeUndefined();
+  });
+  it('declining the connect prompt returns', async () => {
+    const { servers } = await import('../src/store/servers.store.js');
+    servers.create({ name: 'web', host: '1.1.1.1', kind: 'server' });
+    q.pick = [PICK_BACK]; // Esc on the connect picker → just view, do not connect
+    const { searchFlow } = await import('../src/commands/search.js');
+    await expect(searchFlow('web')).resolves.toBeUndefined();
   });
 });

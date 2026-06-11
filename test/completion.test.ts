@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Command } from 'commander';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { freshHome } from './helpers.js';
 
 async function buildProgram(): Promise<Command> {
@@ -68,5 +71,39 @@ describe('shell completion', () => {
     for (const s of ['bash', 'zsh', 'fish'] as const) {
       expect(completionScript(s)).toContain('wssh complete --');
     }
+  });
+});
+
+// Scaffolding from audit-fixes2.test.ts (buildProgram merged with the identical
+// helper above).
+function writeSshConfig(text: string): void {
+  const dir = path.join(os.homedir(), '.ssh');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config'), text);
+}
+
+describe('C-1 bash completion is injection-safe', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    freshHome();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('the bash wrapper never re-expands candidates (no compgen -W)', async () => {
+    const { completionScript } = await import('../src/commands/completion.js');
+    const bash = completionScript('bash');
+    expect(bash).not.toContain('compgen -W');
+    expect(bash).toContain('while IFS= read -r line'); // literal, prefix-matched
+  });
+
+  it('a hostile config-host alias is dropped from completion candidates', async () => {
+    writeSshConfig(
+      'Host $(touch_pwned)\n  HostName 1.1.1.1\n\nHost prod-web\n  HostName 2.2.2.2\n',
+    );
+    const { completeFromProgram } = await import('../src/commands/completion.js');
+    const cands = completeFromProgram(await buildProgram(), ['connect', '']);
+    expect(cands).toContain('prod-web');
+    expect(cands.some((c) => c.includes('$('))).toBe(false);
+    expect(cands.some((c) => c.includes('`'))).toBe(false);
   });
 });
