@@ -21,6 +21,7 @@ const en: Dict = {
   manualPrompt: 'IP or host (e.g. 10.0.0.5 or [example.com]:2222)',
   groupsEmpty: 'No tags yet. Add tags to servers/tunnels.',
   groupsSection: (n) => `Groups by tags (${n})`,
+  tagPickEnsure: 'Tag selection',
   groupNeedsTag: 'Provide a tag: wssh group check <tag>',
   groupRunNeedsTag: 'Provide a tag: wssh group run <tag> [command…]',
   groupRunNoServers: (tag) => `No servers tagged “${tag}”.`,

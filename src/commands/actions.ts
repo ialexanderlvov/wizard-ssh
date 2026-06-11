@@ -2,10 +2,10 @@
  *  file transfer, known_hosts, tag groups. */
 
 import fs from 'node:fs';
-import type { ConnectionTarget, Server } from '../core/types.js';
+import type { ConnectionTarget, Server, Tunnel } from '../core/types.js';
 import { WizardError } from '../core/errors.js';
 import { servers } from '../store/servers.store.js';
-import { tunnels } from '../store/tunnels.store.js';
+import { tunnels, tempTunnels } from '../store/tunnels.store.js';
 import { settings } from '../store/settings.store.js';
 import { transferSessions, type TransferSession } from '../store/transfer-sessions.store.js';
 import { snippets, type Snippet } from '../store/snippets.store.js';
@@ -89,16 +89,18 @@ export interface StatusOptions {
   tunnelsOnly?: boolean;
   /** restrict to entities carrying this tag */
   tag?: string;
+  /** pre-scanned entities (skips a second ~/.ssh/config parse after a tag pick) */
+  pool?: TagPool;
 }
 
 function fleetTargets(opts: StatusOptions): FleetTarget[] {
   const out: FleetTarget[] = [];
   const tagged = (tags: string[]): boolean => !opts.tag || tags.includes(opts.tag);
   if (!opts.tunnelsOnly)
-    for (const s of servers.all())
+    for (const s of opts.pool?.servers ?? servers.all())
       if (tagged(s.tags)) out.push({ name: s.name, kind: 'server', target: s });
   if (!opts.serversOnly)
-    for (const t of tunnels.all())
+    for (const t of opts.pool?.tunnels ?? tunnels.all())
       if (tagged(t.tags)) out.push({ name: t.name, kind: 'tunnel', target: t });
   return out;
 }
@@ -230,12 +232,34 @@ export async function forgetHostKeyFlow(name?: string): Promise<number> {
 
 // ---------- tag groups ----------
 
-export function groupListFlow(opts: { json?: boolean } = {}): void {
+export type TagSource = 'all' | 'servers' | 'tunnels';
+
+/** Pre-scanned entity lists, so a flow that follows a tag pick can reuse the
+ *  scan instead of re-parsing ~/.ssh/config (servers.all() has no cache). */
+export interface TagPool {
+  servers?: Server[];
+  tunnels?: Tunnel[];
+  tempTunnels?: Tunnel[];
+}
+
+/** Tag → usage-count rows, sorted by count desc then name — the ONE tag
+ *  inventory shared by `group list`, and the interactive tag pickers (so the
+ *  list and the pickers can never disagree). 'all' mirrors the group/status
+ *  surface (servers + saved tunnels); 'tunnels' additionally includes the
+ *  temporary tunnels because tag profiles (start/stop --tag) span both stores. */
+export function tagCounts(source: TagSource = 'all', pool: TagPool = {}): Array<[string, number]> {
   const counts = new Map<string, number>();
-  for (const s of servers.all()) for (const t of s.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-  for (const t of tunnels.all())
-    for (const tag of t.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const collect = (list: ReadonlyArray<{ tags: string[] }>): void => {
+    for (const e of list) for (const t of e.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+  };
+  if (source !== 'tunnels') collect(pool.servers ?? servers.all());
+  if (source !== 'servers') collect(pool.tunnels ?? tunnels.all());
+  if (source === 'tunnels') collect(pool.tempTunnels ?? tempTunnels.all());
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+export function groupListFlow(opts: { json?: boolean } = {}): void {
+  const rows = tagCounts('all');
   if (opts.json) {
     console.log(JSON.stringify(Object.fromEntries(rows), null, 2));
     return;
@@ -249,13 +273,33 @@ export function groupListFlow(opts: { json?: boolean } = {}): void {
     console.log(`  ${ui.chalk.cyan('#' + tag)}  ${ui.chalk.dim(`${n}`)}`);
 }
 
+/** Interactive picker over pre-built tag rows (see {@link tagCounts}). The
+ *  caller owns the empty-inventory case; null means the user backed out. */
+export async function pickTagFrom(
+  rows: ReadonlyArray<[string, number]>,
+  message: string,
+): Promise<string | null> {
+  ui.ensureInteractive(tr.actions.tagPickEnsure);
+  const picked = await ui.pickFromList<[string, number]>({
+    message,
+    items: [...rows],
+    render: ([tag, n]) => `${ui.chalk.cyan('#' + tag)}  ${ui.chalk.dim(String(n))}`,
+    search: ([tag]) => tag,
+    pageSize: 14,
+  });
+  return picked === ui.BACK ? null : picked[0];
+}
+
 /** Check every entity carrying a tag (parallel). */
-export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {}): Promise<number> {
+export async function groupCheckFlow(
+  tag: string,
+  opts: { json?: boolean; pool?: TagPool } = {},
+): Promise<number> {
   if (!tag.trim()) {
     ui.printError(tr.actions.groupNeedsTag);
     return 1;
   }
-  return statusFlow({ tag: tag.trim(), json: opts.json });
+  return statusFlow({ tag: tag.trim(), json: opts.json, pool: opts.pool });
 }
 
 /** Run one command on every server carrying a tag, in parallel, with a per-host
@@ -265,13 +309,13 @@ export async function groupCheckFlow(tag: string, opts: { json?: boolean } = {})
 export async function groupRunFlow(
   tag: string,
   command: string[],
-  opts: { json?: boolean } = {},
+  opts: { json?: boolean; pool?: Server[] } = {},
 ): Promise<number> {
   if (!tag.trim()) {
     ui.printError(tr.actions.groupRunNeedsTag);
     return 1;
   }
-  const tagged = servers.all().filter((s) => s.tags.includes(tag.trim()));
+  const tagged = (opts.pool ?? servers.all()).filter((s) => s.tags.includes(tag.trim()));
   if (!tagged.length) {
     if (opts.json) console.log('[]');
     else ui.printWarn(tr.actions.groupRunNoServers(tag.trim()));
